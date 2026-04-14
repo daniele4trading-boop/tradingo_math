@@ -39,7 +39,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
-        logging.FileHandler("tradingo.log", encoding="utf-8"),
+        logging.FileHandler("tradingo.log", encoding="utf-8", mode="a"),
         logging.StreamHandler(),
     ],
 )
@@ -90,7 +90,7 @@ class TradinGoConfig:
     hedge_floor_equity:   float = 9_400.0  # Hard stop: se equity < floor -> halt
 
     # ── Filtri operativi ─────────────────────────────────────────────────────
-    max_spread_points: int = 40            # 4 pips su Gold (in punti broker)
+    max_spread_points: int = 65            # 6.5 pips su Gold (in punti broker)
     atr_zscore_threshold: float = 1.5     # Volatilità minima per entrare
 
     # ── Sizing lotti ─────────────────────────────────────────────────────────
@@ -1199,7 +1199,14 @@ class StateManager:
         data = asdict(state)
         data["timestamp"] = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            self.state_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            # Scrittura atomica: scrive su file temp poi rinomina
+            # per evitare PermissionError se il file è aperto dalla dashboard
+            tmp = self.state_file.with_suffix(".tmp")
+            try:
+                tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                tmp.replace(self.state_file)
+            except PermissionError:
+                pass  # Dashboard sta leggendo il file, riprova al prossimo ciclo
 
     def load(self) -> dict:
         if not self.state_file.exists():

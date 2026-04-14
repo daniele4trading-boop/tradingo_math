@@ -194,8 +194,20 @@ class SystemState:
 # ──────────────────────────────────────────────────────────────────────────────
 class MT5Connector:
     """
-    Gestisce la connessione a UN singolo terminale MT5 in portable mode.
-    Supporta riconnessione automatica in caso di crash.
+    Gestisce la connessione a UN singolo terminale MT5.
+
+    ARCHITETTURA DUAL-ACCOUNT:
+    La libreria MetaTrader5 Python ha UN solo contesto globale per processo.
+    Non è possibile tenere due connessioni simultanee nello stesso processo.
+
+    Soluzione implementata:
+      - Si usa UN SOLO terminale MT5 (il Prop) come processo principale.
+      - Per leggere i dati del conto Hedge si usa mt5.login() che switcha
+        l'account attivo sul terminale già inizializzato, senza re-inizializzare.
+      - Questo elimina il loop "connessione persa / re-inizializzo" che
+        si verificava ad ogni ciclo.
+
+    Il terminale MT5 deve avere entrambi gli account salvati (AutoLogin).
     """
 
     def __init__(self, name: str, terminal_path: str,
@@ -212,23 +224,12 @@ class MT5Connector:
     def is_connected(self) -> bool:
         return self._connected
 
-    def connect(self) -> bool:
+    def initialize(self) -> bool:
         """
-        Inizializza il terminale MT5 UNA SOLA VOLTA.
-        Se già connesso, verifica che la connessione sia ancora viva
-        senza re-inizializzare.
+        Inizializza il terminale MT5 (chiamare UNA SOLA VOLTA all'avvio).
+        Usa il path del terminale in portable mode.
         """
         try:
-            # Se già connesso, verifica che sia ancora vivo
-            if self._connected:
-                info = mt5.account_info()
-                if info is not None and info.login == self.login:
-                    return True  # Connessione ancora valida, non re-inizializzare
-                # Connessione persa — procedi con re-inizializzazione
-                self.log.warning("Connessione persa, re-inizializzo...")
-                self._connected = False
-
-            # Prima connessione o re-inizializzazione dopo perdita
             ok = mt5.initialize(
                 path=self.terminal_path,
                 login=self.login,
@@ -237,52 +238,91 @@ class MT5Connector:
                 portable=True,
             )
             if not ok:
-                err = mt5.last_error()
-                self.log.error(f"Initialize fallito: {err}")
+                self.log.error(f"Initialize fallito: {mt5.last_error()}")
                 self._connected = False
                 return False
 
             info = mt5.account_info()
             if info is None:
-                self.log.error("account_info() restituito None dopo initialize")
+                self.log.error("account_info() None dopo initialize")
                 self._connected = False
                 return False
 
             self.log.info(
-                f"Connesso → Login:{info.login} | Balance:{info.balance:.2f} | Server:{info.server}"
+                f"Inizializzato → Login:{info.login} | "
+                f"Balance:{info.balance:.2f} | Server:{info.server}"
             )
             self._connected = True
             return True
 
         except Exception as e:
-            self.log.error(f"Eccezione in connect(): {e}")
+            self.log.error(f"Eccezione in initialize(): {e}")
             self._connected = False
             return False
 
+    def switch_to(self) -> bool:
+        """
+        Switcha l'account attivo su questo connector usando mt5.login().
+        NON re-inizializza il terminale — usa la sessione già aperta.
+        Molto più veloce e stabile rispetto a chiamare initialize() ripetutamente.
+        """
+        try:
+            # Verifica se siamo già su questo account
+            info = mt5.account_info()
+            if info is not None and info.login == self.login:
+                self._connected = True
+                return True
+
+            # Switch account
+            ok = mt5.login(
+                login=self.login,
+                password=self.password,
+                server=self.server,
+            )
+            if not ok:
+                self.log.error(f"login() fallito: {mt5.last_error()}")
+                self._connected = False
+                return False
+
+            self._connected = True
+            return True
+
+        except Exception as e:
+            self.log.error(f"Eccezione in switch_to(): {e}")
+            self._connected = False
+            return False
+
+    def connect(self) -> bool:
+        """Compatibilità: alias di switch_to() per il codice esistente."""
+        return self.switch_to()
+
     def disconnect(self):
-        """Chiude la connessione al terminale."""
+        """Chiude il terminale MT5 (chiamare solo alla fine del programma)."""
         mt5.shutdown()
         self._connected = False
-        self.log.info("Disconnesso.")
+        self.log.info("Terminale MT5 chiuso.")
 
     def reconnect(self, max_attempts: int = 5, delay: float = 5.0) -> bool:
-        """Tenta la riconnessione con back-off lineare."""
+        """Tenta la reinizializzazione completa del terminale in caso di crash."""
         for attempt in range(1, max_attempts + 1):
-            self.log.warning(f"Tentativo riconnessione {attempt}/{max_attempts}...")
-            self.disconnect()
+            self.log.warning(f"Tentativo reinizializzazione {attempt}/{max_attempts}...")
+            mt5.shutdown()
             time.sleep(delay * attempt)
-            if self.connect():
-                self.log.info("Riconnessione riuscita.")
+            if self.initialize():
+                self.log.info("Reinizializzazione riuscita.")
                 return True
-        self.log.error("Riconnessione fallita dopo tutti i tentativi.")
+        self.log.error("Reinizializzazione fallita dopo tutti i tentativi.")
         return False
 
     def get_account_info(self) -> Optional[mt5.AccountInfo]:
-        """Restituisce le info account, tenta riconnessione se fallisce."""
+        """Legge le info account dopo aver switchato su questo connector."""
+        if not self.switch_to():
+            return None
         info = mt5.account_info()
         if info is None:
-            self.log.warning("account_info() None, tentativo riconnessione...")
+            self.log.warning("account_info() None, tentativo reconnect...")
             if self.reconnect():
+                self.switch_to()
                 info = mt5.account_info()
         return info
 
@@ -437,14 +477,21 @@ class MarketAnalyzer:
         """
         VWAP rolling: prezzo medio ponderato per volume
         sulle ultime vwap_period candele.
+
+        Filtra candele anomale (tick_volume == 0 o prezzi chiaramente errati)
+        per evitare VWAP distorto da barre vuote di fine sessione.
         """
-        n  = self.cfg.vwap_period
+        n   = self.cfg.vwap_period
         sub = df.iloc[-n:].copy()
+        # Filtra candele con volume zero o prezzi anomali (< 100 su XAUUSD = errore dati)
+        sub = sub[sub["tick_volume"] > 0]
+        sub = sub[sub["close"] > 100]
+        if sub.empty:
+            return float(df["close"].iloc[-1])
         typical = (sub["high"] + sub["low"] + sub["close"]) / 3.0
-        # tick_volume come proxy del volume reale
-        vol = sub["tick_volume"]
-        vwap = (typical * vol).sum() / vol.sum() if vol.sum() > 0 else float(sub["close"].iloc[-1])
-        return float(vwap)
+        vol  = sub["tick_volume"].astype(np.int64)
+        vwap = float((typical * vol).sum() / vol.sum())
+        return vwap
 
     def compute_cvd(self, df: pd.DataFrame) -> Tuple[float, str]:
         """
@@ -452,13 +499,18 @@ class MarketAnalyzer:
         nell'ultima finestra cvd_period.
         CVD > 0 → pressione d'acquisto dominante → trend UP.
         CVD < 0 → pressione di vendita dominante  → trend DOWN.
+
+        Nota: tick_volume viene castato a int64 firmato per evitare overflow
+        su piattaforme che restituiscono uint64.
         """
         n   = self.cfg.cvd_period
         sub = df.iloc[-n:].copy()
+        # Cast esplicito a int64 per evitare overflow uint64 (bug CVD = 2^64-1)
+        vol = sub["tick_volume"].astype(np.int64)
         sub["delta"] = np.where(
             sub["close"] > sub["open"],
-            sub["tick_volume"],
-            -sub["tick_volume"],
+             vol,
+            -vol,
         )
         cvd = float(sub["delta"].sum())
         trend = "UP" if cvd > 0 else ("DOWN" if cvd < 0 else "NEUTRAL")
@@ -1211,12 +1263,35 @@ class TradinGoEngine:
         self.session_filter = SessionFilter()
 
     def _connect_all(self) -> bool:
-        """Connette entrambi i terminali. Usa Prop come connessione principale."""
-        ok_prop  = self.prop_conn.connect()
-        ok_hedge = self.hedge_conn.connect()
-        self.state.prop_connected  = ok_prop
-        self.state.hedge_connected = ok_hedge
-        return ok_prop and ok_hedge
+        """
+        Inizializza il terminale Prop (unico processo MT5).
+        Poi verifica che sia possibile switchare sull'Hedge con mt5.login().
+        """
+        # Inizializza il terminale con le credenziali Prop
+        ok_prop = self.prop_conn.initialize()
+        if not ok_prop:
+            self.log.error("Impossibile inizializzare il terminale Prop.")
+            self.state.prop_connected  = False
+            self.state.hedge_connected = False
+            return False
+
+        # Verifica che il login Hedge funzioni sullo stesso terminale
+        ok_hedge = self.hedge_conn.switch_to()
+        if not ok_hedge:
+            self.log.error(
+                "Impossibile switchare sul conto Hedge. "
+                "Assicurati che entrambi gli account siano salvati nel terminale MT5."
+            )
+            self.state.prop_connected  = True
+            self.state.hedge_connected = False
+            return False
+
+        # Torna sulla Prop come account attivo di default
+        self.prop_conn.switch_to()
+
+        self.state.prop_connected  = True
+        self.state.hedge_connected = True
+        return True
 
     def _switch_to_prop(self):
         """Attiva il contesto MT5 sul terminale Prop."""
@@ -1558,8 +1633,9 @@ class TradinGoEngine:
                 time.sleep(self.cfg.loop_interval_sec * 2)
 
         self.log.info("TradinGo Engine fermato.")
+        # Chiude il terminale una sola volta (unico processo MT5)
         self.prop_conn.disconnect()
-        self.hedge_conn.disconnect()
+        # hedge_conn NON chiama disconnect() — condivide lo stesso processo MT5
 
 
 # ──────────────────────────────────────────────────────────────────────────────

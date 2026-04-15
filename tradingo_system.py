@@ -90,8 +90,8 @@ class TradinGoConfig:
     hedge_floor_equity:   float = 9_400.0  # Hard stop: se equity < floor -> halt
 
     # ── Filtri operativi ─────────────────────────────────────────────────────
-    max_spread_points: int = 65            # 6.5 pips su Gold (in punti broker)
-    atr_zscore_threshold: float = 1.5     # Volatilità minima per entrare
+    max_spread_points: int = 130           # 13 pips su Gold — allargato per fase demo
+    atr_zscore_threshold: float = 0.8     # Volatilità minima per entrare (demo: abbassato da 1.5)
 
     # ── Sizing lotti ─────────────────────────────────────────────────────────
     prop_lot:              float = 1.00
@@ -1575,7 +1575,7 @@ class TradinGoEngine:
                 if not ftmo_can:
                     self.log.warning(f"FTMO BLOCK: {ftmo_reason} — nessun nuovo trade aperto.")
 
-                if self._no_open_trades() and spread_ok and ftmo_can:  # sess_active disabilitato in demo
+                if self._no_open_trades() and spread_ok and ftmo_can:  # filtro sessione disabilitato in demo
                     signal, z, _, _, _ = self.analyzer.generate_signal(df)
                     self.state.last_signal = signal
 

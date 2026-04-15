@@ -865,9 +865,13 @@ class FTMORiskManager:
             return FTMOState(last_update_date=datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
     def _save_state(self, state: FTMOState):
-        self.state_file.write_text(
-            json.dumps(asdict(state), indent=2), encoding="utf-8"
-        )
+        # Scrittura atomica per evitare PermissionError
+        tmp = self.state_file.with_suffix(".tmp")
+        try:
+            tmp.write_text(json.dumps(asdict(state), indent=2), encoding="utf-8")
+            tmp.replace(self.state_file)
+        except PermissionError:
+            pass  # Riprova al prossimo ciclo
 
     # ── Aggiornamento giornaliero (chiamato ad ogni ciclo) ───────────────────
     def daily_update(self, current_prop_balance: float):

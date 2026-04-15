@@ -63,7 +63,7 @@ class PropConfig:
     symbol:        str = "XAUUSD"
 
     # ── Filtri operativi ─────────────────────────────────────────────────────
-    max_spread_points:    int   = 130    # 13 pips — allargato per demo
+    max_spread_points:    int   = 300    # Test notturno: spread illimitato
     atr_zscore_threshold: float = -1.0  # Demo: disabilitato
 
     # ── Sizing ───────────────────────────────────────────────────────────────

@@ -181,6 +181,7 @@ class MarketAnalyzer:
 
     def compute_cvd(self, df: pd.DataFrame) -> Tuple[float, str]:
         sub = df.iloc[-self.cfg.cvd_period:].copy()
+        sub["tick_volume"] = sub["tick_volume"].astype(np.int64)
         sub["delta"] = np.where(sub["close"] > sub["open"], sub["tick_volume"], -sub["tick_volume"])
         cvd = float(sub["delta"].sum())
         trend = "UP" if cvd > 0 else ("DOWN" if cvd < 0 else "NEUTRAL")

@@ -63,7 +63,7 @@ class PropConfig:
     symbol:        str = "XAUUSD"
 
     # ── Filtri operativi ─────────────────────────────────────────────────────
-    max_spread_points:    int   = 300    # Test notturno: spread illimitato
+    max_spread_points:    int   = 130    # 13 pips — allargato per demo
     atr_zscore_threshold: float = -1.0  # Demo: disabilitato
 
     # ── Sizing ───────────────────────────────────────────────────────────────
@@ -335,6 +335,89 @@ class PropEngine:
         pos = mt5.positions_get(ticket=ticket)
         return bool(pos)
 
+    # ── Scrittura stato completo per la dashboard ─────────────────────────────
+    def _write_full_state(self, balance: float, equity: float,
+                          spread: int, spread_ok: bool,
+                          z: float, vwap: float, cvd: float, cvd_trend: str,
+                          signal: str, atr: float,
+                          ftmo_ok: bool, ftmo_reason: str):
+        """Scrive tutti i campi attesi dalla dashboard Streamlit."""
+        # FTMO metrics
+        midnight = self.ftmo._midnight_balance
+        peak     = self.ftmo._peak_balance
+        daily_lim = midnight * (1.0 - self.cfg.daily_dd_safety)
+        total_lim = peak    * (1.0 - self.cfg.total_dd_safety)
+        daily_pct = max(0.0, (midnight - equity) / midnight) if midnight > 0 else 0.0
+        total_pct = max(0.0, (peak    - equity) / peak)     if peak    > 0 else 0.0
+        profit_oggi = balance - midnight
+        cons_limit  = max(0.0, midnight - self.cfg.prop_initial_balance)
+
+        # PnL flottante prop
+        prop_pnl = 0.0
+        if self._ticket > 0:
+            pos = mt5.positions_get(ticket=self._ticket)
+            if pos:
+                prop_pnl = float(pos[0].profit)
+
+        # Stato corrente dal file (per non sovrascrivere campi hedge)
+        current = self.state.read()
+
+        self.state.write({
+            # ── Segnale e trade ──────────────────────────────────────────────
+            "signal":       signal,
+            "signal_id":    self._signal_id,
+            "atr":          atr,
+            "prop_ticket":  self._ticket,
+            "prop_closed":  current.get("prop_closed", False),
+            "last_signal":  signal,
+
+            # ── Prop account ─────────────────────────────────────────────────
+            "prop_balance":    balance,
+            "prop_equity":     equity,
+            "prop_pnl_float":  prop_pnl,
+            "prop_connected":  True,
+
+            # ── Hedge account (preserva valori scritti dall'hedge engine) ────
+            "hedge_balance":         current.get("hedge_balance", 0.0),
+            "hedge_equity":          current.get("hedge_equity", 0.0),
+            "hedge_pnl_float":       current.get("hedge_pnl_float", 0.0),
+            "hedge_connected":       current.get("hedge_connected", False),
+            "hedge_ticket":          current.get("hedge_ticket", 0),
+            "reverse_ticket":        current.get("reverse_ticket", 0),
+            "reverse_active":        current.get("reverse_active", False),
+            "trailing_active":       current.get("trailing_active", False),
+            "hedge_realized_profit": current.get("hedge_realized_profit", 0.0),
+            "hedge_expected_loss":   current.get("hedge_expected_loss", 0.0),
+            "net_system_profit":     current.get("hedge_realized_profit", 0.0) - self.cfg.prop_cost_eur,
+            "floor_distance":        current.get("hedge_equity", 0.0) - 9400.0,
+
+            # ── Indicatori tecnici ───────────────────────────────────────────
+            "spread_points": spread,
+            "spread_ok":     spread_ok,
+            "atr_zscore":    z,
+            "vwap":          vwap,
+            "cvd":           cvd,
+            "cvd_trend":     cvd_trend,
+
+            # ── Modalità sistema ─────────────────────────────────────────────
+            "mode":          current.get("mode", "IDLE"),
+            "session_active": True,
+            "session_name":  "DEMO MODE",
+            "last_error":    "",
+
+            # ── FTMO Risk ────────────────────────────────────────────────────
+            "ftmo_daily_dd_pct":      daily_pct,
+            "ftmo_total_dd_pct":      total_pct,
+            "ftmo_daily_dd_limit":    daily_lim,
+            "ftmo_total_dd_limit":    total_lim,
+            "ftmo_profit_oggi":       profit_oggi,
+            "ftmo_consistency_limit": cons_limit,
+            "ftmo_consistency_ok":    profit_oggi < cons_limit or cons_limit <= 0,
+            "ftmo_can_trade":         ftmo_ok,
+            "ftmo_block_reason":      ftmo_reason,
+            "ftmo_final_phase":       False,
+        })
+
     # ── Loop principale ───────────────────────────────────────────────────────
     def run(self):
         self.log.info("═══ PROP ENGINE — AVVIO ═══")
@@ -343,18 +426,12 @@ class PropEngine:
             self.log.error("Connessione fallita. Esco.")
             return
 
-        # Inizializza state file
-        self.state.write({
-            "signal": "NONE",
-            "signal_id": 0,
-            "prop_ticket": 0,
-            "prop_closed": False,
-            "atr": 0.0,
-            "prop_balance": 0.0,
-            "prop_equity": 0.0,
-        })
-
         self._running = True
+        # variabili indicatori (per avere sempre valori validi da scrivere)
+        spread, spread_ok = 0, True
+        z, vwap, cvd, cvd_trend = 0.0, 0.0, 0.0, "NEUTRAL"
+        atr = 0.0
+        ftmo_ok, ftmo_reason = True, "OK"
 
         while self._running:
             try:
@@ -367,7 +444,6 @@ class PropEngine:
 
                 balance = info.balance
                 equity  = info.equity
-
                 self.ftmo.daily_update(balance)
 
                 # ── Dati mercato ──────────────────────────────────────────────
@@ -376,11 +452,11 @@ class PropEngine:
                     time.sleep(self.cfg.loop_interval_sec)
                     continue
 
-                spread = self.analyzer.get_spread_points()
+                spread    = self.analyzer.get_spread_points()
                 spread_ok = spread <= self.cfg.max_spread_points
-                atr    = float(self.analyzer.compute_atr(df).iloc[-1])
-                z      = self.analyzer.compute_atr_zscore(df)
-                vwap   = self.analyzer.compute_vwap(df)
+                atr       = float(self.analyzer.compute_atr(df).iloc[-1])
+                z         = self.analyzer.compute_atr_zscore(df)
+                vwap      = self.analyzer.compute_vwap(df)
                 cvd, cvd_trend = self.analyzer.compute_cvd(df)
 
                 spread_str = "✓ OK" if spread_ok else f"✗ BLOCCATO ({spread}pts)"
@@ -390,83 +466,87 @@ class PropEngine:
                     f"balance={balance:.2f} | equity={equity:.2f}"
                 )
 
+                # ── FTMO check ────────────────────────────────────────────────
+                ftmo_ok, ftmo_reason = self.ftmo.can_trade(equity, balance)
+                if not ftmo_ok:
+                    self.log.warning(f"FTMO BLOCK: {ftmo_reason}")
+                    self._write_full_state(balance, equity, spread, spread_ok,
+                                           z, vwap, cvd, cvd_trend, "NONE", atr,
+                                           ftmo_ok, ftmo_reason)
+                    time.sleep(self.cfg.loop_interval_sec)
+                    continue
+
                 # ── Check trade già aperto ────────────────────────────────────
                 if self._ticket > 0:
                     if self._is_open(self._ticket):
-                        # Trade ancora aperto — aggiorna stato
-                        self.state.update(
-                            prop_ticket=self._ticket,
-                            prop_closed=False,
-                            prop_balance=balance,
-                            prop_equity=equity,
-                        )
+                        # Aggiorna mode → Normal Mode
+                        current = self.state.read()
+                        current["mode"] = "Normal Mode"
+                        self.state.write(current)
                     else:
                         # Trade chiuso (SL o TP colpito)
                         self.log.info(f"Prop trade chiuso → ticket={self._ticket}")
                         self._ticket = 0
-                        self.state.update(
-                            prop_ticket=0,
-                            prop_closed=True,
-                            signal="NONE",
-                            prop_balance=balance,
-                            prop_equity=equity,
-                        )
+                        current = self.state.read()
+                        current["prop_closed"] = True
+                        current["mode"]        = "Trend Riding"
+                        self.state.write(current)
+
+                    self._write_full_state(balance, equity, spread, spread_ok,
+                                           z, vwap, cvd, cvd_trend,
+                                           self.state.read().get("signal", "NONE"),
+                                           atr, ftmo_ok, ftmo_reason)
                     time.sleep(self.cfg.loop_interval_sec)
                     continue
 
                 # ── Nessun trade aperto — cerca segnale ───────────────────────
-                # Reset prop_closed quando siamo in attesa di nuovo segnale
-                self.state.update(prop_closed=False)
-
-                # FTMO check
-                ftmo_ok, ftmo_reason = self.ftmo.can_trade(equity, balance)
-                if not ftmo_ok:
-                    self.log.warning(f"FTMO BLOCK: {ftmo_reason}")
-                    self.state.update(signal="NONE", prop_balance=balance, prop_equity=equity)
-                    time.sleep(self.cfg.loop_interval_sec)
-                    continue
-
                 if not spread_ok:
-                    self.state.update(signal="NONE", prop_balance=balance, prop_equity=equity)
+                    self._write_full_state(balance, equity, spread, spread_ok,
+                                           z, vwap, cvd, cvd_trend, "NONE", atr,
+                                           ftmo_ok, ftmo_reason)
                     time.sleep(self.cfg.loop_interval_sec)
                     continue
 
-                # Genera segnale
                 signal, z, vwap, cvd, cvd_trend = self.analyzer.generate_signal(df)
 
                 if signal == Signal.NONE:
-                    self.state.update(signal="NONE", atr=atr, prop_balance=balance, prop_equity=equity)
+                    self._write_full_state(balance, equity, spread, spread_ok,
+                                           z, vwap, cvd, cvd_trend, "NONE", atr,
+                                           ftmo_ok, ftmo_reason)
                     time.sleep(self.cfg.loop_interval_sec)
                     continue
 
                 self.log.info(f"Segnale {signal} | Z={z:.2f} | VWAP={vwap:.2f} | CVD={cvd:.0f}")
 
-                # Pubblica segnale PRIMA di aprire — l'Hedge lo legge e si prepara
+                # Pubblica segnale PRIMA di aprire
                 self._signal_id += 1
-                self.state.update(
-                    signal=signal.value,
-                    signal_id=self._signal_id,
-                    atr=atr,
-                    prop_ticket=0,
-                    prop_closed=False,
-                    prop_balance=balance,
-                    prop_equity=equity,
-                )
+                self._write_full_state(balance, equity, spread, spread_ok,
+                                       z, vwap, cvd, cvd_trend, signal.value, atr,
+                                       ftmo_ok, ftmo_reason)
+                # Aggiorna signal_id e mode
+                current = self.state.read()
+                current["signal_id"] = self._signal_id
+                current["mode"]      = "Normal Mode"
+                current["prop_closed"] = False
+                self.state.write(current)
 
-                # Piccola pausa per dare tempo all'Hedge di leggere il segnale
-                time.sleep(0.5)
+                time.sleep(0.5)  # pausa per Hedge
 
                 # Apri trade Prop (direzione opposta)
                 ticket = self._open_trade(signal, atr)
 
                 if ticket:
                     self._ticket = ticket
-                    self.state.update(prop_ticket=ticket)
+                    current = self.state.read()
+                    current["prop_ticket"] = ticket
+                    self.state.write(current)
                     self.log.info(f"Prop in posizione → ticket={ticket}")
                 else:
-                    # Apertura fallita — annulla segnale
                     self.log.error("Apertura Prop fallita — annullo segnale")
-                    self.state.update(signal="NONE", signal_id=self._signal_id)
+                    current = self.state.read()
+                    current["signal"]    = "NONE"
+                    current["mode"]      = "IDLE"
+                    self.state.write(current)
 
                 time.sleep(self.cfg.loop_interval_sec)
 

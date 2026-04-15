@@ -420,12 +420,31 @@ class HedgeEngine:
                 tick        = mt5.symbol_info_tick(self.cfg.symbol)
                 current_price = float(tick.last if tick else 0)
 
+                # ── Helper scrittura campi hedge nel file condiviso ───────────
+                def _update_hedge_fields(hedge_pnl: float = 0.0):
+                    self.state.update(
+                        hedge_balance=balance,
+                        hedge_equity=equity,
+                        hedge_pnl_float=hedge_pnl,
+                        hedge_connected=True,
+                        hedge_ticket=self._ticket,
+                        reverse_ticket=self._reverse_ticket,
+                        reverse_active=self._reverse_ticket > 0,
+                        trailing_active=self._trend_riding,
+                        hedge_expected_loss=self._expected_loss,
+                        floor_distance=equity - self.cfg.hedge_floor_equity,
+                        mode="Trend Riding" if self._trend_riding else
+                             ("Mitigation" if self._reverse_ticket > 0 else
+                              ("Normal Mode" if self._ticket > 0 else "IDLE")),
+                    )
+
                 # ── Gestione trade già aperto ─────────────────────────────────
                 if self._ticket > 0:
                     pos = mt5.positions_get(ticket=self._ticket)
                     if pos:
                         hedge_pnl = float(pos[0].profit)
                         self._manage_open_trades(current_price, atr, hedge_pnl)
+                        _update_hedge_fields(hedge_pnl)
                         self.log.info(
                             f"Hedge aperto → ticket={self._ticket} | "
                             f"pnl={hedge_pnl:.2f} | equity={equity:.2f} | "
@@ -435,21 +454,17 @@ class HedgeEngine:
                     else:
                         # Hedge chiuso (SL/TP)
                         self.log.info(f"Hedge chiuso → ticket={self._ticket}")
-                        self._ticket       = 0
-                        self._signal       = Signal.NONE
-                        self._trend_riding = False
+                        self._ticket        = 0
+                        self._signal        = Signal.NONE
+                        self._trend_riding  = False
                         self._expected_loss = 0.0
-                        self.state.update(
-                            hedge_ticket=0,
-                            hedge_balance=balance,
-                            hedge_equity=equity,
-                        )
+                        _update_hedge_fields(0.0)
 
                     time.sleep(self.cfg.loop_interval_sec)
                     continue
 
                 # ── Nessun trade aperto — attendi nuovo segnale ───────────────
-                self.state.update(hedge_balance=balance, hedge_equity=equity)
+                _update_hedge_fields(0.0)
 
                 # Nuovo segnale dalla Prop?
                 is_new_signal = (
@@ -476,7 +491,7 @@ class HedgeEngine:
                         pass
 
                 # Apri trade Hedge (direzione allineata al segnale)
-                self._signal        = Signal(signal_str)
+                self._signal         = Signal(signal_str)
                 self._last_signal_id = signal_id
 
                 self.log.info(
@@ -490,11 +505,7 @@ class HedgeEngine:
                     self._ticket        = ticket
                     self._trend_riding  = False
                     self._expected_loss = self._estimate_loss(atr)
-                    self.state.update(
-                        hedge_ticket=ticket,
-                        hedge_balance=balance,
-                        hedge_equity=equity,
-                    )
+                    _update_hedge_fields(0.0)
                     self.log.info(
                         f"Hedge in posizione → ticket={ticket} | "
                         f"expected_loss={self._expected_loss:.2f}$"

@@ -91,7 +91,7 @@ class TradinGoConfig:
 
     # ── Filtri operativi ─────────────────────────────────────────────────────
     max_spread_points: int = 130           # 13 pips su Gold — allargato per fase demo
-    atr_zscore_threshold: float = 0.8     # Volatilità minima per entrare (demo: abbassato da 1.5)
+    atr_zscore_threshold: float = -1.0    # Demo: disabilitato (accetta qualsiasi volatilità)
 
     # ── Sizing lotti ─────────────────────────────────────────────────────────
     prop_lot:              float = 1.00

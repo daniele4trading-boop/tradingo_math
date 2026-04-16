@@ -1,14 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║   TRADINGO — HEDGE ENGINE  (UltimaMarkets 10k)                               ║
-║   Processo separato: si connette SOLO al terminale UltimaMarkets             ║
-║   - Legge segnale da tradingo_state.json (scritto dalla Prop)                ║
-║   - Apre trade in direzione ALLINEATA al segnale                             ║
-║   - Gestisce Reverse Hedge e Trailing Stop                                   ║
-║   - Monitora floor equity (hard stop a 9.400$)                               ║
-║                                                                              ║
-║   Avvio: python tradingo_hedge.py                                            ║
-║   (in parallelo con tradingo_prop.py in altra finestra PowerShell)           ║
+║   v1.1 — Fix: signal_timeout 120s, tick.last→bid/ask, SL sanity check       ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -25,9 +18,6 @@ from typing import Optional, Tuple
 from enum import Enum
 from dataclasses import dataclass
 
-# ──────────────────────────────────────────────────────────────────────────────
-# LOGGING
-# ──────────────────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -39,9 +29,6 @@ logging.basicConfig(
 log = logging.getLogger("HEDGE")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ENUMERAZIONI
-# ──────────────────────────────────────────────────────────────────────────────
 class Signal(str, Enum):
     BUY  = "BUY"
     SELL = "SELL"
@@ -51,44 +38,85 @@ class Signal(str, Enum):
 # ──────────────────────────────────────────────────────────────────────────────
 # CONFIGURAZIONE
 # ──────────────────────────────────────────────────────────────────────────────
+def load_config_json(path: str = "config.json") -> dict:
+    p = Path(path)
+    if not p.exists():
+        return {}
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        def strip_notes(d):
+            return {k: strip_notes(v) if isinstance(v, dict) else v
+                    for k, v in d.items() if k != "_note"}
+        return strip_notes(raw)
+    except Exception:
+        return {}
+
+
 @dataclass
 class HedgeConfig:
-    # ── Terminale UltimaMarkets ───────────────────────────────────────────────
     terminal_path: str = r"C:\Program Files\Ultima Markets MT5 Terminal\terminal64.exe"
     login:         int = 843409
     password:      str = "v!34bIbx"
     server:        str = "UltimaMarkets-Demo"
+    symbol:        str = "XAUUSD"
 
-    # ── Simbolo ──────────────────────────────────────────────────────────────
-    symbol: str = "XAUUSD"
-
-    # ── Sizing ───────────────────────────────────────────────────────────────
     hedge_lot:              float = 0.14
-    reverse_lot_multiplier: float = 2.1   # lotto reverse = hedge_lot * multiplier
+    reverse_lot_multiplier: float = 2.1
+    sl_atr_mult:            float = 1.5
+    tp_atr_mult:            float = 3.0
+    reverse_sl_atr_mult:    float = 2.0
+    reverse_tp_atr_mult:    float = 2.0
 
-    # ── Soglie ───────────────────────────────────────────────────────────────
-    hedge_floor_equity:    float = 9_400.0   # Hard stop: equity < floor → halt
-    reverse_trigger_pct:   float = 0.50      # Attiva reverse quando perdita >= 50% attesa
-    trailing_atr_mult:     float = 2.0       # Distanza trailing stop in ATR
+    hedge_floor_equity:  float = 9_400.0
+    reverse_trigger_pct: float = 0.50
+    trailing_atr_mult:   float = 2.0
 
-    # ── Jitter stealth (ms) ───────────────────────────────────────────────────
     jitter_min_ms: int = 300
     jitter_max_ms: int = 800
 
-    # ── Loop ──────────────────────────────────────────────────────────────────
-    loop_interval_sec:  float = 2.0    # Hedge controlla più frequentemente
-    signal_timeout_sec: float = 30.0   # Secondi max di attesa segnale prima di ignorarlo
+    loop_interval_sec:  float = 2.0
+    # FIX 3: timeout aumentato a 120 secondi
+    signal_timeout_sec: float = 120.0
 
-    # ── File stato condiviso con Prop ─────────────────────────────────────────
-    state_file: str = "tradingo_state.json"
-
-    # ── Magic numbers ─────────────────────────────────────────────────────────
+    state_file:    str = "tradingo_state.json"
     magic_hedge:   int = 20260002
     magic_reverse: int = 20260003
 
+    @classmethod
+    def from_json(cls) -> "HedgeConfig":
+        cfg = load_config_json()
+        obj = cls()
+        if not cfg:
+            return obj
+        s   = cfg.get("sizing", {})
+        sl  = cfg.get("sl_tp", {})
+        r   = cfg.get("gestione_rischio", {})
+        sis = cfg.get("sistema", {})
+
+        obj.symbol               = cfg.get("symbol", obj.symbol)
+        obj.hedge_lot            = float(s.get("hedge_lot", obj.hedge_lot))
+        obj.reverse_lot_multiplier = float(s.get("reverse_lot_multiplier", obj.reverse_lot_multiplier))
+        obj.sl_atr_mult          = float(sl.get("sl_atr_mult", obj.sl_atr_mult))
+        obj.tp_atr_mult          = float(sl.get("tp_atr_mult", obj.tp_atr_mult))
+        obj.reverse_sl_atr_mult  = float(sl.get("reverse_sl_atr_mult", obj.reverse_sl_atr_mult))
+        obj.reverse_tp_atr_mult  = float(sl.get("reverse_tp_atr_mult", obj.reverse_tp_atr_mult))
+        obj.hedge_floor_equity   = float(r.get("hedge_floor_equity", obj.hedge_floor_equity))
+        obj.reverse_trigger_pct  = float(r.get("reverse_trigger_pct", obj.reverse_trigger_pct))
+        obj.trailing_atr_mult    = float(r.get("trailing_atr_mult", obj.trailing_atr_mult))
+        obj.loop_interval_sec    = float(sis.get("hedge_loop_interval_sec", obj.loop_interval_sec))
+        obj.signal_timeout_sec   = float(sis.get("signal_timeout_sec", obj.signal_timeout_sec))
+        obj.jitter_min_ms        = int(sis.get("jitter_min_ms", obj.jitter_min_ms))
+        obj.jitter_max_ms        = int(sis.get("jitter_max_ms", obj.jitter_max_ms))
+
+        log.info(
+            f"Config → lot={obj.hedge_lot} | SL={obj.sl_atr_mult}ATR | "
+            f"TP={obj.tp_atr_mult}ATR | timeout={obj.signal_timeout_sec}s"
+        )
+        return obj
+
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STATE FILE READER
+# STATE FILE
 # ──────────────────────────────────────────────────────────────────────────────
 class StateFile:
     def __init__(self, path: str):
@@ -118,17 +146,16 @@ class HedgeEngine:
         self.state = StateFile(cfg.state_file)
         self.log   = logging.getLogger("HEDGE.Engine")
 
-        self._ticket          = 0        # ticket hedge principale
-        self._reverse_ticket  = 0        # ticket reverse hedge
+        self._ticket          = 0
+        self._reverse_ticket  = 0
         self._signal          = Signal.NONE
-        self._last_signal_id  = 0        # per rilevare nuovi segnali dalla Prop
-        self._entry_price     = 0.0      # prezzo entrata hedge
-        self._reverse_entry   = 0.0      # prezzo entrata reverse
-        self._expected_loss   = 0.0      # perdita max attesa sull'hedge
-        self._trend_riding    = False    # True dopo chiusura Prop
+        self._last_signal_id  = 0
+        self._entry_price     = 0.0
+        self._reverse_entry   = 0.0
+        self._expected_loss   = 0.0
+        self._trend_riding    = False
         self._running         = False
 
-    # ── Connessione ──────────────────────────────────────────────────────────
     def _connect(self) -> bool:
         ok = mt5.initialize(
             path=self.cfg.terminal_path,
@@ -151,16 +178,16 @@ class HedgeEngine:
         time.sleep(5)
         return self._connect()
 
-    # ── Jitter ───────────────────────────────────────────────────────────────
     def _jitter(self):
         time.sleep(random.randint(self.cfg.jitter_min_ms, self.cfg.jitter_max_ms) / 1000.0)
 
-    # ── Lettura ATR dal file di stato ─────────────────────────────────────────
-    def _get_atr_from_state(self) -> float:
-        data = self.state.read()
-        return float(data.get("atr", 10.0))
+    def _get_current_price(self) -> float:
+        """FIX: usa bid/ask invece di tick.last che può essere 0."""
+        tick = mt5.symbol_info_tick(self.cfg.symbol)
+        if tick and tick.bid > 100 and tick.ask > 100:
+            return (tick.bid + tick.ask) / 2.0
+        return 0.0
 
-    # ── Apertura ordine Hedge (direzione ALLINEATA al segnale) ───────────────
     def _open_hedge(self, signal: Signal, atr: float) -> Optional[int]:
         tick = mt5.symbol_info_tick(self.cfg.symbol)
         if tick is None:
@@ -169,13 +196,13 @@ class HedgeEngine:
         if signal == Signal.BUY:
             order_type = mt5.ORDER_TYPE_BUY
             price      = tick.ask
-            sl         = price - atr * 1.5
-            tp         = price + atr * 3.0
+            sl         = price - atr * self.cfg.sl_atr_mult
+            tp         = price + atr * self.cfg.tp_atr_mult
         else:
             order_type = mt5.ORDER_TYPE_SELL
             price      = tick.bid
-            sl         = price + atr * 1.5
-            tp         = price - atr * 3.0
+            sl         = price + atr * self.cfg.sl_atr_mult
+            tp         = price - atr * self.cfg.tp_atr_mult
 
         self._jitter()
         request = {
@@ -201,16 +228,14 @@ class HedgeEngine:
             return None
 
         self.log.info(
-            f"Hedge trade aperto → ticket={result.order} | "
+            f"Hedge aperto → ticket={result.order} | "
             f"{'BUY' if order_type==mt5.ORDER_TYPE_BUY else 'SELL'} | "
             f"price={result.price:.2f} | SL={sl:.2f} | TP={tp:.2f}"
         )
         self._entry_price = result.price
         return result.order
 
-    # ── Apertura Reverse Hedge ────────────────────────────────────────────────
     def _open_reverse(self, signal: Signal, atr: float) -> Optional[int]:
-        """Direzione OPPOSTA al trade hedge originale."""
         tick = mt5.symbol_info_tick(self.cfg.symbol)
         if tick is None:
             return None
@@ -218,17 +243,15 @@ class HedgeEngine:
         lot = round(self.cfg.hedge_lot * self.cfg.reverse_lot_multiplier, 2)
 
         if signal == Signal.BUY:
-            # Hedge era BUY → Reverse fa SELL
             order_type = mt5.ORDER_TYPE_SELL
             price      = tick.bid
-            sl         = price + atr * 2.0
-            tp         = price - atr * 2.0
+            sl         = price + atr * self.cfg.reverse_sl_atr_mult
+            tp         = price - atr * self.cfg.reverse_tp_atr_mult
         else:
-            # Hedge era SELL → Reverse fa BUY
             order_type = mt5.ORDER_TYPE_BUY
             price      = tick.ask
-            sl         = price - atr * 2.0
-            tp         = price + atr * 2.0
+            sl         = price - atr * self.cfg.reverse_sl_atr_mult
+            tp         = price + atr * self.cfg.reverse_tp_atr_mult
 
         self._jitter()
         request = {
@@ -254,13 +277,12 @@ class HedgeEngine:
             return None
 
         self.log.info(
-            f"Reverse Hedge aperto → ticket={result.order} | lot={lot} | "
+            f"Reverse aperto → ticket={result.order} | lot={lot} | "
             f"price={result.price:.2f} | SL={sl:.2f} | TP={tp:.2f}"
         )
         self._reverse_entry = result.price
         return result.order
 
-    # ── Chiusura posizione ────────────────────────────────────────────────────
     def _close_position(self, ticket: int) -> bool:
         self._jitter()
         positions = mt5.positions_get(ticket=ticket)
@@ -274,7 +296,7 @@ class HedgeEngine:
         close_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
         price      = tick.bid if close_type == mt5.ORDER_TYPE_SELL else tick.ask
 
-        request = {
+        result = mt5.order_send({
             "action":       mt5.TRADE_ACTION_DEAL,
             "symbol":       self.cfg.symbol,
             "volume":       pos.volume,
@@ -285,17 +307,15 @@ class HedgeEngine:
             "magic":        pos.magic,
             "type_time":    mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
-        }
-        result = mt5.order_send(request)
+        })
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
             self.log.info(f"Posizione chiusa → ticket={ticket}")
             return True
         self.log.error(f"Chiusura fallita ticket={ticket}: {mt5.last_error()}")
         return False
 
-    # ── Modifica SL (trailing) ────────────────────────────────────────────────
     def _modify_sl(self, ticket: int, new_sl: float) -> bool:
-        # Sanity check: non modificare mai con SL assurdo per gold
+        # FIX: sanity check SL + max 3 tentativi
         if new_sl < 100:
             self.log.warning(f"_modify_sl: SL anomalo {new_sl:.2f} — ignorato")
             return False
@@ -303,7 +323,7 @@ class HedgeEngine:
         if not positions:
             return False
         pos = positions[0]
-        for attempt in range(3):
+        for _ in range(3):
             result = mt5.order_send({
                 "action":   mt5.TRADE_ACTION_SLTP,
                 "position": ticket,
@@ -314,32 +334,26 @@ class HedgeEngine:
             if result and result.retcode == mt5.TRADE_RETCODE_DONE:
                 return True
             time.sleep(0.5)
-        self.log.warning(f"_modify_sl fallito dopo 3 tentativi per ticket={ticket}")
+        self.log.warning(f"_modify_sl fallito dopo 3 tentativi ticket={ticket}")
         return False
 
-    # ── Stima perdita attesa su hedge ─────────────────────────────────────────
     def _estimate_loss(self, atr: float) -> float:
         sym = mt5.symbol_info(self.cfg.symbol)
         if sym is None:
             return 140.0
-        sl_dist   = atr * 1.5
-        sl_ticks  = sl_dist / sym.trade_tick_size
+        sl_dist  = atr * self.cfg.sl_atr_mult
+        sl_ticks = sl_dist / sym.trade_tick_size
         return sl_ticks * sym.trade_tick_value * self.cfg.hedge_lot
 
-    # ── Gestione trade aperti ─────────────────────────────────────────────────
     def _manage_open_trades(self, current_price: float, atr: float, hedge_pnl: float):
-        """
-        Chiamato ogni ciclo quando l'hedge è aperto.
-        Gestisce: Reverse Hedge, Trailing Stop (Trend Riding), chiusura per break-even.
-        """
-        state_data = self.state.read()
+        state_data  = self.state.read()
         prop_closed = state_data.get("prop_closed", False)
 
-        # ── Trend Riding: Prop ha chiuso → attiva trailing stop ──────────────
         if prop_closed and not self._trend_riding:
-            self.log.info("Prop chiusa → attivo Trend Riding (trailing stop)")
+            self.log.info("Prop chiusa → Trend Riding attivo")
             self._trend_riding = True
 
+        # Trailing stop (con sanity check)
         if self._trend_riding and self._ticket > 0 and current_price > 100:
             positions = mt5.positions_get(ticket=self._ticket)
             if positions:
@@ -347,35 +361,29 @@ class HedgeEngine:
                 trail_dist = atr * self.cfg.trailing_atr_mult
                 if self._signal == Signal.BUY:
                     new_sl = current_price - trail_dist
-                    # Sanity check: SL deve essere un prezzo valido per gold
                     if new_sl > 100 and new_sl > pos.sl:
                         if self._modify_sl(self._ticket, new_sl):
-                            self.log.info(f"Trailing SL aggiornato → {new_sl:.2f}")
+                            self.log.info(f"Trailing SL → {new_sl:.2f}")
                 else:
                     new_sl = current_price + trail_dist
-                    # Sanity check: SL deve essere un prezzo valido per gold
                     if new_sl > 100 and (new_sl < pos.sl or pos.sl == 0):
                         if self._modify_sl(self._ticket, new_sl):
-                            self.log.info(f"Trailing SL aggiornato → {new_sl:.2f}")
+                            self.log.info(f"Trailing SL → {new_sl:.2f}")
 
-        # ── Reverse Hedge: attiva se perdita >= 50% attesa ───────────────────
-        if (
-            self._ticket > 0
-            and self._reverse_ticket == 0
-            and not self._trend_riding
-            and self._expected_loss > 0
-        ):
+        # Reverse Hedge
+        if (self._ticket > 0 and self._reverse_ticket == 0
+                and not self._trend_riding and self._expected_loss > 0):
             loss_pct = abs(hedge_pnl) / self._expected_loss if hedge_pnl < 0 else 0.0
             if loss_pct >= self.cfg.reverse_trigger_pct:
                 self.log.warning(
                     f"Reverse trigger! perdita={hedge_pnl:.2f} | "
                     f"attesa={self._expected_loss:.2f} | pct={loss_pct:.1%}"
                 )
-                rev_ticket = self._open_reverse(self._signal, atr)
-                if rev_ticket:
-                    self._reverse_ticket = rev_ticket
+                rev = self._open_reverse(self._signal, atr)
+                if rev:
+                    self._reverse_ticket = rev
 
-        # ── Reverse break-even: chiudi reverse se torna al prezzo di entrata ─
+        # Reverse break-even
         if self._reverse_ticket > 0:
             rev_pos = mt5.positions_get(ticket=self._reverse_ticket)
             if rev_pos:
@@ -385,12 +393,11 @@ class HedgeEngine:
                     self._close_position(self._reverse_ticket)
                     self._reverse_ticket = 0
             else:
-                # Chiuso autonomamente (SL/TP)
                 self._reverse_ticket = 0
 
-    # ── Loop principale ───────────────────────────────────────────────────────
     def run(self):
-        self.log.info("═══ HEDGE ENGINE — AVVIO ═══")
+        self.log.info("═══ HEDGE ENGINE v1.1 — AVVIO ═══")
+        self.log.info(f"Signal timeout: {self.cfg.signal_timeout_sec}s")
 
         if not self._connect():
             self.log.error("Connessione fallita. Esco.")
@@ -401,7 +408,6 @@ class HedgeEngine:
 
         while self._running:
             try:
-                # ── Dati account ──────────────────────────────────────────────
                 info = mt5.account_info()
                 if info is None:
                     self.log.warning("account_info None, riconnetto...")
@@ -411,7 +417,7 @@ class HedgeEngine:
                 equity  = info.equity
                 balance = info.balance
 
-                # ── Hard Stop ─────────────────────────────────────────────────
+                # Hard Stop
                 if equity < self.cfg.hedge_floor_equity and equity > 0:
                     self.log.critical(
                         f"HARD STOP! equity={equity:.2f} < floor={self.cfg.hedge_floor_equity:.2f}"
@@ -423,19 +429,12 @@ class HedgeEngine:
                     self._running = False
                     break
 
-                # ── Leggi stato dalla Prop ────────────────────────────────────
-                state_data  = self.state.read()
-                signal_str  = state_data.get("signal", "NONE")
-                signal_id   = int(state_data.get("signal_id", 0))
-                atr         = float(state_data.get("atr", 10.0))
-                tick        = mt5.symbol_info_tick(self.cfg.symbol)
-                # Usa (bid+ask)/2 — tick.last può essere 0 su alcuni broker
-                if tick and tick.bid > 100 and tick.ask > 100:
-                    current_price = (tick.bid + tick.ask) / 2.0
-                else:
-                    current_price = 0.0
+                state_data = self.state.read()
+                signal_str = state_data.get("signal", "NONE")
+                signal_id  = int(state_data.get("signal_id", 0))
+                atr        = float(state_data.get("atr", 10.0))
+                current_price = self._get_current_price()
 
-                # ── Helper scrittura campi hedge nel file condiviso ───────────
                 def _update_hedge_fields(hedge_pnl: float = 0.0):
                     self.state.update(
                         hedge_balance=balance,
@@ -453,7 +452,7 @@ class HedgeEngine:
                               ("Normal Mode" if self._ticket > 0 else "IDLE")),
                     )
 
-                # ── Gestione trade già aperto ─────────────────────────────────
+                # Gestione trade aperto
                 if self._ticket > 0:
                     pos = mt5.positions_get(ticket=self._ticket)
                     if pos:
@@ -461,13 +460,11 @@ class HedgeEngine:
                         self._manage_open_trades(current_price, atr, hedge_pnl)
                         _update_hedge_fields(hedge_pnl)
                         self.log.info(
-                            f"Hedge aperto → ticket={self._ticket} | "
-                            f"pnl={hedge_pnl:.2f} | equity={equity:.2f} | "
-                            f"reverse={'SÌ' if self._reverse_ticket>0 else 'NO'} | "
-                            f"trend_riding={'SÌ' if self._trend_riding else 'NO'}"
+                            f"Hedge → ticket={self._ticket} | pnl={hedge_pnl:.2f} | "
+                            f"equity={equity:.2f} | reverse={'SÌ' if self._reverse_ticket>0 else 'NO'} | "
+                            f"trend={'SÌ' if self._trend_riding else 'NO'}"
                         )
                     else:
-                        # Hedge chiuso (SL/TP)
                         self.log.info(f"Hedge chiuso → ticket={self._ticket}")
                         self._ticket        = 0
                         self._signal        = Signal.NONE
@@ -478,10 +475,9 @@ class HedgeEngine:
                     time.sleep(self.cfg.loop_interval_sec)
                     continue
 
-                # ── Nessun trade aperto — attendi nuovo segnale ───────────────
+                # Attendi nuovo segnale
                 _update_hedge_fields(0.0)
 
-                # Nuovo segnale dalla Prop?
                 is_new_signal = (
                     signal_str not in ("NONE", "")
                     and signal_id > self._last_signal_id
@@ -491,27 +487,27 @@ class HedgeEngine:
                     time.sleep(self.cfg.loop_interval_sec)
                     continue
 
-                # Verifica che il segnale non sia troppo vecchio
+                # FIX 3: timeout 120 secondi
                 ts_str = state_data.get("timestamp", "")
                 if ts_str:
                     try:
-                        ts = datetime.fromisoformat(ts_str)
+                        ts  = datetime.fromisoformat(ts_str)
                         age = (datetime.now(timezone.utc) - ts).total_seconds()
                         if age > self.cfg.signal_timeout_sec:
-                            self.log.warning(f"Segnale scaduto ({age:.0f}s) — ignoro")
+                            self.log.warning(f"Segnale scaduto ({age:.0f}s > {self.cfg.signal_timeout_sec:.0f}s) — ignoro")
                             self._last_signal_id = signal_id
                             time.sleep(self.cfg.loop_interval_sec)
                             continue
+                        else:
+                            self.log.info(f"Segnale fresco ({age:.0f}s) — procedo")
                     except Exception:
                         pass
 
-                # Apri trade Hedge (direzione allineata al segnale)
                 self._signal         = Signal(signal_str)
                 self._last_signal_id = signal_id
 
                 self.log.info(
-                    f"Nuovo segnale ricevuto: {self._signal} | "
-                    f"signal_id={signal_id} | atr={atr:.2f}"
+                    f"Segnale {self._signal} | signal_id={signal_id} | atr={atr:.2f}"
                 )
 
                 ticket = self._open_hedge(self._signal, atr)
@@ -543,10 +539,7 @@ class HedgeEngine:
         mt5.shutdown()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    cfg = HedgeConfig()
+    cfg = HedgeConfig.from_json()
     engine = HedgeEngine(cfg)
     engine.run()

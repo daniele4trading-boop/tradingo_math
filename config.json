@@ -1,0 +1,56 @@
+{
+  "_note": "Modifica questo file per cambiare i parametri. Riavvia i motori dopo ogni modifica.",
+
+  "symbol": "XAUUSD",
+
+  "filtri": {
+    "_note": "spread: 65 per produzione, 300 per test. zscore: 0.8 produzione, -1.0 test",
+    "max_spread_points": 65,
+    "atr_zscore_threshold": 0.8
+  },
+
+  "sizing": {
+    "prop_lot": 1.00,
+    "hedge_lot": 0.14,
+    "reverse_lot_multiplier": 2.1
+  },
+
+  "sl_tp": {
+    "_note": "Moltiplicatori ATR per SL e TP",
+    "sl_atr_mult": 1.5,
+    "tp_atr_mult": 3.0,
+    "reverse_sl_atr_mult": 2.0,
+    "reverse_tp_atr_mult": 2.0
+  },
+
+  "indicatori": {
+    "timeframe": "M5",
+    "atr_period": 14,
+    "vwap_period": 20,
+    "cvd_period": 10
+  },
+
+  "gestione_rischio": {
+    "reverse_trigger_pct": 0.50,
+    "trailing_atr_mult": 2.0,
+    "hedge_floor_equity": 9400.0
+  },
+
+  "ftmo": {
+    "_note": "Non superare mai i limiti reali (3% daily, 10% total)",
+    "daily_dd_safety": 0.027,
+    "total_dd_safety": 0.095,
+    "prop_initial_balance": 100000.0,
+    "prop_cost_eur": 680.0
+  },
+
+  "sistema": {
+    "_note": "cooldown_after_sl_min: minuti di pausa dopo ogni SL sulla Prop",
+    "prop_loop_interval_sec": 10.0,
+    "hedge_loop_interval_sec": 2.0,
+    "signal_timeout_sec": 120.0,
+    "cooldown_after_sl_min": 30.0,
+    "jitter_min_ms": 300,
+    "jitter_max_ms": 800
+  }
+}

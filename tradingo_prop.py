@@ -62,8 +62,8 @@ def load_config_json(path: str = "config.json") -> dict:
 @dataclass
 class PropConfig:
     terminal_path: str = r"C:\Program Files\FTMO Global Markets MT5 Terminal\terminal64.exe"
-    login:         int = 1513075253
-    password:      str = "$*CS4HIJUr2"
+    login:         int = 1513126769
+    password:      str = "!!ftn3*?T4@"
     server:        str = "FTMO-Demo"
     symbol:        str = "XAUUSD"
 

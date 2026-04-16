@@ -295,18 +295,27 @@ class HedgeEngine:
 
     # ── Modifica SL (trailing) ────────────────────────────────────────────────
     def _modify_sl(self, ticket: int, new_sl: float) -> bool:
+        # Sanity check: non modificare mai con SL assurdo per gold
+        if new_sl < 100:
+            self.log.warning(f"_modify_sl: SL anomalo {new_sl:.2f} — ignorato")
+            return False
         positions = mt5.positions_get(ticket=ticket)
         if not positions:
             return False
         pos = positions[0]
-        result = mt5.order_send({
-            "action":   mt5.TRADE_ACTION_SLTP,
-            "position": ticket,
-            "symbol":   self.cfg.symbol,
-            "sl":       new_sl,
-            "tp":       pos.tp,
-        })
-        return bool(result and result.retcode == mt5.TRADE_RETCODE_DONE)
+        for attempt in range(3):
+            result = mt5.order_send({
+                "action":   mt5.TRADE_ACTION_SLTP,
+                "position": ticket,
+                "symbol":   self.cfg.symbol,
+                "sl":       new_sl,
+                "tp":       pos.tp,
+            })
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                return True
+            time.sleep(0.5)
+        self.log.warning(f"_modify_sl fallito dopo 3 tentativi per ticket={ticket}")
+        return False
 
     # ── Stima perdita attesa su hedge ─────────────────────────────────────────
     def _estimate_loss(self, atr: float) -> float:
@@ -331,19 +340,21 @@ class HedgeEngine:
             self.log.info("Prop chiusa → attivo Trend Riding (trailing stop)")
             self._trend_riding = True
 
-        if self._trend_riding and self._ticket > 0:
+        if self._trend_riding and self._ticket > 0 and current_price > 100:
             positions = mt5.positions_get(ticket=self._ticket)
             if positions:
                 pos        = positions[0]
                 trail_dist = atr * self.cfg.trailing_atr_mult
                 if self._signal == Signal.BUY:
                     new_sl = current_price - trail_dist
-                    if new_sl > pos.sl:
+                    # Sanity check: SL deve essere un prezzo valido per gold
+                    if new_sl > 100 and new_sl > pos.sl:
                         if self._modify_sl(self._ticket, new_sl):
                             self.log.info(f"Trailing SL aggiornato → {new_sl:.2f}")
                 else:
                     new_sl = current_price + trail_dist
-                    if new_sl < pos.sl or pos.sl == 0:
+                    # Sanity check: SL deve essere un prezzo valido per gold
+                    if new_sl > 100 and (new_sl < pos.sl or pos.sl == 0):
                         if self._modify_sl(self._ticket, new_sl):
                             self.log.info(f"Trailing SL aggiornato → {new_sl:.2f}")
 
@@ -418,7 +429,11 @@ class HedgeEngine:
                 signal_id   = int(state_data.get("signal_id", 0))
                 atr         = float(state_data.get("atr", 10.0))
                 tick        = mt5.symbol_info_tick(self.cfg.symbol)
-                current_price = float(tick.last if tick else 0)
+                # Usa (bid+ask)/2 — tick.last può essere 0 su alcuni broker
+                if tick and tick.bid > 100 and tick.ask > 100:
+                    current_price = (tick.bid + tick.ask) / 2.0
+                else:
+                    current_price = 0.0
 
                 # ── Helper scrittura campi hedge nel file condiviso ───────────
                 def _update_hedge_fields(hedge_pnl: float = 0.0):

@@ -235,7 +235,7 @@ class MT5Connector:
                 login=self.login,
                 password=self.password,
                 server=self.server,
-                portable=True,
+                # portable=True,  # RIMOSSO: usare terminale già aperto
             )
             if not ok:
                 self.log.error(f"Initialize fallito: {mt5.last_error()}")

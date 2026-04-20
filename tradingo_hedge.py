@@ -98,10 +98,12 @@ class StateFile:
         if not self.path.exists(): return {}
         try: return json.loads(self.path.read_text(encoding="utf-8"))
         except: return {}
+    def write(self, data: dict):
+        data["timestamp"] = datetime.now(timezone.utc).isoformat()
+        self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     def update(self, **kw):
         d = self.read(); d.update(kw)
-        d["timestamp"] = datetime.now(timezone.utc).isoformat()
-        self.path.write_text(json.dumps(d, indent=2), encoding="utf-8")
+        self.write(d)
 
 
 # ─── Struttura dati per un singolo trade hedge ────────────────────────────────

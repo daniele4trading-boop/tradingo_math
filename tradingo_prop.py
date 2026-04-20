@@ -55,10 +55,10 @@ def load_config_json(path="config.json") -> dict:
 
 @dataclass
 class PropConfig:
-    terminal_path: str  = r"C:\Program Files\XM Global MT5\terminal64.exe"
-    login:         int  = 27642809
-    password:      str  = "Scimmia.03"
-    server:        str  = "XMGlobal-Demo"
+    terminal_path: str  = r"C:\Program Files\STARTRADER Financial MetaTrader 5\terminal64.exe"
+    login:         int  = 1610077148
+    password:      str  = "4h!R9TkJ"
+    server:        str  = "STARTRADERFinancial-Demo"
     symbol:        str  = "XAUUSD"
     max_spread_points:        int   = 65
     atr_zscore_threshold:     float = 0.8
@@ -255,11 +255,19 @@ class PropEngine:
         self._last_close_time: Optional[datetime] = None
 
     def _connect(self) -> bool:
-        ok = mt5.initialize(path=self.cfg.terminal_path,login=self.cfg.login,
-                            password=self.cfg.password,server=self.cfg.server)
+        ok = mt5.initialize(
+            path=self.cfg.terminal_path,
+            login=self.cfg.login,
+            password=self.cfg.password,
+            server=self.cfg.server,
+            timeout=30000
+        )
         if not ok: log.error(f"Init fallito: {mt5.last_error()}"); return False
         info = mt5.account_info()
         if info is None: log.error("account_info None"); return False
+        if info.login != self.cfg.login:
+            log.error(f"Conto errato: {info.login} invece di {self.cfg.login}")
+            mt5.shutdown(); return False
         log.info(f"Connesso → {info.login} balance={info.balance:.2f} server={info.server}")
         return True
 

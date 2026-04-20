@@ -1,8 +1,9 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════════╗
-║   TRADINGO — PROP ENGINE  v2.0  (FTMO 100k)  — Phase 1                      ║
+║   TRADINGO — PROP ENGINE  v2.1  (XM Demo / FTMO)  — Phase 1                 ║
 ║   - Apre trade OPPOSTO al segnale (Prop brucia by design)                    ║
-║   - FTMO hard stop immediato su DD                                           ║
+║   - DD giornaliero max 3%: chiude trade e riprende domani                    ║
+║   - Handshake atomico: prop apre SOLO dopo hedge_ready=True                  ║
 ║   - Cooldown dopo ogni chiusura trade                                        ║
 ║   - NESSUN Reverse Hedge (Phase 1)                                           ║
 ║   - Config da config.json                                                    ║
@@ -54,10 +55,10 @@ def load_config_json(path="config.json") -> dict:
 
 @dataclass
 class PropConfig:
-    terminal_path: str  = r"C:\Program Files\FTMO Global Markets MT5 Terminal\terminal64.exe"
-    login:         int  = 1513146690
-    password:      str  = "4!iy!1Z@3"
-    server:        str  = "FTMO-Demo"
+    terminal_path: str  = r"C:\Program Files\XM Global MT5\terminal64.exe"
+    login:         int  = 27642809
+    password:      str  = "Scimmia.03"
+    server:        str  = "XMGlobal-Demo"
     symbol:        str  = "XAUUSD"
     max_spread_points:        int   = 65
     atr_zscore_threshold:     float = 0.8
@@ -74,10 +75,12 @@ class PropConfig:
     cooldown_after_trade_min: float = 30.0
     state_file:               str   = "tradingo_state.json"
     magic:                    int   = 20260001
-    prop_cost_eur:            float = 680.0
+    prop_cost_eur:            float = 0.0
     prop_initial_balance:     float = 100_000.0
-    daily_dd_safety:          float = 0.027
+    daily_dd_pct:             float = 0.03
+    daily_dd_alert:           float = 0.027
     total_dd_safety:          float = 0.095
+    handshake_timeout_sec:    float = 10.0
 
     @classmethod
     def from_json(cls) -> "PropConfig":
@@ -101,9 +104,11 @@ class PropConfig:
         o.jitter_min_ms            = int(si.get("jitter_min_ms", o.jitter_min_ms))
         o.jitter_max_ms            = int(si.get("jitter_max_ms", o.jitter_max_ms))
         o.prop_initial_balance     = float(ft.get("prop_initial_balance", o.prop_initial_balance))
-        o.daily_dd_safety          = float(ft.get("daily_dd_safety", o.daily_dd_safety))
+        o.daily_dd_pct             = float(ft.get("daily_dd_pct", o.daily_dd_pct))
+        o.daily_dd_alert           = float(ft.get("daily_dd_alert", o.daily_dd_alert))
         o.total_dd_safety          = float(ft.get("total_dd_safety", o.total_dd_safety))
         o.prop_cost_eur            = float(ft.get("prop_cost_eur", o.prop_cost_eur))
+        o.handshake_timeout_sec    = float(si.get("handshake_timeout_sec", o.handshake_timeout_sec))
         log.info(f"Config → spread={o.max_spread_points} zscore={o.atr_zscore_threshold} lot={o.prop_lot} SL={o.sl_atr_mult} TP={o.tp_atr_mult} cooldown={o.cooldown_after_trade_min}min")
         return o
 
@@ -176,40 +181,65 @@ class MarketAnalyzer:
         return Signal.NONE,z,vwap,cvd,trend
 
 
-class FTMORisk:
+class DailyDDGuard:
+    """
+    Gestisce il DD giornaliero della prop.
+    Logica brucia controllata:
+      - Ogni giorno nuovo: salva balance midnight, resetta blocco
+      - Se DD >= daily_dd_alert (2.7%): chiude trade e blocca per oggi
+      - Se DD >= daily_dd_pct  (3.0%): hard stop (safety net)
+      - Domani: riprende automaticamente
+    """
     def __init__(self, cfg: PropConfig):
-        self.cfg = cfg
-        self._midnight = cfg.prop_initial_balance
-        self._peak     = cfg.prop_initial_balance
-        self._date     = ""
-        self._halted   = False
-        self._reason   = ""
+        self.cfg            = cfg
+        self._midnight      = cfg.prop_initial_balance
+        self._peak          = cfg.prop_initial_balance
+        self._date          = ""
+        self._day_halted    = False   # bloccato per oggi (DD raggiunto)
+        self._halt_reason   = ""
 
     def daily_update(self, balance: float):
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if today != self._date:
-            self._halted   = False
-            self._reason   = ""
-            self._midnight = balance
-            self._peak     = max(self._peak, balance)
-            self._date     = today
-            log.info(f"FTMO reset → midnight={balance:.2f} peak={self._peak:.2f}")
+            self._day_halted  = False
+            self._halt_reason = ""
+            self._midnight    = balance
+            self._peak        = max(self._peak, balance)
+            self._date        = today
+            log.info(f"Nuovo giorno → midnight={balance:.2f} peak={self._peak:.2f} — DD reset")
 
-    def can_trade(self, equity: float) -> Tuple[bool,str]:
-        if self._halted: return False, self._reason
-        dl = self._midnight*(1.0-self.cfg.daily_dd_safety)
-        if equity < dl:
-            r = f"DAILY_DD eq={equity:.0f}<{dl:.0f} ({(self._midnight-equity)/self._midnight:.2%})"
-            self._halted=True; self._reason=r
-            log.critical(f"⛔ {r}"); return False, r
-        tl = self._peak*(1.0-self.cfg.total_dd_safety)
+    def dd_pct(self, equity: float) -> float:
+        if self._midnight <= 0: return 0.0
+        return (self._midnight - equity) / self._midnight
+
+    def should_close_now(self, equity: float) -> Tuple[bool, str]:
+        """Ritorna (True, motivo) se il trade aperto va chiuso subito."""
+        if self._day_halted:
+            return True, self._halt_reason
+        dd = self.dd_pct(equity)
+        if dd >= self.cfg.daily_dd_pct:
+            r = f"DAILY_DD_HARD eq={equity:.0f} dd={dd:.2%} >= {self.cfg.daily_dd_pct:.2%}"
+            self._day_halted = True; self._halt_reason = r
+            log.critical(f"⛔ {r}"); return True, r
+        if dd >= self.cfg.daily_dd_alert:
+            r = f"DAILY_DD_ALERT eq={equity:.0f} dd={dd:.2%} >= {self.cfg.daily_dd_alert:.2%}"
+            self._day_halted = True; self._halt_reason = r
+            log.warning(f"⚠ {r} — chiudo trade e blocco oggi"); return True, r
+        if dd >= self.cfg.daily_dd_alert * 0.85:
+            log.warning(f"⚠ DD vicino alla soglia: {dd:.2%}/{self.cfg.daily_dd_alert:.2%}")
+        return False, "OK"
+
+    def can_open(self, equity: float) -> Tuple[bool, str]:
+        """Ritorna (True, 'OK') se si può aprire un nuovo trade."""
+        if self._day_halted:
+            return False, self._halt_reason
+        dd = self.dd_pct(equity)
+        if dd >= self.cfg.daily_dd_alert:
+            return False, f"DD giornaliero raggiunto ({dd:.2%}) — attendo domani"
+        tl = self._peak * (1.0 - self.cfg.total_dd_safety)
         if equity < tl:
-            r = f"TOTAL_DD eq={equity:.0f}<{tl:.0f} ({(self._peak-equity)/self._peak:.2%})"
-            self._halted=True; self._reason=r
+            r = f"TOTAL_DD eq={equity:.0f}<{tl:.0f}"
             log.critical(f"⛔ {r}"); return False, r
-        used = (self._midnight-equity)/self._midnight
-        if used > self.cfg.daily_dd_safety*0.8:
-            log.warning(f"⚠ DD {used:.2%}/{self.cfg.daily_dd_safety:.2%}")
         return True, "OK"
 
 
@@ -217,7 +247,7 @@ class PropEngine:
     def __init__(self, cfg: PropConfig):
         self.cfg      = cfg
         self.analyzer = MarketAnalyzer(cfg)
-        self.ftmo     = FTMORisk(cfg)
+        self.dd       = DailyDDGuard(cfg)
         self.state    = StateFile(cfg.state_file)
         self._ticket         = 0
         self._signal_id      = 0
@@ -280,11 +310,10 @@ class PropEngine:
     def _is_open(self, ticket: int) -> bool:
         return bool(mt5.positions_get(ticket=ticket)) if ticket > 0 else False
 
-    def _write_state(self, bal, eq, sp, sp_ok, z, vwap, cvd, cvd_t, sig, atr, ftmo_ok, ftmo_r, mode):
-        m = self.ftmo._midnight; pk = self.ftmo._peak
-        dl = m*(1-self.cfg.daily_dd_safety); tl = pk*(1-self.cfg.total_dd_safety)
-        dp = max(0.0,(m-eq)/m) if m>0 else 0.0
-        tp_ = max(0.0,(pk-eq)/pk) if pk>0 else 0.0
+    def _write_state(self, bal, eq, sp, sp_ok, z, vwap, cvd, cvd_t, sig, atr, can_open, block_reason, mode):
+        m  = self.dd._midnight
+        pk = self.dd._peak
+        dd_pct = self.dd.dd_pct(eq)
         pnl = 0.0
         if self._ticket > 0:
             pos = mt5.positions_get(ticket=self._ticket)
@@ -293,6 +322,7 @@ class PropEngine:
         self.state.write({
             "signal":sig,"signal_id":self._signal_id,"atr":atr,
             "prop_ticket":self._ticket,"prop_closed":cur.get("prop_closed",False),
+            "hedge_ready":cur.get("hedge_ready",False),
             "last_signal":sig,"prop_balance":bal,"prop_equity":eq,
             "prop_pnl_float":pnl,"prop_connected":True,
             "hedge_balance":cur.get("hedge_balance",0.0),
@@ -309,29 +339,27 @@ class PropEngine:
             "spread_points":sp,"spread_ok":sp_ok,"atr_zscore":z,
             "vwap":vwap,"cvd":cvd,"cvd_trend":cvd_t,
             "mode":mode,"session_active":True,"session_name":"DEMO MODE","last_error":"",
-            "ftmo_daily_dd_pct":dp,"ftmo_total_dd_pct":tp_,
-            "ftmo_daily_dd_limit":dl,"ftmo_total_dd_limit":tl,
-            "ftmo_profit_oggi":bal-m,
-            "ftmo_consistency_limit":max(0.0,m-self.cfg.prop_initial_balance),
-            "ftmo_consistency_ok":True,"ftmo_can_trade":ftmo_ok,
-            "ftmo_block_reason":ftmo_r,"ftmo_final_phase":False,
+            "daily_dd_pct":dd_pct,"daily_dd_midnight":m,
+            "daily_dd_limit":self.cfg.daily_dd_alert,
+            "daily_dd_halted":self.dd._day_halted,
+            "prop_can_open":can_open,"prop_block_reason":block_reason,
         })
 
     def run(self):
-        log.info("═══ PROP ENGINE v2.0 Phase 1 — AVVIO ═══")
-        log.info(f"Login:{self.cfg.login} | Cooldown:{self.cfg.cooldown_after_trade_min}min | DD:{self.cfg.daily_dd_safety:.1%} | Spread:{self.cfg.max_spread_points}pts")
+        log.info("═══ PROP ENGINE v2.1 Phase 1 — AVVIO ═══")
+        log.info(f"Login:{self.cfg.login} | Cooldown:{self.cfg.cooldown_after_trade_min}min | DD_alert:{self.cfg.daily_dd_alert:.1%} | Spread:{self.cfg.max_spread_points}pts")
         if not self._connect(): log.error("Connessione fallita."); return
         self._running = True
         sp,sp_ok = 0,True
         z,vwap,cvd,cvd_t = 0.0,0.0,0.0,"NEUTRAL"
-        atr = 0.0; ftmo_ok,ftmo_r = True,"OK"
+        atr = 0.0
 
         while self._running:
             try:
                 info = mt5.account_info()
                 if info is None: self._reconnect(); continue
                 bal = info.balance; eq = info.equity
-                self.ftmo.daily_update(bal)
+                self.dd.daily_update(bal)
 
                 df = self.analyzer.get_rates(200)
                 if df is None: time.sleep(self.cfg.loop_interval_sec); continue
@@ -345,62 +373,104 @@ class PropEngine:
 
                 log.info(f"Ciclo → sp={sp}{'✓' if sp_ok else '✗'} Z={z:.2f} VWAP={vwap:.2f} CVD={cvd:.0f}[{cvd_t}] bal={bal:.2f} eq={eq:.2f}")
 
-                # FTMO
-                ftmo_ok,ftmo_r = self.ftmo.can_trade(eq)
-                if not ftmo_ok:
-                    log.warning(f"FTMO: {ftmo_r}")
-                    if self._ticket>0 and self._is_open(self._ticket):
-                        log.critical("Chiusura forzata FTMO DD!")
-                        self._force_close(self._ticket)
-                        self._ticket=0; self._last_close_time=datetime.now(timezone.utc)
-                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,ftmo_ok,ftmo_r,"HALTED")
-                    time.sleep(self.cfg.loop_interval_sec); continue
-
-                # Trade aperto
+                # ── Trade aperto ──────────────────────────────────────────────
                 if self._ticket > 0:
                     if self._is_open(self._ticket):
-                        self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,
-                                          self.state.read().get("signal","NONE"),atr,ftmo_ok,ftmo_r,"Normal Mode")
+                        # Check DD: se supera soglia chiude subito
+                        must_close, reason = self.dd.should_close_now(eq)
+                        if must_close:
+                            log.warning(f"DD raggiunto ({reason}) — chiudo trade prop")
+                            self._force_close(self._ticket)
+                            self._ticket = 0
+                            self._last_close_time = datetime.now(timezone.utc)
+                            cur = self.state.read()
+                            cur["prop_closed"] = True; cur["hedge_ready"] = False
+                            cur["mode"] = "DD_HALT"
+                            self.state.write(cur)
+                            self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,False,reason,"DD_HALT")
+                        else:
+                            self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,
+                                              self.state.read().get("signal","NONE"),atr,True,"OK","Normal Mode")
                     else:
+                        # Chiuso naturalmente (SL/TP)
                         log.info(f"Prop chiusa ticket={self._ticket}")
-                        self._ticket=0; self._last_close_time=datetime.now(timezone.utc)
+                        self._ticket = 0; self._last_close_time = datetime.now(timezone.utc)
                         log.info(f"⏳ Cooldown {self.cfg.cooldown_after_trade_min:.0f}min")
-                        cur=self.state.read(); cur["prop_closed"]=True; cur["mode"]="Trend Riding"; self.state.write(cur)
-                        self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,ftmo_ok,ftmo_r,"Trend Riding")
+                        cur = self.state.read()
+                        cur["prop_closed"] = True; cur["hedge_ready"] = False
+                        cur["mode"] = "Trend Riding"
+                        self.state.write(cur)
+                        self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,True,"OK","Trend Riding")
                     time.sleep(self.cfg.loop_interval_sec); continue
 
-                # Cooldown
+                # ── Cooldown ──────────────────────────────────────────────────
                 in_cd,rem = self._in_cooldown()
                 if in_cd:
                     log.info(f"⏳ Cooldown {rem:.1f}min rimanenti")
-                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,ftmo_ok,ftmo_r,"COOLDOWN")
+                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,False,"COOLDOWN","COOLDOWN")
                     time.sleep(self.cfg.loop_interval_sec); continue
 
-                # Spread
+                # ── Can open? (DD giornaliero) ────────────────────────────────
+                can_open, block_reason = self.dd.can_open(eq)
+                if not can_open:
+                    log.info(f"⛔ Apertura bloccata: {block_reason}")
+                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,False,block_reason,"DD_HALT")
+                    time.sleep(self.cfg.loop_interval_sec); continue
+
+                # ── Spread ────────────────────────────────────────────────────
                 if not sp_ok:
-                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,ftmo_ok,ftmo_r,"IDLE")
+                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,True,"OK","IDLE")
                     time.sleep(self.cfg.loop_interval_sec); continue
 
-                # Segnale
+                # ── Segnale ───────────────────────────────────────────────────
                 signal,z,vwap,cvd,cvd_t = self.analyzer.generate_signal(df)
                 if signal == Signal.NONE:
-                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,ftmo_ok,ftmo_r,"IDLE")
+                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,"NONE",atr,True,"OK","IDLE")
                     time.sleep(self.cfg.loop_interval_sec); continue
 
                 log.info(f"✦ Segnale {signal} Z={z:.2f} VWAP={vwap:.2f} CVD={cvd:.0f}")
                 self._signal_id += 1
-                self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,signal.value,atr,ftmo_ok,ftmo_r,"Normal Mode")
-                cur=self.state.read(); cur["signal_id"]=self._signal_id; cur["prop_closed"]=False; self.state.write(cur)
-                time.sleep(0.5)
 
+                # ── Handshake: scrivi segnale e aspetta hedge_ready ───────────
+                cur = self.state.read()
+                cur["signal"]      = signal.value
+                cur["signal_id"]   = self._signal_id
+                cur["prop_closed"] = False
+                cur["hedge_ready"] = False
+                self.state.write(cur)
+                log.info(f"Handshake → segnale={signal.value} id={self._signal_id} — attendo hedge_ready (max {self.cfg.handshake_timeout_sec:.0f}s)")
+
+                deadline = time.time() + self.cfg.handshake_timeout_sec
+                hedge_confirmed = False
+                while time.time() < deadline:
+                    time.sleep(0.5)
+                    st = self.state.read()
+                    if st.get("hedge_ready", False):
+                        hedge_confirmed = True
+                        log.info("✅ Hedge confermato — apro trade prop")
+                        break
+
+                if not hedge_confirmed:
+                    log.error(f"❌ Hedge non risponde entro {self.cfg.handshake_timeout_sec:.0f}s — annullo segnale")
+                    cur = self.state.read()
+                    cur["signal"] = "NONE"; cur["hedge_ready"] = False
+                    self.state.write(cur)
+                    time.sleep(self.cfg.loop_interval_sec); continue
+
+                # ── Apri trade prop ───────────────────────────────────────────
                 ticket = self._open_trade(signal, atr)
                 if ticket:
-                    self._ticket=ticket
-                    cur=self.state.read(); cur["prop_ticket"]=ticket; self.state.write(cur)
+                    self._ticket = ticket
+                    cur = self.state.read()
+                    cur["prop_ticket"] = ticket; cur["prop_closed"] = False
+                    self.state.write(cur)
                     log.info(f"Prop in posizione ticket={ticket}")
+                    self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,signal.value,atr,True,"OK","Normal Mode")
                 else:
-                    log.error("Apertura fallita — annullo segnale")
-                    cur=self.state.read(); cur["signal"]="NONE"; self.state.write(cur)
+                    log.error("Apertura prop fallita — chiudo anche hedge")
+                    cur = self.state.read()
+                    cur["signal"] = "NONE"; cur["prop_abort"] = True
+                    self.state.write(cur)
 
                 time.sleep(self.cfg.loop_interval_sec)
 

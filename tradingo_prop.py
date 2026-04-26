@@ -295,6 +295,27 @@ class PropEngine:
                         "deviation":20,"magic":p.magic,
                         "type_time":mt5.ORDER_TIME_GTC,"type_filling":mt5.ORDER_FILLING_IOC})
 
+    def _modify_sl(self, ticket: int, new_sl: float) -> bool:
+        if new_sl < 100:
+            log.warning(f"SL anomalo {new_sl:.2f} — ignorato"); return False
+        pos = mt5.positions_get(ticket=ticket)
+        if not pos: return False
+        p = pos[0]
+        for _ in range(3):
+            r = mt5.order_send({
+                "action":   mt5.TRADE_ACTION_SLTP,
+                "position": ticket,
+                "symbol":   self.cfg.symbol,
+                "sl":       new_sl,
+                "tp":       p.tp,
+            })
+            if r and r.retcode == mt5.TRADE_RETCODE_DONE:
+                log.info(f"Prop SL modificato → {new_sl:.2f} ticket={ticket}")
+                return True
+            time.sleep(0.5)
+        log.warning(f"modify_sl fallito dopo 3 tentativi ticket={ticket}")
+        return False
+
     def _open_trade(self, signal: Signal, atr: float) -> Optional[int]:
         tick = mt5.symbol_info_tick(self.cfg.symbol)
         if tick is None: return None
@@ -384,7 +405,46 @@ class PropEngine:
                 # ── Trade aperto ──────────────────────────────────────────────
                 if self._ticket > 0:
                     if self._is_open(self._ticket):
-                        # Check DD: se supera soglia chiude subito
+                        # ── Fase 2: prop legge flag dall'hedge ───────────
+                        cur_st = self.state.read()
+                        if cur_st.get("fase2_attiva", False) and not cur_st.get("fase2_prop_sl_locked", False):
+                            caso = cur_st.get("fase2_caso", "")
+                            tick_now = mt5.symbol_info_tick(self.cfg.symbol)
+                            price_now = tick_now.bid if tick_now else 0.0
+                            spread_pts = self.analyzer.get_spread_points()
+                            # 30 punti buffer + spread corrente
+                            buffer = 30 + spread_pts * 0.01
+                            if caso == "B":
+                                # Caso B: prop è in PROFITTO → trailing 1.0×ATR
+                                atr_now = float(self.analyzer.compute_atr(df).iloc[-1])
+                                pos_now = mt5.positions_get(ticket=self._ticket)
+                                if pos_now:
+                                    p_now = pos_now[0]
+                                    if signal == Signal.BUY:  # prop è SELL (inverso)
+                                        nsl = price_now + atr_now * 1.0
+                                        if nsl < p_now.sl or p_now.sl == 0:
+                                            self._modify_sl(self._ticket, nsl)
+                                    else:
+                                        nsl = price_now - atr_now * 1.0
+                                        if nsl > p_now.sl:
+                                            self._modify_sl(self._ticket, nsl)
+                                log.info(f"[FASE2-B] Prop in PROFIT → trailing 1.0×ATR SL={nsl:.2f}")
+                            elif caso == "A":
+                                # Caso A: prop è in PERDITA → congela SL al prezzo + 30 punti
+                                pos_now = mt5.positions_get(ticket=self._ticket)
+                                if pos_now:
+                                    p_now = pos_now[0]
+                                    if p_now.type == mt5.ORDER_TYPE_SELL:
+                                        nsl = price_now + buffer
+                                    else:
+                                        nsl = price_now - buffer
+                                    self._modify_sl(self._ticket, nsl)
+                                    log.info(f"[FASE2-A] Prop in LOSS → SL congelato a {nsl:.2f}")
+                            # Marca SL come locked per non ripetere
+                            cur_st["fase2_prop_sl_locked"] = True
+                            self.state.write(cur_st)
+
+                        # ── Check DD: se supera soglia chiude subito ──────
                         must_close, reason = self.dd.should_close_now(eq)
                         if must_close:
                             log.warning(f"DD raggiunto ({reason}) — chiudo trade prop")
@@ -470,9 +530,18 @@ class PropEngine:
                 if ticket:
                     self._ticket = ticket
                     cur = self.state.read()
-                    cur["prop_ticket"] = ticket; cur["prop_closed"] = False
+                    cur["prop_ticket"]      = ticket
+                    cur["prop_closed"]      = False
+                    # Scrivi entry/SL/TP per Fase 2
+                    pos_info = mt5.positions_get(ticket=ticket)
+                    if pos_info:
+                        cur["prop_entry_price"] = pos_info[0].price_open
+                        cur["prop_sl_price"]    = pos_info[0].sl
+                        cur["prop_tp_price"]    = pos_info[0].tp
                     self.state.write(cur)
-                    log.info(f"Prop in posizione ticket={ticket}")
+                    log.info(f"Prop in posizione ticket={ticket} "
+                             f"entry={cur.get('prop_entry_price',0):.2f} "
+                             f"sl={cur.get('prop_sl_price',0):.2f}")
                     self._write_state(bal,eq,sp,sp_ok,z,vwap,cvd,cvd_t,signal.value,atr,True,"OK","Normal Mode")
                 else:
                     log.error("Apertura prop fallita — chiudo anche hedge")

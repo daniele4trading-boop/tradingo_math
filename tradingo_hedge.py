@@ -124,6 +124,11 @@ class HedgeEngine:
         self._trades: Dict[int, HedgeTrade] = {}   # ticket → HedgeTrade
         self._last_signal_id = 0
         self._running        = False
+        # Fase 2
+        self._fase2_attiva    = False
+        self._fase2_caso      = ""     # "A"=hedge vince, "B"=prop vince
+        self._fase2_peak_pnl  = 0.0   # picco PNL del vincente
+        self._fase2_floor_pnl = 0.0   # floor = picco - trailing
 
     # ── Connessione ───────────────────────────────────────────────────────────
 
@@ -230,6 +235,87 @@ class HedgeEngine:
         sym = mt5.symbol_info(self.cfg.symbol)
         if sym is None: return 140.0
         return (atr * self.cfg.sl_atr_mult / sym.trade_tick_size) * sym.trade_tick_value * self.cfg.hedge_lot
+
+    # ── Fase 2: costanti ──────────────────────────────────────────────────────
+    FASE2_ATR_TRIGGER    = 0.8   # trigger: prezzo si muove 0.8×ATR a favore del vincente
+    FASE2_RSI_MIN        = 40.0  # RSI allineato >= 40
+    FASE2_MOM10_MIN      = 2.0   # momentum 10 barre >= 2.0 punti
+    FASE2_TRAIL_HEDGE    = 1.5   # trailing hedge vincente: 1.5×ATR
+    FASE2_TRAIL_PROP     = 1.0   # trailing prop vincente:  1.0×ATR
+    FASE2_BUFFER_LOSS    = 30    # punti buffer per congelare il perdente
+
+    def _calc_rsi_mom(self, rates) -> tuple:
+        """Calcola RSI14 e Momentum10 dai rates M5. Ritorna (rsi, mom10)."""
+        if rates is None or len(rates) < 15:
+            return 50.0, 0.0
+        closes = [r[4] for r in rates]  # close = indice 4
+        import numpy as np
+        c = np.array(closes)
+        delta = np.diff(c)
+        gain  = np.where(delta > 0, delta, 0.0)
+        loss  = np.where(delta < 0, -delta, 0.0)
+        period = 14
+        if len(gain) < period:
+            return 50.0, 0.0
+        avg_g = gain[-period:].mean()
+        avg_l = loss[-period:].mean()
+        rsi   = 100.0 if avg_l == 0 else 100 - (100 / (1 + avg_g / avg_l))
+        mom10 = float(c[-1] - c[-11]) if len(c) >= 11 else 0.0
+        return float(rsi), mom10
+
+    def _check_fase2_trigger(self, state: dict, price: float, atr: float, rates) -> tuple:
+        """
+        Controlla se la Fase 2 va attivata.
+        Ritorna (attiva: bool, caso: str, reason: str)
+        caso='A': hedge vince, prop perde
+        caso='B': prop vince, hedge perde
+        """
+        if state.get("fase2_attiva", False):
+            return False, "", "già_attiva"
+
+        prop_entry = float(state.get("prop_entry_price", 0))
+        prop_sl    = float(state.get("prop_sl_price", 0))
+        prop_sig   = state.get("signal", "NONE")
+        if prop_entry == 0 or prop_sl == 0 or prop_sig == "NONE":
+            return False, "", "dati_prop_mancanti"
+
+        # Movimento a favore di uno dei due trade >= 0.8×ATR
+        # Se prop=BUY (hedge=SELL): prezzo scende → hedge guadagna (caso A)
+        # Se prop=SELL (hedge=BUY): prezzo sale → hedge guadagna (caso A)
+        if prop_sig == "BUY":
+            move_hedge = prop_entry - price   # positivo se prezzo scende (hedge SELL guadagna)
+            move_prop  = price - prop_entry   # positivo se prezzo sale (prop BUY guadagna)
+        else:
+            move_hedge = price - prop_entry   # positivo se prezzo sale (hedge BUY guadagna)
+            move_prop  = prop_entry - price   # positivo se prezzo scende (prop SELL guadagna)
+
+        caso = ""
+        if move_hedge >= atr * self.FASE2_ATR_TRIGGER:
+            caso = "A"   # hedge vince
+        elif move_prop >= atr * self.FASE2_ATR_TRIGGER:
+            caso = "B"   # prop vince
+        else:
+            return False, "", f"movimento insufficiente hedge={move_hedge:.2f} prop={move_prop:.2f} soglia={atr*self.FASE2_ATR_TRIGGER:.2f}"
+
+        # Filtri RSI e momentum
+        rsi, mom10 = self._calc_rsi_mom(rates)
+        if caso == "A":
+            # hedge vince → allinea RSI alla dir hedge
+            rsi_aln  = (100 - rsi) if prop_sig == "BUY" else rsi
+            mom_aln  = -mom10 if prop_sig == "BUY" else mom10
+        else:
+            # prop vince → allinea RSI alla dir prop
+            rsi_aln  = rsi if prop_sig == "BUY" else (100 - rsi)
+            mom_aln  = mom10 if prop_sig == "BUY" else -mom10
+
+        if rsi_aln < self.FASE2_RSI_MIN:
+            return False, "", f"rsi_aln={rsi_aln:.1f}<{self.FASE2_RSI_MIN}"
+        if mom_aln < self.FASE2_MOM10_MIN:
+            return False, "", f"mom10_aln={mom_aln:.2f}<{self.FASE2_MOM10_MIN}"
+
+        reason = (f"FASE2-{caso} OK: move={move_hedge if caso=='A' else move_prop:.2f} "
+                  f"rsi_aln={rsi_aln:.1f} mom10_aln={mom_aln:.2f}")
+        return True, caso, reason
 
     # ── State file ────────────────────────────────────────────────────────────
 
@@ -410,6 +496,114 @@ class HedgeEngine:
                     alive = self._manage_trade(self._trades[ticket], state, price, atr)
                     if not alive:
                         del self._trades[ticket]
+
+                # ── FASE 2: check trigger e gestione ─────────────────────────
+                if self._trades and not self._fase2_attiva:
+                    rates = mt5.copy_rates_from_pos(self.cfg.symbol, mt5.TIMEFRAME_M5, 0, 30)
+                    attiva, caso, reason = self._check_fase2_trigger(state, price, atr, rates)
+                    if attiva:
+                        self._fase2_attiva = True
+                        self._fase2_caso   = caso
+                        log.info(f"[FASE2] {reason}")
+
+                        tick_info = mt5.symbol_info_tick(self.cfg.symbol)
+                        spread_pts = int((tick_info.ask - tick_info.bid) / 0.01) if tick_info else 30
+                        buffer_loss = self.FASE2_BUFFER_LOSS + spread_pts * 0.01
+
+                        if caso == "A":
+                            # Hedge vince → trailing 1.5×ATR; prop perde → congela
+                            for ticket, ht in self._trades.items():
+                                if not ht.trend_riding:
+                                    pos = mt5.positions_get(ticket=ticket)
+                                    if pos:
+                                        pnl = float(pos[0].profit)
+                                        self._fase2_peak_pnl  = pnl
+                                        trail_dist = atr * self.FASE2_TRAIL_HEDGE
+                                        self._fase2_floor_pnl = pnl - trail_dist * self.cfg.hedge_lot * 10
+                                        log.info(f"[FASE2-A] Hedge VINCE pnl={pnl:.2f}$ "
+                                                 f"floor={self._fase2_floor_pnl:.2f}$")
+                            # Scrivi sul JSON per la prop (congela SL)
+                            cur = self.state.read()
+                            cur["fase2_attiva"]        = True
+                            cur["fase2_caso"]          = "A"
+                            cur["fase2_prop_sl_locked"] = False
+                            self.state.write(cur)
+
+                        else:  # caso B: prop vince, hedge perde
+                            for ticket, ht in self._trades.items():
+                                if not ht.trend_riding:
+                                    pos = mt5.positions_get(ticket=ticket)
+                                    if pos:
+                                        p = pos[0]
+                                        # Congela SL hedge al prezzo + buffer
+                                        if ht.signal.value == "BUY":
+                                            nsl = price - buffer_loss
+                                        else:
+                                            nsl = price + buffer_loss
+                                        self._modify_sl(ticket, nsl)
+                                        log.info(f"[FASE2-B] Hedge PERDE → SL congelato a {nsl:.2f}")
+                            cur = self.state.read()
+                            cur["fase2_attiva"]        = True
+                            cur["fase2_caso"]          = "B"
+                            cur["fase2_prop_sl_locked"] = False
+                            self.state.write(cur)
+
+                    else:
+                        if self._trades:
+                            log.info(f"[FASE2] no trigger: {reason}")
+
+                elif self._fase2_attiva and self._trades:
+                    # ── Fase 2 attiva: gestione vincente ─────────────────────
+                    rates = mt5.copy_rates_from_pos(self.cfg.symbol, mt5.TIMEFRAME_M5, 0, 30)
+                    tick_info = mt5.symbol_info_tick(self.cfg.symbol)
+                    spread_pts = int((tick_info.ask - tick_info.bid) / 0.01) if tick_info else 30
+                    buffer_loss = self.FASE2_BUFFER_LOSS + spread_pts * 0.01
+
+                    if self._fase2_caso == "A":
+                        # Hedge vince: aggiorna trailing 1.5×ATR
+                        for ticket, ht in self._trades.items():
+                            if not ht.trend_riding:
+                                pos = mt5.positions_get(ticket=ticket)
+                                if pos:
+                                    pnl = float(pos[0].profit)
+                                    if pnl > self._fase2_peak_pnl:
+                                        self._fase2_peak_pnl  = pnl
+                                        trail_dist = atr * self.FASE2_TRAIL_HEDGE
+                                        self._fase2_floor_pnl = pnl - trail_dist * self.cfg.hedge_lot * 10
+                                        log.info(f"[FASE2-A] Nuovo picco hedge={pnl:.2f}$ "
+                                                 f"floor={self._fase2_floor_pnl:.2f}$")
+                                    elif pnl < self._fase2_floor_pnl:
+                                        log.warning(f"[FASE2-A] PNL {pnl:.2f}$ < floor "
+                                                    f"{self._fase2_floor_pnl:.2f}$ → CHIUDO HEDGE")
+                                        self._close_position(ticket)
+                                        self._fase2_attiva = False
+                                        cur = self.state.read()
+                                        cur["fase2_attiva"] = False
+                                        self.state.write(cur)
+
+                    else:  # caso B: prop vince, hedge perde (congelato)
+                        # Hedge già congelato — non fare nulla, la prop gestisce il trailing
+                        # Controlla solo che il trade hedge esista ancora
+                        for ticket in list(self._trades.keys()):
+                            pos = mt5.positions_get(ticket=ticket)
+                            if not pos:
+                                self._fase2_attiva = False
+                                cur = self.state.read()
+                                cur["fase2_attiva"] = False
+                                self.state.write(cur)
+
+                elif not self._trades and self._fase2_attiva:
+                    # Tutti i trade chiusi → reset Fase 2
+                    self._fase2_attiva    = False
+                    self._fase2_caso      = ""
+                    self._fase2_peak_pnl  = 0.0
+                    self._fase2_floor_pnl = 0.0
+                    cur = self.state.read()
+                    cur["fase2_attiva"]        = False
+                    cur["fase2_caso"]          = ""
+                    cur["fase2_prop_sl_locked"] = False
+                    self.state.write(cur)
+                    log.info("[FASE2] Reset — nessun trade attivo")
 
                 # ── Check abort da prop ───────────────────────────────────────
                 if state.get("prop_abort", False):

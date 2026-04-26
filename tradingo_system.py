@@ -1089,15 +1089,89 @@ class FTMORiskManager:
 # ──────────────────────────────────────────────────────────────────────────────
 # SMART CONTROLLER
 # ──────────────────────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FASE 2 LOGGER  —  CSV in tempo reale per analisi successiva
+# ──────────────────────────────────────────────────────────────────────────────
+import csv
+import os
+
+class Fase2Logger:
+    """
+    Scrive un CSV con snapshot ogni ciclo (10s) quando i trade sono aperti.
+    Campi: timestamp, price, pnl_prop, pnl_hedge, rsi_14, atr_14, mom_10,
+           dist_sl_prop_pct, dist_tp_prop_pct, fase2_attiva, mode
+    """
+    def __init__(self, log_dir: str = r"C:\TradinGO_Math\logs"):
+        os.makedirs(log_dir, exist_ok=True)
+        self.log_dir  = log_dir
+        self._file    = None
+        self._writer  = None
+        self._cur_day = None
+        self.log      = logging.getLogger("Fase2Logger")
+        self.HEADER   = [
+            "timestamp", "sig_id", "mode",
+            "price", "pnl_prop", "pnl_hedge",
+            "rsi_14", "atr_14", "mom_10",
+            "dist_sl_prop_pct", "dist_tp_prop_pct",
+            "dist_sl_hedge_pct", "dist_tp_hedge_pct",
+            "fase2_attiva", "fase2_trigger_reason",
+        ]
+
+    def _rotate(self):
+        today = datetime.now().strftime("%Y%m%d")
+        if today != self._cur_day:
+            if self._file:
+                self._file.close()
+            path = os.path.join(self.log_dir, f"fase2_{today}.csv")
+            new_file = not os.path.exists(path)
+            self._file   = open(path, "a", newline="", encoding="utf-8")
+            self._writer = csv.writer(self._file)
+            if new_file:
+                self._writer.writerow(self.HEADER)
+            self._cur_day = today
+
+    def write(self, row: dict):
+        try:
+            self._rotate()
+            self._writer.writerow([row.get(k, "") for k in self.HEADER])
+            self._file.flush()
+        except Exception as e:
+            self.log.warning(f"Fase2Logger write error: {e}")
+
+    def close(self):
+        if self._file:
+            self._file.close()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SMART CONTROLLER  (versione con Fase 2)
+# ──────────────────────────────────────────────────────────────────────────────
 class SmartController:
     """
-    Gestisce tre scenari:
-    1. Normal Mode      : monitoraggio passivo dei trade aperti.
-    2. Mitigation       : attiva il Reverse Hedge quando l'Hedge perde troppo
-                          e gli indicatori confermano inversione di tendenza.
-    3. Trend Riding     : dopo la chiusura della Prop (SL raggiunto),
-                          attiva il trailing stop dinamico sull'Hedge.
+    Fase 1 (già implementata):
+      - Normal Mode      : monitoraggio passivo.
+      - Mitigation       : Reverse Hedge quando hedge perde troppo.
+      - Trend Riding     : trailing stop dopo chiusura Prop al SL.
+
+    Fase 2 (nuova):
+      - Si attiva quando il prezzo raggiunge il 30% del percorso entry→SL della Prop.
+      - Filtri di conferma: RSI allineato >= 40, Momentum 10 barre >= 2.0 punti.
+      - SE filtri OK  → cristallizza la situazione:
+            * Conto in PROFIT (hedge): trailing stop a 0.5×ATR dal picco corrente.
+            * Conto in LOSS   (prop) : nessuna azione aggiuntiva (Fase 1 continua).
+      - SE filtri NON OK → nessuna azione (si lascia la Fase 1 senza intervenire).
+
+    NOTA: questi parametri (30%, RSI>=40, MOM10>=2.0, trailing 0.5×ATR) sono
+    derivati dall'analisi su 28 trade reali (21-24 aprile 2026). Win rate atteso
+    ~59%. Vanno riottimizzati dopo 3-4 giorni di logging con fase2_logger.
     """
+
+    # ── Parametri Fase 2 (da riottimizzare con dati reali) ──────────────────
+    FASE2_DIST_SL_PCT     = 0.30   # attiva quando prezzo è al 30% del percorso entry→SL prop
+    FASE2_RSI_MIN         = 40.0   # RSI allineato alla direzione hedge >= 40
+    FASE2_MOM10_MIN       = 2.0    # Momentum 10 barre nella dir hedge >= 2.0 punti
+    FASE2_TRAILING_ATR    = 0.5    # Trailing hedge = 0.5×ATR dal picco
 
     def __init__(self, config: TradinGoConfig, executor: TradeExecutor, analyzer: MarketAnalyzer):
         self.cfg      = config
@@ -1105,6 +1179,13 @@ class SmartController:
         self.analyzer = analyzer
         self.log      = logging.getLogger("SmartController")
 
+        # Stato Fase 2
+        self._fase2_attiva         = False
+        self._fase2_peak_pnl       = 0.0    # picco PNL hedge raggiunto dopo attivazione
+        self._fase2_trailing_sl    = 0.0    # SL calcolato dal trailing Fase 2
+        self._fase2_trigger_reason = ""
+
+    # ── Fase 1: check reverse trigger ────────────────────────────────────────
     def check_reverse_trigger(
         self,
         hedge_pnl: float,
@@ -1112,36 +1193,24 @@ class SmartController:
         df: pd.DataFrame,
         original_signal: Signal,
     ) -> bool:
-        """
-        Verifica se attivare il Reverse Hedge.
-        Condizioni:
-          1. Perdita hedge >= 50% della perdita massima prevista.
-          2. VWAP e CVD confermano un trend OPPOSTO al trade originale.
-        """
         if expected_loss == 0:
             return False
-
         loss_pct = abs(hedge_pnl) / abs(expected_loss)
         if loss_pct < self.cfg.reverse_trigger_pct:
             return False
-
-        # Verifica conferma indicatori per inversione
         _, _, vwap, cvd, cvd_trend = self.analyzer.generate_signal(df)
         price = float(df["close"].iloc[-1])
-
-        # Se il trade hedge è BUY e ora il mercato è ribassista → conferma inversione
         if original_signal == Signal.BUY:
             confirmed = (price < vwap) and (cvd_trend == "DOWN")
         else:
             confirmed = (price > vwap) and (cvd_trend == "UP")
-
         if confirmed:
             self.log.warning(
-                f"Reverse trigger attivato! "
-                f"loss_pct={loss_pct:.1%} | vwap={vwap:.2f} | cvd={cvd:.0f} | trend={cvd_trend}"
+                f"Reverse trigger: loss_pct={loss_pct:.1%} | vwap={vwap:.2f} | cvd_trend={cvd_trend}"
             )
         return confirmed
 
+    # ── Fase 1: trailing stop dopo prop chiusa ────────────────────────────────
     def update_trailing_stop(
         self,
         hedge_ticket: int,
@@ -1149,29 +1218,22 @@ class SmartController:
         atr: float,
         original_signal: Signal,
     ) -> bool:
-        """
-        Trailing Stop dinamico: sl = prezzo corrente - (ATR * multiplier) per BUY
-                                    = prezzo corrente + (ATR * multiplier) per SELL
-        Aggiorna lo SL solo se il nuovo valore è MIGLIORE di quello attuale.
-        """
         positions = mt5.positions_get(ticket=hedge_ticket)
         if not positions:
             return False
-
         pos        = positions[0]
         trail_dist = atr * self.cfg.trailing_atr_multiplier
-
         if original_signal == Signal.BUY:
             new_sl = current_price - trail_dist
-            if new_sl > pos.sl:  # Sposta SL solo verso l'alto (a favore)
+            if new_sl > pos.sl:
                 return self.executor.modify_sl(hedge_ticket, new_sl)
         else:
             new_sl = current_price + trail_dist
-            if new_sl < pos.sl or pos.sl == 0:  # Sposta SL solo verso il basso
+            if new_sl < pos.sl or pos.sl == 0:
                 return self.executor.modify_sl(hedge_ticket, new_sl)
-
         return False
 
+    # ── Fase 1: check breakeven reverse ──────────────────────────────────────
     def check_reverse_breakeven(
         self,
         reverse_ticket: int,
@@ -1179,20 +1241,153 @@ class SmartController:
         current_price: float,
         original_signal: Signal,
     ) -> bool:
-        """
-        Chiude il Reverse Hedge a break-even se il prezzo ritraccia verso
-        il punto di ingresso del reverse, proteggendo il recupero.
-        """
-        # Se il prezzo è tornato al livello di entrata del reverse (±0.50$)
         tolerance = 0.50
         if abs(current_price - entry_price) <= tolerance:
             self.log.info(f"Reverse Hedge a break-even → chiusura ticket={reverse_ticket}")
             return self.executor.close_position(reverse_ticket)
         return False
 
+    # ── Fase 2: verifica se si deve attivare ─────────────────────────────────
+    def check_fase2_trigger(
+        self,
+        prop_entry: float,
+        prop_sl: float,
+        prop_signal: Signal,      # direzione PROP (opposta all'hedge)
+        current_price: float,
+        df: pd.DataFrame,
+        atr: float,
+    ) -> tuple:
+        """
+        Restituisce (attiva: bool, reason: str)
+        Attiva = True se tutti i filtri passano.
+        """
+        if self._fase2_attiva:
+            return False, "già_attiva"
+
+        sl_dist_total = abs(prop_entry - prop_sl)
+        if sl_dist_total == 0:
+            return False, "sl_dist_zero"
+
+        # Distanza percorsa verso SL della prop
+        if prop_signal == Signal.BUY:
+            pct_to_sl = (prop_entry - current_price) / sl_dist_total
+        else:
+            pct_to_sl = (current_price - prop_entry) / sl_dist_total
+
+        if pct_to_sl < self.FASE2_DIST_SL_PCT:
+            return False, f"dist_sl={pct_to_sl:.2f}<{self.FASE2_DIST_SL_PCT}"
+
+        # Calcola indicatori dal df M5
+        closes = df["close"].values
+        if len(closes) < 14:
+            return False, "dati_insufficienti"
+
+        # RSI 14
+        delta  = pd.Series(closes).diff()
+        gain   = delta.clip(lower=0)
+        loss   = (-delta).clip(lower=0)
+        avg_g  = gain.ewm(com=13, min_periods=14).mean().iloc[-1]
+        avg_l  = loss.ewm(com=13, min_periods=14).mean().iloc[-1]
+        rsi    = 100.0 if avg_l == 0 else 100 - (100 / (1 + avg_g / avg_l))
+
+        # Momentum 10 barre
+        if len(closes) >= 11:
+            mom10 = float(closes[-1] - closes[-11])
+        else:
+            return False, "dati_mom_insufficienti"
+
+        # Allinea RSI e momentum alla direzione dell'HEDGE
+        # hedge è opposto alla prop: se prop=BUY → hedge=SELL
+        if prop_signal == Signal.BUY:
+            # hedge è SELL → voglio RSI basso (ribassista) e mom10 negativo
+            rsi_aligned  = 100.0 - rsi
+            mom10_aligned = -mom10
+        else:
+            # hedge è BUY → voglio RSI alto (rialzista) e mom10 positivo
+            rsi_aligned  = rsi
+            mom10_aligned = mom10
+
+        if rsi_aligned < self.FASE2_RSI_MIN:
+            return False, f"rsi_aligned={rsi_aligned:.1f}<{self.FASE2_RSI_MIN}"
+
+        if mom10_aligned < self.FASE2_MOM10_MIN:
+            return False, f"mom10_aligned={mom10_aligned:.2f}<{self.FASE2_MOM10_MIN}"
+
+        reason = (f"FASE2 OK: dist_sl={pct_to_sl:.2f} | rsi_aln={rsi_aligned:.1f} | "
+                  f"mom10_aln={mom10_aligned:.2f}")
+        return True, reason
+
+    # ── Fase 2: attiva il trailing sull'hedge ────────────────────────────────
+    def activate_fase2(self, hedge_pnl: float, atr: float):
+        """
+        Cristallizza il PNL hedge corrente come picco di partenza.
+        Da questo momento in poi il trailing mantiene min questo livello.
+        """
+        self._fase2_attiva      = True
+        self._fase2_peak_pnl    = hedge_pnl
+        self._fase2_trailing_sl = hedge_pnl - (atr * self.FASE2_TRAILING_ATR * 0.14 * 10)
+        self.log.info(
+            f"[FASE2] Attivata! PNL_hedge={hedge_pnl:.2f}$ | "
+            f"peak={self._fase2_peak_pnl:.2f}$ | "
+            f"trailing_floor={self._fase2_trailing_sl:.2f}$"
+        )
+
+    # ── Fase 2: aggiorna trailing e verifica se chiudere hedge ───────────────
+    def update_fase2_trailing(
+        self,
+        hedge_ticket: int,
+        hedge_pnl: float,
+        current_price: float,
+        atr: float,
+        original_signal: Signal,
+    ) -> bool:
+        """
+        Aggiorna il picco e controlla se il PNL è sceso sotto il floor.
+        Se sì → chiude l'hedge al prezzo corrente (incassa quello che c'è).
+        Restituisce True se ha chiuso l'hedge.
+        """
+        if not self._fase2_attiva:
+            return False
+
+        # Aggiorna picco
+        if hedge_pnl > self._fase2_peak_pnl:
+            self._fase2_peak_pnl    = hedge_pnl
+            self._fase2_trailing_sl = hedge_pnl - (atr * self.FASE2_TRAILING_ATR * 0.14 * 10)
+            self.log.info(
+                f"[FASE2] Nuovo picco: {self._fase2_peak_pnl:.2f}$ | "
+                f"floor aggiornato: {self._fase2_trailing_sl:.2f}$"
+            )
+
+        # Controlla se il PNL è sceso sotto il floor
+        if hedge_pnl < self._fase2_trailing_sl:
+            self.log.warning(
+                f"[FASE2] PNL {hedge_pnl:.2f}$ sotto floor {self._fase2_trailing_sl:.2f}$ → CHIUDO HEDGE"
+            )
+            closed = self.executor.close_position(hedge_ticket)
+            if closed:
+                self._reset_fase2()
+            return closed
+
+        return False
+
+    def _reset_fase2(self):
+        self._fase2_attiva         = False
+        self._fase2_peak_pnl       = 0.0
+        self._fase2_trailing_sl    = 0.0
+        self._fase2_trigger_reason = ""
+
+    def get_fase2_state(self) -> dict:
+        return {
+            "attiva":         self._fase2_attiva,
+            "peak_pnl":       self._fase2_peak_pnl,
+            "trailing_floor": self._fase2_trailing_sl,
+            "trigger_reason": self._fase2_trigger_reason,
+        }
+
+
 
 # ──────────────────────────────────────────────────────────────────────────────
-# STATE MANAGER  (I/O su file JSON per Streamlit)
+# STATE MANAGER  (invariato)
 # ──────────────────────────────────────────────────────────────────────────────
 class StateManager:
     def __init__(self, state_file: str):
@@ -1203,14 +1398,12 @@ class StateManager:
         data = asdict(state)
         data["timestamp"] = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            # Scrittura atomica: scrive su file temp poi rinomina
-            # per evitare PermissionError se il file è aperto dalla dashboard
             tmp = self.state_file.with_suffix(".tmp")
             try:
                 tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
                 tmp.replace(self.state_file)
             except PermissionError:
-                pass  # Dashboard sta leggendo il file, riprova al prossimo ciclo
+                pass
 
     def load(self) -> dict:
         if not self.state_file.exists():
@@ -1220,270 +1413,291 @@ class StateManager:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# TRADINGO ENGINE  —  Orchestratore principale
+# TRADINGO ENGINE  —  Orchestratore con Fase 2
 # ──────────────────────────────────────────────────────────────────────────────
 class TradinGoEngine:
     """
-    Loop principale del sistema. Sequenza per ogni iterazione:
-
-    1. Verifica connessioni (riconnette se necessario).
-    2. Legge account info (balance, equity, pnl).
-    3. Controlla Hard Stop sull'Hedge.
-    4. Se nessun trade aperto → analizza mercato → apre se segnale valido.
-    5. Se trade aperti → gestione Smart Controller.
-    6. Aggiorna StateManager per la dashboard.
+    Loop principale. Aggiunto rispetto alla v1:
+    - Fase2Logger: scrive CSV con snapshot ogni ciclo
+    - check_fase2_trigger in _handle_open_trades
+    - update_fase2_trailing ogni ciclo quando Fase 2 è attiva
+    - prop_entry / prop_sl salvati all'apertura per calcolo distanza
     """
 
     def __init__(self, config: TradinGoConfig):
-        self.cfg      = config
-        self.state    = SystemState()
-        self.sm       = StateManager(config.state_file)
-        self.log      = logging.getLogger("TradinGoEngine")
+        self.cfg            = config
+        self.state          = SystemState()
+        self.sm             = StateManager(config.state_file)
 
-        # Connettori
         self.prop_conn  = MT5Connector(
-            "PROP",  config.prop_terminal_path,
-            config.prop_login,  config.prop_password,  config.prop_server,
+            "PROP",
+            config.prop_terminal_path,
+            config.prop_login, config.prop_password, config.prop_server,
         )
         self.hedge_conn = MT5Connector(
-            "HEDGE", config.hedge_terminal_path,
+            "HEDGE",
+            config.hedge_terminal_path,
             config.hedge_login, config.hedge_password, config.hedge_server,
         )
 
-        # Analyzer ed Executor condividono la connessione attiva
-        # (il sistema usa la connessione corrente di mt5)
-        self.analyzer = MarketAnalyzer(config)
-        self.executor = TradeExecutor(config)
-        self.controller = SmartController(config, self.executor, self.analyzer)
-
-        # Stato interno trade
-        self._prop_ticket:    int    = 0
-        self._hedge_ticket:   int    = 0
-        self._reverse_ticket: int    = 0
-        self._original_signal: Signal = Signal.NONE
-        self._hedge_entry_price: float = 0.0
-        self._reverse_entry_price: float = 0.0
-        self._hedge_expected_loss: float = 0.0
-        self._hedge_realized:  float = 0.0
-        self._running: bool = False
-
-        # FTMO Risk Manager
-        self.ftmo = FTMORiskManager(state_file="ftmo_state.json")
-
-        # Session Filter
         self.session_filter = SessionFilter()
+        self.analyzer       = MarketAnalyzer(config)
+        self.executor       = TradeExecutor(config)
+        self.controller     = SmartController(config, self.executor, self.analyzer)
+        self.ftmo           = FTMORiskManager()
+        self.fase2_logger   = Fase2Logger()
+
+        # Stato trade corrente
+        self._prop_ticket         = 0
+        self._hedge_ticket        = 0
+        self._reverse_ticket      = 0
+        self._original_signal     = Signal.NONE
+        self._hedge_expected_loss = 0.0
+        self._hedge_realized      = 0.0
+        self._running             = False
+
+        # Info prop per Fase 2
+        self._prop_entry_price    = 0.0
+        self._prop_sl_price       = 0.0
+        self._sig_id              = 0      # contatore segnali per log CSV
 
     def _connect_all(self) -> bool:
-        """
-        Inizializza il terminale Prop (unico processo MT5).
-        Poi verifica che sia possibile switchare sull'Hedge con mt5.login().
-        """
-        # Inizializza il terminale con le credenziali Prop
-        ok_prop = self.prop_conn.initialize()
-        if not ok_prop:
-            self.log.error("Impossibile inizializzare il terminale Prop.")
-            self.state.prop_connected  = False
-            self.state.hedge_connected = False
+        if not self.prop_conn.connect():
             return False
-
-        # Verifica che il login Hedge funzioni sullo stesso terminale
-        ok_hedge = self.hedge_conn.switch_to()
-        if not ok_hedge:
-            self.log.error(
-                "Impossibile switchare sul conto Hedge. "
-                "Assicurati che entrambi gli account siano salvati nel terminale MT5."
-            )
-            self.state.prop_connected  = True
-            self.state.hedge_connected = False
+        if not self.hedge_conn.connect():
             return False
-
-        # Torna sulla Prop come account attivo di default
-        self.prop_conn.switch_to()
-
-        self.state.prop_connected  = True
-        self.state.hedge_connected = True
+        log.info("Entrambi i connettori MT5 attivi.")
         return True
 
     def _switch_to_prop(self):
-        """Attiva il contesto MT5 sul terminale Prop."""
-        # In una singola istanza MT5, si può avere una sola connessione attiva.
-        # Per dual-account sulla stessa VPS, è necessario che i due terminali
-        # girino in processi separati. Qui utilizziamo due inizializzazioni
-        # sequenziali: prima Prop per il trading, poi Hedge per leggere l'equity.
-        # Soluzione professionale: usare multiprocessing o due VPS virtuali.
-        # Questa implementazione monoprocesso funziona per la lettura sequenziale.
-        pass
+        self.prop_conn.connect()
 
-    def _read_prop_account(self) -> Tuple[float, float, float]:
-        """Legge balance, equity, PnL flottante dalla Prop."""
-        self.prop_conn.connect()  # ri-seleziona contesto Prop
+    def _read_prop_account(self):
+        self._switch_to_prop()
         info = self.prop_conn.get_account_info()
-        if info is None:
-            return 0.0, 0.0, 0.0
-        pnl = info.equity - info.balance
-        return info.balance, info.equity, pnl
+        if info:
+            return info.balance, info.equity, info.equity - info.balance
+        return 0.0, 0.0, 0.0
 
-    def _read_hedge_account(self) -> Tuple[float, float, float]:
-        """Legge balance, equity, PnL flottante dall'Hedge."""
-        self.hedge_conn.connect()  # ri-seleziona contesto Hedge
+    def _read_hedge_account(self):
+        self.hedge_conn.connect()
         info = self.hedge_conn.get_account_info()
-        if info is None:
-            return 0.0, 0.0, 0.0
-        pnl = info.equity - info.balance
-        return info.balance, info.equity, pnl
+        if info:
+            return info.balance, info.equity, info.equity - info.balance
+        return 0.0, 0.0, 0.0
 
     def _check_hard_stop(self, hedge_equity: float) -> bool:
-        """Blocca tutto il sistema se l'equity Hedge scende sotto il floor."""
         if hedge_equity > 0 and hedge_equity < self.cfg.hedge_floor_equity:
-            self.log.critical(
-                f"HARD STOP attivato! Hedge equity {hedge_equity:.2f} < "
-                f"floor {self.cfg.hedge_floor_equity:.2f}"
+            log.critical(
+                f"HARD STOP: hedge equity {hedge_equity:.2f} < floor {self.cfg.hedge_floor_equity:.2f}"
             )
-            # Chiudi tutte le posizioni aperte
             self._close_all_positions()
-            self.state.mode = SystemMode.HALTED
-            self._running   = False
             return True
         return False
 
     def _close_all_positions(self):
-        """Chiusura emergenza di tutti i trade aperti."""
-        for ticket in [self._prop_ticket, self._hedge_ticket, self._reverse_ticket]:
-            if ticket > 0:
-                self.executor.close_position(ticket)
-        self._prop_ticket    = 0
-        self._hedge_ticket   = 0
-        self._reverse_ticket = 0
+        self._switch_to_prop()
+        for p in mt5.positions_get(symbol=self.cfg.symbol) or []:
+            if p.magic in (self.cfg.magic_prop, self.cfg.magic_reverse):
+                self.executor.close_position(p.ticket)
+        self.hedge_conn.connect()
+        for p in mt5.positions_get(symbol=self.cfg.symbol) or []:
+            if p.magic == self.cfg.magic_hedge:
+                self.executor.close_position(p.ticket)
 
     def _no_open_trades(self) -> bool:
-        """Verifica se non ci sono trade attivi del sistema."""
-        return (
-            self._prop_ticket  == 0 and
-            self._hedge_ticket == 0 and
-            self._reverse_ticket == 0
-        )
+        return self._prop_ticket == 0 and self._hedge_ticket == 0
 
     def _estimate_hedge_expected_loss(self, atr: float) -> float:
-        """
-        Stima la perdita massima attesa sull'Hedge basata su SL e lotto.
-        SL = ATR * 1.5, valore pip GOLD ≈ 1$/0.01lot.
-        """
-        sym = mt5.symbol_info(self.cfg.symbol)
-        if sym is None:
-            return 140.0  # fallback: ~140$ su 0.14 lot, SL di 1$
-        sl_dist_price = atr * 1.5
-        tick_value    = sym.trade_tick_value  # valore per 1 tick per 1 lotto
-        tick_size     = sym.trade_tick_size
-        sl_ticks      = sl_dist_price / tick_size
-        expected_loss = sl_ticks * tick_value * self.cfg.hedge_lot
-        return expected_loss
+        sl_dist_atr = 1.48
+        return -(atr * sl_dist_atr * self.cfg.hedge_lot * 10)
 
     def _handle_open_trades(self, df: pd.DataFrame, hedge_pnl: float, hedge_equity: float):
-        """
-        Gestione dei trade aperti:
-        - Verifica se la Prop ha chiuso → attiva Trend Riding.
-        - Gestione crisi Hedge → Reverse Hedge.
-        - Trailing Stop in Trend Riding.
-        """
         current_price = float(df["close"].iloc[-1])
         atr_series    = self.analyzer.compute_atr(df)
         atr           = float(atr_series.iloc[-1])
 
-        # ── Check Prop: è ancora aperta? ──────────────────────────────────
+        # ── Calcola indicatori per log CSV ────────────────────────────────
+        closes = df["close"].values
+        delta  = pd.Series(closes).diff()
+        gain   = delta.clip(lower=0)
+        loss   = (-delta).clip(lower=0)
+        avg_g  = gain.ewm(com=13, min_periods=14).mean().iloc[-1]
+        avg_l  = loss.ewm(com=13, min_periods=14).mean().iloc[-1]
+        rsi14  = 100.0 if avg_l == 0 else 100 - (100 / (1 + avg_g / avg_l))
+        mom10  = float(closes[-1] - closes[-11]) if len(closes) >= 11 else 0.0
+
+        # ── PNL prop corrente ─────────────────────────────────────────────
+        self._switch_to_prop()
         prop_positions = mt5.positions_get(ticket=self._prop_ticket)
         prop_open      = bool(prop_positions) if self._prop_ticket > 0 else False
+        prop_pnl       = float(prop_positions[0].profit) if prop_open else 0.0
 
-        if self._prop_ticket > 0 and not prop_open:
-            # La Prop ha chiuso (SL colpito = obiettivo raggiunto)
-            self.log.info("Prop chiusa (SL raggiunto). Attivo Trend Riding sull'Hedge.")
-            self._prop_ticket  = 0
-            self.state.mode    = SystemMode.TREND_RIDING
-            self.state.trailing_active = True
+        # ── Distanze da SL/TP ─────────────────────────────────────────────
+        dist_sl_prop_pct  = ""
+        dist_tp_prop_pct  = ""
+        dist_sl_hedge_pct = ""
+        dist_tp_hedge_pct = ""
 
-        # ── Trend Riding: trailing stop sull'Hedge ────────────────────────
-        if self.state.mode == SystemMode.TREND_RIDING and self._hedge_ticket > 0:
-            self.controller.update_trailing_stop(
-                self._hedge_ticket, current_price, atr, self._original_signal
+        if prop_open and self._prop_entry_price > 0 and self._prop_sl_price > 0:
+            sl_dist = abs(self._prop_entry_price - self._prop_sl_price)
+            if self._original_signal == Signal.SELL:  # prop è SELL (verso SL in salita)
+                pct_sl = (current_price - self._prop_entry_price) / sl_dist
+            else:
+                pct_sl = (self._prop_entry_price - current_price) / sl_dist
+            dist_sl_prop_pct = f"{pct_sl:.3f}"
+
+        self.hedge_conn.connect()
+        hedge_positions = mt5.positions_get(ticket=self._hedge_ticket)
+        if hedge_positions:
+            hp = hedge_positions[0]
+            if hp.sl > 0:
+                sl_h = abs(hp.price_open - hp.sl)
+                if hp.type == mt5.ORDER_TYPE_BUY:
+                    dist_sl_hedge_pct = f"{(hp.price_open - current_price)/sl_h:.3f}"
+                    dist_tp_hedge_pct = f"{(current_price - hp.price_open)/sl_h:.3f}" if hp.tp > 0 else ""
+                else:
+                    dist_sl_hedge_pct = f"{(current_price - hp.price_open)/sl_h:.3f}"
+
+        # ── Fase 2: check trigger ─────────────────────────────────────────
+        fase2_attiva  = False
+        fase2_reason  = ""
+        if (prop_open and self._prop_entry_price > 0
+                and self._prop_sl_price > 0
+                and not self.controller._fase2_attiva
+                and self.state.mode == SystemMode.NORMAL):
+
+            attiva, reason = self.controller.check_fase2_trigger(
+                prop_entry    = self._prop_entry_price,
+                prop_sl       = self._prop_sl_price,
+                prop_signal   = self._original_signal,
+                current_price = current_price,
+                df            = df,
+                atr           = atr,
             )
+            if attiva:
+                self.controller._fase2_trigger_reason = reason
+                self.controller.activate_fase2(hedge_pnl, atr)
+                self.state.mode = SystemMode.TREND_RIDING
+                log.info(f"[FASE2] {reason}")
+            else:
+                fase2_reason = reason
 
-        # ── Gestione crisi Hedge ──────────────────────────────────────────
-        if (
-            self._hedge_ticket > 0
-            and self._reverse_ticket == 0
-            and self.state.mode == SystemMode.NORMAL
-        ):
+        # ── Fase 2: trailing attivo ───────────────────────────────────────
+        if self.controller._fase2_attiva and self._hedge_ticket > 0:
+            fase2_attiva = True
+            chiuso = self.controller.update_fase2_trailing(
+                self._hedge_ticket, hedge_pnl, current_price, atr, self._original_signal
+            )
+            if chiuso:
+                self._hedge_ticket    = 0
+                self._original_signal = Signal.NONE
+                self.state.mode       = SystemMode.IDLE
+                log.info("[FASE2] Hedge chiuso dal trailing Fase 2.")
+
+        # ── Fase 1: prop chiusa → Trend Riding classico ───────────────────
+        if self._prop_ticket > 0 and not prop_open:
+            log.info("Prop chiusa (SL). Attivo Trend Riding Fase 1 sull'Hedge.")
+            self._prop_ticket         = 0
+            self.state.mode           = SystemMode.TREND_RIDING
+            self.state.trailing_active = True
+            self.controller._reset_fase2()  # Fase 2 non più rilevante
+
+        if self.state.mode == SystemMode.TREND_RIDING and self._hedge_ticket > 0:
+            if not self.controller._fase2_attiva:  # solo se Fase 2 non ha già gestito
+                self.hedge_conn.connect()
+                self.controller.update_trailing_stop(
+                    self._hedge_ticket, current_price, atr, self._original_signal
+                )
+
+        # ── Fase 1: reverse hedge ─────────────────────────────────────────
+        if (self._hedge_ticket > 0
+                and self._reverse_ticket == 0
+                and self.state.mode == SystemMode.NORMAL):
+            self.hedge_conn.connect()
+            hedge_pos2 = mt5.positions_get(ticket=self._hedge_ticket)
+            hedge_pnl2 = float(hedge_pos2[0].profit) if hedge_pos2 else hedge_pnl
             should_reverse = self.controller.check_reverse_trigger(
-                hedge_pnl, self._hedge_expected_loss, df, self._original_signal
+                hedge_pnl2, self._hedge_expected_loss, df, self._original_signal
             )
             if should_reverse:
                 self.state.mode = SystemMode.MITIGATION
                 tick = self.executor.open_reverse_hedge(self._original_signal, atr)
                 if tick:
-                    self._reverse_ticket       = tick
-                    self._reverse_entry_price  = current_price
-                    self.state.reverse_active  = True
-                    self.log.info(f"Reverse Hedge aperto → ticket={tick}")
+                    self._reverse_ticket      = tick
+                    self._reverse_entry_price = current_price
+                    self.state.reverse_active = True
+                    log.info(f"Reverse Hedge aperto → ticket={tick}")
 
-        # ── Check break-even sul Reverse ──────────────────────────────────
+        # ── Fase 1: check BE reverse ──────────────────────────────────────
         if self._reverse_ticket > 0 and self._reverse_entry_price > 0:
-            rev_positions = mt5.positions_get(ticket=self._reverse_ticket)
-            if rev_positions:
-                rev_pnl = float(rev_positions[0].profit)
-                if rev_pnl > 0:  # Il reverse è in profitto → check BE
+            rev_pos = mt5.positions_get(ticket=self._reverse_ticket)
+            if rev_pos:
+                rev_pnl = float(rev_pos[0].profit)
+                if rev_pnl > 0:
                     closed = self.controller.check_reverse_breakeven(
-                        self._reverse_ticket,
-                        self._reverse_entry_price,
-                        current_price,
-                        self._original_signal,
+                        self._reverse_ticket, self._reverse_entry_price,
+                        current_price, self._original_signal
                     )
                     if closed:
                         self._reverse_ticket      = 0
                         self.state.reverse_active = False
-                        # Accumula profitto realizzato
-                        self._hedge_realized += rev_pnl
+                        self._hedge_realized      += rev_pnl
             else:
-                # Il reverse è già stato chiuso esternamente
                 self._reverse_ticket      = 0
                 self.state.reverse_active = False
 
-        # ── Check se l'Hedge ha chiuso ────────────────────────────────────
+        # ── Check hedge chiuso ────────────────────────────────────────────
+        self.hedge_conn.connect()
         if self._hedge_ticket > 0:
-            hedge_pos = mt5.positions_get(ticket=self._hedge_ticket)
-            if not hedge_pos:
-                self.log.info("Hedge chiuso.")
-                self._hedge_ticket     = 0
-                self._original_signal  = Signal.NONE
-                self.state.mode        = SystemMode.IDLE
+            hedge_pos3 = mt5.positions_get(ticket=self._hedge_ticket)
+            if not hedge_pos3:
+                log.info("Hedge chiuso (SL/TP naturale).")
+                self._hedge_ticket    = 0
+                self._original_signal = Signal.NONE
+                self.state.mode       = SystemMode.IDLE
+                self.controller._reset_fase2()
+
+        # ── Scrivi riga CSV Fase 2 ────────────────────────────────────────
+        f2state = self.controller.get_fase2_state()
+        self.fase2_logger.write({
+            "timestamp":         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sig_id":            self._sig_id,
+            "mode":              self.state.mode,
+            "price":             f"{current_price:.2f}",
+            "pnl_prop":          f"{prop_pnl:.2f}",
+            "pnl_hedge":         f"{hedge_pnl:.2f}",
+            "rsi_14":            f"{rsi14:.1f}",
+            "atr_14":            f"{atr:.3f}",
+            "mom_10":            f"{mom10:.2f}",
+            "dist_sl_prop_pct":  dist_sl_prop_pct,
+            "dist_tp_prop_pct":  dist_tp_prop_pct,
+            "dist_sl_hedge_pct": dist_sl_hedge_pct,
+            "dist_tp_hedge_pct": dist_tp_hedge_pct,
+            "fase2_attiva":      "1" if fase2_attiva else "0",
+            "fase2_trigger_reason": f2state["trigger_reason"] or fase2_reason,
+        })
 
     def _update_state(self):
-        """Aggiorna l'oggetto SystemState e lo scrive su file."""
         prop_bal, prop_eq, prop_pnl   = self._read_prop_account()
         hedge_bal, hedge_eq, hedge_pnl = self._read_hedge_account()
 
         self.state.prop_balance     = prop_bal
         self.state.prop_equity      = prop_eq
         self.state.prop_pnl_float   = prop_pnl
-
         self.state.hedge_balance    = hedge_bal
         self.state.hedge_equity     = hedge_eq
         self.state.hedge_pnl_float  = hedge_pnl
-
         self.state.floor_distance   = hedge_eq - self.cfg.hedge_floor_equity
-        self.state.net_system_profit = (
-            self._hedge_realized + hedge_pnl - self.cfg.prop_cost_eur
-        )
+        self.state.net_system_profit = self._hedge_realized + hedge_pnl - self.cfg.prop_cost_eur
         self.state.hedge_realized_profit = self._hedge_realized
-
-        self.state.prop_ticket     = self._prop_ticket
-        self.state.hedge_ticket    = self._hedge_ticket
-        self.state.reverse_ticket  = self._reverse_ticket
-
+        self.state.prop_ticket      = self._prop_ticket
+        self.state.hedge_ticket     = self._hedge_ticket
+        self.state.reverse_ticket   = self._reverse_ticket
         self.state.hedge_expected_loss = self._hedge_expected_loss
-        self.state.prop_connected  = self.prop_conn.is_connected
-        self.state.hedge_connected = self.hedge_conn.is_connected
-        # session_active/session_name already updated in main loop step 5
+        self.state.prop_connected   = self.prop_conn.is_connected
+        self.state.hedge_connected  = self.hedge_conn.is_connected
 
-        # FTMO dashboard data
         if prop_bal > 0:
             ftmo_data = self.ftmo.get_dashboard_data(prop_eq, prop_bal)
             self.state.ftmo_daily_dd_pct       = ftmo_data["daily_dd_used_pct"]
@@ -1497,40 +1711,34 @@ class TradinGoEngine:
         self.sm.save(self.state)
 
     def run(self):
-        """Loop principale del motore di trading."""
-        self.log.info("═══ TradinGo Asymmetric System — AVVIO ═══")
+        log.info("═══ TradinGo Asymmetric System v2 (Fase 2) — AVVIO ═══")
 
         if not self._connect_all():
-            self.log.error("Impossibile connettersi ai terminali MT5. Esco.")
+            log.error("Impossibile connettersi ai terminali MT5. Esco.")
             return
 
         self._running = True
 
         while self._running:
             try:
-                # ── 0. Aggiornamento giornaliero FTMO ────────────────────
                 self.prop_conn.connect()
                 prop_info_quick = self.prop_conn.get_account_info()
                 if prop_info_quick:
                     self.ftmo.daily_update(prop_info_quick.balance)
 
-                # ── 1. Leggi dati di mercato (contesto Prop) ──────────────
                 df = self.analyzer.get_rates(200)
                 if df is None:
                     time.sleep(self.cfg.loop_interval_sec)
                     continue
 
-                # ── 2. Controlla spread ───────────────────────────────────
                 spread_ok, spread_pts = self.analyzer.is_spread_ok()
                 self.state.spread_ok     = spread_ok
                 self.state.spread_points = spread_pts
 
-                # ── 3. Leggi equity Hedge e controlla Hard Stop ───────────
                 _, hedge_eq, hedge_pnl = self._read_hedge_account()
                 if self._check_hard_stop(hedge_eq):
                     break
 
-                # ── 4. Calcola indicatori ─────────────────────────────────
                 atr_series = self.analyzer.compute_atr(df)
                 atr        = float(atr_series.iloc[-1])
                 z_score    = self.analyzer.compute_atr_zscore(df)
@@ -1542,30 +1750,20 @@ class TradinGoEngine:
                 self.state.cvd        = cvd
                 self.state.cvd_trend  = cvd_t
 
-                # ── 5. Apertura nuovi trade ───────────────────────────────
-                # 5a. Verifica sessione operativa
                 sess_active, sess_name = self.session_filter.is_active()
                 next_sess = self.session_filter.next_session()
                 self.state.session_active = sess_active
                 self.state.session_name   = sess_name
                 self.state.next_session   = next_sess
 
-                if not sess_active:
-                    self.log.info(
-                        f"Fuori sessione operativa — prossima: {next_sess} | "
-                        f"spread={spread_pts}pts | Z={z_score:.2f}"
-                    )
-
-                # 5b. Log spread sempre visibile
-                spread_status = "✓ OK" if spread_ok else f"✗ BLOCCATO ({spread_pts}pts > {self.cfg.max_spread_points})"
-                self.log.info(
-                    f"Ciclo → sessione={sess_name} | spread={spread_pts}pts [{spread_status}] | "
+                spread_status = "✓ OK" if spread_ok else f"✗ BLOCCATO ({spread_pts}pts)"
+                log.info(
+                    f"Ciclo → sess={sess_name} | spread={spread_pts}pts [{spread_status}] | "
                     f"Z={z_score:.2f} | VWAP={vwap:.2f} | CVD={cvd:.0f} [{cvd_t}]"
                 )
 
-                # 5c. Verifica regole FTMO prima di qualsiasi apertura
-                prop_bal_now  = prop_info_quick.balance if prop_info_quick else 0.0
-                prop_eq_now   = prop_info_quick.equity  if prop_info_quick else 0.0
+                prop_bal_now = prop_info_quick.balance if prop_info_quick else 0.0
+                prop_eq_now  = prop_info_quick.equity  if prop_info_quick else 0.0
                 ftmo_can, ftmo_reason = self.ftmo.can_open_new_trade(prop_eq_now, prop_bal_now)
 
                 self.state.ftmo_can_trade    = ftmo_can
@@ -1573,104 +1771,101 @@ class TradinGoEngine:
                 self.state.ftmo_final_phase  = (ftmo_reason == "FINAL_PHASE")
 
                 if not ftmo_can:
-                    self.log.warning(f"FTMO BLOCK: {ftmo_reason} — nessun nuovo trade aperto.")
+                    log.warning(f"FTMO BLOCK: {ftmo_reason}")
 
-                if self._no_open_trades() and spread_ok and ftmo_can:  # filtro sessione disabilitato in demo
+                # ── Apertura nuovi trade ──────────────────────────────────
+                if self._no_open_trades() and spread_ok and ftmo_can:
                     signal, z, _, _, _ = self.analyzer.generate_signal(df)
                     self.state.last_signal = signal
 
                     if signal != Signal.NONE:
-                        self.log.info(
-                            f"Segnale {signal} | Z={z:.2f} | VWAP={vwap:.2f} | "
-                            f"CVD={cvd:.0f} | spread={spread_pts}pts"
-                        )
+                        log.info(f"Segnale {signal} | Z={z:.2f} | VWAP={vwap:.2f}")
 
-                        # Jitter prima di aprire
                         time.sleep(random.randint(
                             self.cfg.jitter_min_ms, self.cfg.jitter_max_ms) / 1000.0
                         )
 
-                        # Apri Prop (direzione opposta)
                         self.prop_conn.connect()
                         p_ticket = self.executor.open_prop_trade(signal, atr)
 
-                        # Jitter tra i due ordini
                         time.sleep(random.randint(
                             self.cfg.jitter_min_ms, self.cfg.jitter_max_ms) / 1000.0
                         )
 
-                        # Apri Hedge (direzione segnale)
                         self.hedge_conn.connect()
                         h_ticket = self.executor.open_hedge_trade(signal, atr)
 
                         if p_ticket and h_ticket:
-                            self._prop_ticket  = p_ticket
-                            self._hedge_ticket = h_ticket
-                            self._original_signal = signal
+                            self._prop_ticket         = p_ticket
+                            self._hedge_ticket        = h_ticket
+                            self._original_signal     = signal
                             self._hedge_expected_loss = self._estimate_hedge_expected_loss(atr)
-                            self.state.mode = SystemMode.NORMAL
-                            self.log.info(
-                                f"Trade aperti → Prop={p_ticket} (inversione) | "
-                                f"Hedge={h_ticket} (segnale) | expected_loss={self._hedge_expected_loss:.2f}$"
+                            self.state.mode           = SystemMode.NORMAL
+                            self._sig_id             += 1
+
+                            # ── Salva entry e SL prop per Fase 2 ─────────
+                            self._switch_to_prop()
+                            p_pos = mt5.positions_get(ticket=p_ticket)
+                            if p_pos:
+                                self._prop_entry_price = p_pos[0].price_open
+                                self._prop_sl_price    = p_pos[0].sl
+                            else:
+                                self._prop_entry_price = 0.0
+                                self._prop_sl_price    = 0.0
+
+                            log.info(
+                                f"Trade aperti → Prop={p_ticket} | Hedge={h_ticket} | "
+                                f"prop_entry={self._prop_entry_price:.2f} | "
+                                f"prop_sl={self._prop_sl_price:.2f} | "
+                                f"sig_id={self._sig_id}"
                             )
                         else:
-                            # Cleanup parziale
                             if p_ticket:
                                 self.executor.close_position(p_ticket)
                             if h_ticket:
                                 self.executor.close_position(h_ticket)
-                            self.log.error("Apertura coppia fallita, posizioni annullate.")
+                            log.error("Apertura coppia fallita, posizioni annullate.")
 
-                # ── 6. Gestione trade aperti ──────────────────────────────
+                # ── Gestione trade aperti ─────────────────────────────────
                 elif not self._no_open_trades():
                     self.hedge_conn.connect()
                     self._handle_open_trades(df, hedge_pnl, hedge_eq)
 
-                # ── 7. Salva stato per dashboard ──────────────────────────
                 self._update_state()
-
                 time.sleep(self.cfg.loop_interval_sec)
 
             except KeyboardInterrupt:
-                self.log.info("Interruzione manuale (Ctrl+C). Esco.")
+                log.info("Interruzione manuale. Esco.")
                 self._running = False
 
             except Exception as e:
-                self.log.error(f"Errore inaspettato nel loop: {e}", exc_info=True)
+                log.error(f"Errore nel loop: {e}", exc_info=True)
                 self.state.last_error = str(e)
-                # Tenta riconnessione entrambi i connettori
                 self.prop_conn.reconnect()
                 self.hedge_conn.reconnect()
                 time.sleep(self.cfg.loop_interval_sec * 2)
 
-        self.log.info("TradinGo Engine fermato.")
-        # Chiude il terminale una sola volta (unico processo MT5)
+        log.info("TradinGo Engine v2 fermato.")
+        self.fase2_logger.close()
         self.prop_conn.disconnect()
-        # hedge_conn NON chiama disconnect() — condivide lo stesso processo MT5
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ENTRY POINT
 # ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # ── MODIFICA QUI i tuoi parametri prima di avviare ─────────────────────
     config = TradinGoConfig(
-        # ── Path terminali MT5 sulla VPS Contabo ─────────────────────────────
-        prop_terminal_path  = r"C:\Program Files\FTMO Global Markets MT5 Terminal\terminal64.exe",
+        prop_terminal_path  = r"C:\Program Files\STARTRADER Financial MetaTrader 5\terminal64.exe",
         hedge_terminal_path = r"C:\Program Files\Ultima Markets MT5 Terminal\terminal64.exe",
 
-        # ── PROP: FTMO Demo ───────────────────────────────────────────────────
-        prop_login    = 1513075253,
-        prop_password = "$*CS4HIJUr2",
-        prop_server   = "FTMO-Demo",
+        prop_login    = 1610077148,
+        prop_password = "4h!R9TkJ",
+        prop_server   = "STARTRADERFinancial-Demo",
 
-        # ── HEDGE: UltimaMarkets Demo ─────────────────────────────────────────
-        hedge_login   = 843409,
-        hedge_password= "v!34bIbx",
-        hedge_server  = "UltimaMarkets-Demo",
+        hedge_login    = 843409,
+        hedge_password = "v!34bIbx",
+        hedge_server   = "UltimaMarkets-Demo",
 
-        # ── Simbolo GOLD ──────────────────────────────────────────────────────
-        # Verifica il nome esatto sui due broker (XAUUSD, GOLD, XAUUSDm...)
         symbol = "XAUUSD",
     )
 

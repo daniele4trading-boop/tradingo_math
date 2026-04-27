@@ -242,7 +242,7 @@ class HedgeEngine:
     FASE2_MOM10_MIN      = 2.0   # momentum 10 barre >= 2.0 punti
     FASE2_TRAIL_HEDGE    = 1.5   # trailing hedge vincente: 1.5×ATR
     FASE2_TRAIL_PROP     = 1.0   # trailing prop vincente:  1.0×ATR
-    FASE2_BUFFER_LOSS    = 30    # punti buffer per congelare il perdente
+    FASE2_BUFFER_LOSS    = 60    # punti buffer per congelare il perdente (spread XAUUSD)
 
     def _calc_rsi_mom(self, rates) -> tuple:
         """Calcola RSI14 e Momentum10 dai rates M5. Ritorna (rsi, mom10)."""
@@ -290,12 +290,17 @@ class HedgeEngine:
             move_prop  = prop_entry - price   # positivo se prezzo scende (prop SELL guadagna)
 
         caso = ""
-        if move_hedge >= atr * self.FASE2_ATR_TRIGGER:
+        # Trigger adattivo: sessione NY (14:00-19:00 broker) → 1.2×ATR, altrimenti 0.8×ATR
+        broker_hour = datetime.now(timezone.utc).hour + 2  # UTC+2 broker
+        if broker_hour >= 24: broker_hour -= 24
+        atr_trigger = 1.2 if 14 <= broker_hour < 19 else self.FASE2_ATR_TRIGGER
+
+        if move_hedge >= atr * atr_trigger:
             caso = "A"   # hedge vince
-        elif move_prop >= atr * self.FASE2_ATR_TRIGGER:
+        elif move_prop >= atr * atr_trigger:
             caso = "B"   # prop vince
         else:
-            return False, "", f"movimento insufficiente hedge={move_hedge:.2f} prop={move_prop:.2f} soglia={atr*self.FASE2_ATR_TRIGGER:.2f}"
+            return False, "", f"movimento insufficiente hedge={move_hedge:.2f} prop={move_prop:.2f} soglia={atr*atr_trigger:.2f}"
 
         # Filtri RSI e momentum
         rsi, mom10 = self._calc_rsi_mom(rates)
@@ -479,12 +484,18 @@ class HedgeEngine:
                 equity  = info.equity
                 balance = info.balance
 
-                # Hard Stop su equity totale
-                if 0 < equity < self.cfg.hedge_floor_equity:
-                    log.critical(f"HARD STOP! eq={equity:.2f} < floor={self.cfg.hedge_floor_equity:.2f}")
+                # Hard Stop su equity totale — soglia emergenza 9.450$
+                EMERGENCY_FLOOR = 9_450.0
+                if 0 < equity < EMERGENCY_FLOOR:
+                    log.critical(f"HARD STOP EMERGENZA! eq={equity:.2f} < {EMERGENCY_FLOOR:.2f} — chiudo tutto")
                     for ticket in list(self._trades.keys()):
                         self._close_position(ticket)
                     self._trades.clear()
+                    # Ferma anche la prop
+                    cur = self.state.read()
+                    cur["prop_abort"]   = True
+                    cur["fase2_attiva"] = False
+                    self.state.write(cur)
                     self._running = False; break
 
                 state = self.state.read()
@@ -560,19 +571,23 @@ class HedgeEngine:
                     buffer_loss = self.FASE2_BUFFER_LOSS + spread_pts * 0.01
 
                     if self._fase2_caso == "A":
-                        # Hedge vince: aggiorna trailing 1.5×ATR
+                        # Hedge vince: trailing 1.5×ATR ma solo dopo 1.5×ATR di profitto (protezione runner)
                         for ticket, ht in self._trades.items():
                             if not ht.trend_riding:
                                 pos = mt5.positions_get(ticket=ticket)
                                 if pos:
                                     pnl = float(pos[0].profit)
+                                    runner_threshold = atr * 1.5 * self.cfg.hedge_lot * 10
+                                    if pnl < runner_threshold:
+                                        log.info(f"[FASE2-A] Runner protection: pnl={pnl:.2f}$ < soglia={runner_threshold:.2f}$ — trailing non ancora attivo")
+                                        continue
                                     if pnl > self._fase2_peak_pnl:
                                         self._fase2_peak_pnl  = pnl
                                         trail_dist = atr * self.FASE2_TRAIL_HEDGE
                                         self._fase2_floor_pnl = pnl - trail_dist * self.cfg.hedge_lot * 10
                                         log.info(f"[FASE2-A] Nuovo picco hedge={pnl:.2f}$ "
                                                  f"floor={self._fase2_floor_pnl:.2f}$")
-                                    elif pnl < self._fase2_floor_pnl:
+                                    elif self._fase2_floor_pnl > 0 and pnl < self._fase2_floor_pnl:
                                         log.warning(f"[FASE2-A] PNL {pnl:.2f}$ < floor "
                                                     f"{self._fase2_floor_pnl:.2f}$ → CHIUDO HEDGE")
                                         self._close_position(ticket)

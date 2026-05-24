@@ -67,6 +67,27 @@
       "notes": "Dashboard Streamlit storica su porta 8501."
     },
     {
+      "id": "tradingo_platform_dashboard",
+      "name": "TradinGO Platform Dashboard",
+      "category": "dashboard",
+      "enabled": true,
+      "working_directory": "C:\\tradingo_system",
+      "entrypoint": "dashboard\\app.py",
+      "start_command": "python -m streamlit run dashboard\\app.py --server.port 8502 --server.address 0.0.0.0",
+      "process_match": "streamlit run dashboard\\app.py --server.port 8502",
+      "broker": "N/A",
+      "account": "",
+      "server": "",
+      "magic": null,
+      "port": 8502,
+      "log_files": [
+        "C:\\tradingo_system\\logs\\platform_dashboard.out.log",
+        "C:\\tradingo_system\\logs\\platform_dashboard.err.log"
+      ],
+      "state_files": [],
+      "notes": "Dashboard unificata di controllo piattaforma su porta 8502."
+    },
+    {
       "id": "tradingo_main",
       "name": "TradinGO Core",
       "category": "live",
@@ -108,14 +129,14 @@
       "working_directory": "C:\\TSEntryGold",
       "entrypoint": "dashboard\\app.py",
       "start_command": "python dashboard/app.py",
-      "process_match": "dashboard/app.py",
+      "process_match": "python  dashboard/app.py",
       "broker": "N/A",
       "account": "",
       "server": "",
       "magic": null,
       "log_files": [],
       "state_files": [],
-      "notes": "Rilevato running come python dashboard/app.py."
+      "notes": "Rilevato running come python dashboard/app.py; match specifico per non confonderlo con dashboard unificata."
     },
     {
       "id": "telegram_bridge",

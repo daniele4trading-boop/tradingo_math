@@ -3,7 +3,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $dest = Join-Path $Target "backup_$stamp"
 

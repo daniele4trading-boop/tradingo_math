@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 $RegistryPath = Join-Path $RepoRoot "config\systems_registry.json"
 $ConfigPath = Join-Path $RepoRoot "config\systems_config.json"
 $LogsDir = Join-Path $RepoRoot "logs"

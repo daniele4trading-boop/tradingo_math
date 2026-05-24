@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$RepoRoot = Split-Path -Parent $PSScriptRoot
 $App = Join-Path $RepoRoot "dashboard\app.py"
 $TaskName = $ServiceName
 $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"cd '$RepoRoot'; streamlit run '$App' --server.port $Port --server.address 0.0.0.0`""

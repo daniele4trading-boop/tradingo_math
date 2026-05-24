@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "global": {
+    "dashboard_port": 8502,
+    "backup_target": "C:\\Users\\danie\\OneDrive\\DANIELE\\TRADINGO 2026",
+    "logs_dir": "logs",
+    "pid_dir": "logs"
+  },
+  "risk_limits": {
+    "prop_daily_drawdown_max_pct": 3.0,
+    "prop_total_drawdown_max_pct": 10.0
+  },
+  "systems": {
+    "tradingo_math_prop": {
+      "enabled": true,
+      "symbol": "XAUUSD",
+      "lot": 1.0,
+      "max_spread_points": 65,
+      "notes": "Parametri operativi reali restano nel codice/config legacy finche' non viene completata la migrazione."
+    },
+    "tradingo_math_hedge": {
+      "enabled": true,
+      "symbol": "XAUUSD",
+      "lot": 0.14,
+      "hedge_floor_equity": 9400.0
+    },
+    "tradingo_main": {
+      "enabled": true,
+      "notes": "Da verificare prima di rendere modificabili i parametri."
+    },
+    "tradingold_h1_tsentrygold": {
+      "enabled": true,
+      "timeframe": "H1",
+      "broker_timezone": "UTC+3",
+      "notes": "TradinGOld H1: confermare magic e parametri EA."
+    },
+    "telegram_bridge": {
+      "enabled": false
+    },
+    "mt4_bridge": {
+      "enabled": false
+    }
+  }
+}

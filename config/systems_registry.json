@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "updated_from": "VPS census 2026-05-24",
+  "systems": [
+    {
+      "id": "tradingo_math_prop",
+      "name": "TradinGO-Math Prop",
+      "category": "live",
+      "enabled": true,
+      "working_directory": "C:\\TradinGo_Math",
+      "entrypoint": "tradingo_prop.py",
+      "start_command": "python tradingo_prop.py",
+      "process_match": "tradingo_prop.py",
+      "broker": "StarTrader",
+      "account": "1610077148",
+      "server": "STARTRADERFinancial-Demo",
+      "magic": 20260001,
+      "risk_profile": "prop",
+      "log_files": [
+        "C:\\TradinGo_Math\\prop.log"
+      ],
+      "state_files": [
+        "C:\\TradinGo_Math\\tradingo_state.json"
+      ],
+      "notes": "Sistema prop live/demo con limiti drawdown: max 3% daily, max 10% total. Non modificare logica live senza rollback."
+    },
+    {
+      "id": "tradingo_math_hedge",
+      "name": "TradinGO-Math Hedge",
+      "category": "live",
+      "enabled": true,
+      "working_directory": "C:\\TradinGo_Math",
+      "entrypoint": "tradingo_hedge.py",
+      "start_command": "python tradingo_hedge.py",
+      "process_match": "tradingo_hedge.py",
+      "broker": "Ultima Markets",
+      "account": "843409",
+      "server": "UltimaMarkets-Demo",
+      "magic": 20260002,
+      "risk_profile": "hedge",
+      "log_files": [
+        "C:\\TradinGo_Math\\hedge.log"
+      ],
+      "state_files": [
+        "C:\\TradinGo_Math\\tradingo_state.json"
+      ],
+      "notes": "Sistema hedge collegato a Ultima Markets. Obiettivo: massimizzare profitto hedge mantenendo separazione magic."
+    },
+    {
+      "id": "tradingo_math_dashboard_legacy",
+      "name": "TradinGO-Math Dashboard Legacy",
+      "category": "dashboard",
+      "enabled": true,
+      "working_directory": "C:\\TradinGo_Math",
+      "entrypoint": "dashboard.py",
+      "start_command": "streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0",
+      "process_match": "dashboard.py",
+      "broker": "N/A",
+      "account": "",
+      "server": "",
+      "magic": null,
+      "port": 8501,
+      "log_files": [],
+      "state_files": [
+        "C:\\TradinGo_Math\\tradingo_state.json"
+      ],
+      "notes": "Dashboard Streamlit storica su porta 8501."
+    },
+    {
+      "id": "tradingo_main",
+      "name": "TradinGO Core",
+      "category": "live",
+      "enabled": true,
+      "working_directory": "C:\\TradinGO",
+      "entrypoint": "main.py",
+      "start_command": "python main.py",
+      "process_match": "main.py",
+      "broker": "Da verificare",
+      "account": "",
+      "server": "",
+      "magic": null,
+      "log_files": [],
+      "state_files": [],
+      "notes": "Rilevato running come python main.py. Broker e magic da verificare prima di modifiche."
+    },
+    {
+      "id": "tradingold_h1_tsentrygold",
+      "name": "TradinGOld H1",
+      "category": "live",
+      "enabled": true,
+      "working_directory": "C:\\TSEntryGold",
+      "entrypoint": "main.py",
+      "start_command": "python main.py",
+      "process_match": "TSEntryGold",
+      "broker": "XM Demo",
+      "account": "27642809",
+      "server": "Broker UTC+3",
+      "magic": null,
+      "log_files": [],
+      "state_files": [],
+      "notes": "Nome commerciale fisso: TradinGOld H1. Cartella censita come TSEntryGold; confermare magic/EA prima di interventi."
+    },
+    {
+      "id": "tradingold_h1_dashboard",
+      "name": "TradinGOld H1 Dashboard",
+      "category": "dashboard",
+      "enabled": true,
+      "working_directory": "C:\\TSEntryGold",
+      "entrypoint": "dashboard\\app.py",
+      "start_command": "python dashboard/app.py",
+      "process_match": "dashboard/app.py",
+      "broker": "N/A",
+      "account": "",
+      "server": "",
+      "magic": null,
+      "log_files": [],
+      "state_files": [],
+      "notes": "Rilevato running come python dashboard/app.py."
+    },
+    {
+      "id": "telegram_bridge",
+      "name": "Telegram Bridge",
+      "category": "copy_trading",
+      "enabled": false,
+      "working_directory": "C:\\telegrambridge",
+      "entrypoint": "telegram_bridge.py",
+      "start_command": "python telegram_bridge.py",
+      "process_match": "telegram_bridge.py",
+      "broker": "N/A",
+      "account": "",
+      "server": "",
+      "magic": null,
+      "log_files": [],
+      "state_files": [],
+      "notes": "Bridge Telegram rilevato ma fermo al censimento."
+    },
+    {
+      "id": "mt4_bridge",
+      "name": "MT4 Bridge",
+      "category": "copy_trading",
+      "enabled": false,
+      "working_directory": "C:\\mt4bridge",
+      "entrypoint": "mt4_bridge.py",
+      "start_command": "python mt4_bridge.py",
+      "process_match": "mt4_bridge.py",
+      "broker": "Da verificare",
+      "account": "",
+      "server": "",
+      "magic": null,
+      "log_files": [],
+      "state_files": [],
+      "notes": "Bridge MT4 rilevato ma fermo al censimento."
+    }
+  ]
+}

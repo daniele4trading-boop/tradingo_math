@@ -88,6 +88,28 @@
       "notes": "Dashboard unificata di controllo piattaforma su porta 8502. Match processo basato sulla porta per robustezza."
     },
     {
+      "id": "manual_trade_executor",
+      "name": "Manual Trade Executor",
+      "category": "executor",
+      "enabled": true,
+      "working_directory": "C:\\tradingo_system",
+      "entrypoint": "manual_trading\\executor.py",
+      "start_command": "python -m manual_trading.executor --daemon",
+      "process_match": "manual_trading.executor --daemon",
+      "broker": "StarTrader + Ultima Markets",
+      "account": "demo",
+      "server": "",
+      "magic": null,
+      "log_files": [
+        "C:\\tradingo_system\\logs\\manual_trade_executor.out.log",
+        "C:\\tradingo_system\\logs\\manual_trade_executor.err.log"
+      ],
+      "state_files": [
+        "C:\\tradingo_system\\data\\manual_orders.sqlite"
+      ],
+      "notes": "Daemon che esegue ordini manuali QUEUED e gestisce fase2/equity floor hedge."
+    },
+    {
       "id": "tradingo_main",
       "name": "TradinGO Core",
       "category": "live",

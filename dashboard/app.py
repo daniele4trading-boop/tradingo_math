@@ -47,6 +47,12 @@ def run_script(script_name: str, *args: str) -> tuple[int, str]:
     return proc.returncode, (proc.stdout + proc.stderr).strip()
 
 
+def run_python_module(module: str, *args: str, timeout: int = 120) -> tuple[int, str]:
+    cmd = [sys.executable, "-m", module, *args]
+    proc = subprocess.run(cmd, cwd=ROOT, text=True, capture_output=True, timeout=timeout)
+    return proc.returncode, (proc.stdout + proc.stderr).strip()
+
+
 def get_process_rows(systems):
     if platform.system().lower() != "windows":
         return {}
@@ -154,8 +160,8 @@ with tab_status:
 with tab_manual:
     st.subheader("Manual Trade - TradinGO-Math")
     st.warning(
-        "Fase 1: questa schermata calcola e mette in coda piani manuali. "
-        "Non invia ancora ordini reali a MT5."
+        "Fase 2 demo: questa schermata calcola, mette in coda ed esegue su MT5 solo se execution_enabled e' attivo. "
+        "Usare prima lotti minimi e conti demo."
     )
 
     defaults = {
@@ -171,6 +177,9 @@ with tab_manual:
         "hedge_multiplier": float(manual_config.get("hedge_lot_multiplier", 1.4)),
         "max_prop_lot": float(manual_config.get("max_prop_lot", 10.0)),
         "max_hedge_lot": float(manual_config.get("max_hedge_lot", 10.0)),
+        "hedge_equity_floor": float(manual_config.get("hedge_equity_floor", 0.0)),
+        "phase2_trigger_sl_fraction": float(manual_config.get("phase2_trigger_sl_fraction", 0.5)),
+        "execution_enabled": bool(manual_config.get("execution_enabled", False)),
     }
 
     with st.form("manual_trade_form"):
@@ -200,11 +209,32 @@ with tab_manual:
         hedge_multiplier = c15.number_input("Moltiplicatore hedge", min_value=0.0, value=defaults["hedge_multiplier"], step=0.1)
         max_hedge_lot = c16.number_input("Max hedge lot", min_value=0.01, value=defaults["max_hedge_lot"], step=0.1)
 
+        c17, c18, c19 = st.columns(3)
+        hedge_equity_floor = c17.number_input("Equity floor hedge assoluto", min_value=0.0, value=defaults["hedge_equity_floor"], step=100.0, help="Se equity hedge <= questo valore, l'executor chiude le posizioni hedge secondo lo scope configurato.")
+        phase2_fraction = c18.number_input("Trigger Fase 2 x SL", min_value=0.0, value=defaults["phase2_trigger_sl_fraction"], step=0.1, help="0.5 significa: fase2 quando il movimento raggiunge 50% della distanza SL.")
+        execution_enabled = c19.checkbox("Esecuzione demo MT5 abilitata", value=defaults["execution_enabled"])
+
         notes = st.text_area("Note piano", value="")
         calculate = st.form_submit_button("Calcola piano")
         queue = st.form_submit_button("Metti in coda (non esegue MT5)")
 
     if calculate or queue:
+        manual_config.update({
+            "default_symbol": symbol.strip().upper() or "XAUUSD",
+            "default_reference_price": entry_price,
+            "default_sl_distance": sl_distance,
+            "default_tp_distance": tp_distance,
+            "default_prop_balance": prop_balance,
+            "default_hedge_balance": hedge_balance,
+            "default_prop_risk_pct": prop_risk_pct,
+            "contract_size": contract_size,
+            "hedge_lot_multiplier": hedge_multiplier,
+            "max_hedge_lot": max_hedge_lot,
+            "hedge_equity_floor": hedge_equity_floor,
+            "phase2_trigger_sl_fraction": phase2_fraction,
+            "execution_enabled": execution_enabled,
+        })
+        save_json(CONFIG_PATH, config)
         try:
             manual_input = ManualTradeInput(
                 tenant_id=tenant_id.strip() or "daniele",
@@ -261,13 +291,31 @@ with tab_manual:
             }
         )
 
+    st.markdown("### Esecuzione demo")
+    c_exec1, c_exec2 = st.columns(2)
+    if c_exec1.button("Esegui coda ora su MT5", type="primary"):
+        if not manual_config.get("execution_enabled", False):
+            st.error("execution_enabled e' false. Abilita la spunta nel form e ricalcola/salva prima di eseguire.")
+        else:
+            code, out = run_python_module("manual_trading.executor", "--once", timeout=180)
+            if code == 0:
+                st.success("Executor completato.")
+            else:
+                st.error(f"Executor errore {code}")
+            if out:
+                st.code(out, language="text")
+            st.rerun()
+    if c_exec2.button("Aggiorna coda"):
+        st.rerun()
+
     st.markdown("### Coda ordini manuali")
     orders = order_manager.list_orders(limit=50)
     if orders:
         visible_cols = [
             "created_at", "tenant_id", "symbol", "status", "hedge_direction", "prop_direction",
             "prop_lot", "hedge_lot", "prop_sl", "prop_tp", "hedge_sl", "hedge_tp",
-            "estimated_prop_loss", "estimated_hedge_profit",
+            "prop_ticket", "hedge_ticket", "phase2_active", "estimated_prop_loss",
+            "estimated_hedge_profit", "execution_error",
         ]
         st.dataframe([{k: row.get(k) for k in visible_cols} for row in orders], use_container_width=True)
     else:

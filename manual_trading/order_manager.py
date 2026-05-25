@@ -141,6 +141,19 @@ def build_manual_trade_plan(inp: ManualTradeInput) -> ManualTradePlan:
 
 
 class OrderManager:
+    EXECUTION_COLUMNS: dict[str, str] = {
+        "prop_ticket": "TEXT",
+        "hedge_ticket": "TEXT",
+        "prop_entry_price": "REAL",
+        "hedge_entry_price": "REAL",
+        "phase2_active": "INTEGER NOT NULL DEFAULT 0",
+        "phase2_activated_at": "TEXT",
+        "prop_sl_set": "INTEGER NOT NULL DEFAULT 0",
+        "hedge_sl_set": "INTEGER NOT NULL DEFAULT 0",
+        "execution_error": "TEXT",
+        "executed_at": "TEXT",
+    }
+
     def __init__(self, db_path: Path):
         self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -183,6 +196,10 @@ class OrderManager:
                 )
                 """
             )
+            existing = {row[1] for row in conn.execute("PRAGMA table_info(manual_trade_orders)").fetchall()}
+            for name, sql_type in self.EXECUTION_COLUMNS.items():
+                if name not in existing:
+                    conn.execute(f"ALTER TABLE manual_trade_orders ADD COLUMN {name} {sql_type}")
             conn.commit()
 
     def queue_plan(self, plan: ManualTradePlan) -> None:
@@ -217,6 +234,11 @@ class OrderManager:
             )
             conn.commit()
 
+    def get_order(self, plan_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM manual_trade_orders WHERE plan_id = ?", (plan_id,)).fetchone()
+        return dict(row) if row else None
+
     def list_orders(self, limit: int = 50) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
@@ -229,14 +251,53 @@ class OrderManager:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def update_status(self, plan_id: str, status: str) -> None:
+    def list_executable_orders(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM manual_trade_orders
+                WHERE status IN ('QUEUED', 'ARMED')
+                ORDER BY created_at ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_active_orders(self) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM manual_trade_orders
+                WHERE status IN ('HEDGE_OPENED', 'PROP_OPENED', 'ACTIVE', 'PHASE2')
+                ORDER BY created_at ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def update_status(self, plan_id: str, status: str, error: str | None = None) -> None:
+        updates = ["status = ?", "updated_at = ?"]
+        values: list[Any] = [status, now_utc()]
+        if error is not None:
+            updates.append("execution_error = ?")
+            values.append(error)
+        values.append(plan_id)
         with self.connect() as conn:
             conn.execute(
-                """
-                UPDATE manual_trade_orders
-                SET status = ?, updated_at = ?
-                WHERE plan_id = ?
-                """,
-                (status, now_utc(), plan_id),
+                f"UPDATE manual_trade_orders SET {', '.join(updates)} WHERE plan_id = ?",
+                values,
+            )
+            conn.commit()
+
+    def update_execution(self, plan_id: str, **fields: Any) -> None:
+        allowed = set(self.EXECUTION_COLUMNS) | {"status"}
+        payload = {k: v for k, v in fields.items() if k in allowed}
+        if not payload:
+            return
+        payload["updated_at"] = now_utc()
+        updates = [f"{key} = ?" for key in payload]
+        values = list(payload.values()) + [plan_id]
+        with self.connect() as conn:
+            conn.execute(
+                f"UPDATE manual_trade_orders SET {', '.join(updates)} WHERE plan_id = ?",
+                values,
             )
             conn.commit()

@@ -59,8 +59,20 @@
     "hedge_lot_multiplier": 1.4,
     "max_prop_lot": 10.0,
     "max_hedge_lot": 10.0,
-    "execution_enabled": false,
+    "execution_enabled": true,
     "setup_scanner_enabled": false,
-    "notes": "Fase 1: calcolo e queue manuale. Esecuzione MT5 reale disabilitata finche non vengono collegati worker dedicati."
+    "notes": "Fase 2: esecuzione demo abilitata. Hedge first, prop second; equity floor hedge chiude posizioni hedge; fase2 protegge/rimuove TP.",
+    "executor_daemon_enabled": true,
+    "executor_loop_interval_sec": 2.0,
+    "prop_terminal": "C:\\Program Files\\STARTRADER Financial MetaTrader 5\\terminal64.exe",
+    "hedge_terminal": "C:\\Program Files\\Ultima Markets MT5 Terminal\\terminal64.exe",
+    "prop_magic": 20260001,
+    "hedge_magic": 20260002,
+    "prop_deviation": 30,
+    "hedge_deviation": 30,
+    "hedge_equity_floor": 0.0,
+    "hedge_close_scope": "all",
+    "phase2_enabled": true,
+    "phase2_trigger_sl_fraction": 0.5
   }
 }

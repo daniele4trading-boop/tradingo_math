@@ -2,6 +2,7 @@ import json
 import os
 import platform
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -9,10 +10,16 @@ import streamlit as st
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from manual_trading.order_manager import ManualTradeInput, OrderManager, build_manual_trade_plan
+
 REGISTRY_PATH = ROOT / "config" / "systems_registry.json"
 CONFIG_PATH = ROOT / "config" / "systems_config.json"
 STRATEGIES_PATH = ROOT / "strategies" / "registry.json"
 SCRIPTS_DIR = ROOT / "scripts"
+DEFAULT_MANUAL_DB = ROOT / "data" / "manual_orders.sqlite"
 
 
 def load_json(path: Path, default):
@@ -95,6 +102,9 @@ config = load_json(CONFIG_PATH, {"systems": {}, "global": {}})
 strategies = load_json(STRATEGIES_PATH, {"strategies": []})
 systems = registry.get("systems", [])
 system_config = config.setdefault("systems", {})
+manual_config = config.setdefault("manual_trading", {})
+manual_db_path = ROOT / manual_config.get("orders_db", "data/manual_orders.sqlite")
+order_manager = OrderManager(manual_db_path)
 process_status = get_process_rows(systems)
 
 st.title("TradinGO Platform Control Center")
@@ -103,8 +113,8 @@ st.caption("Dashboard unificata per sistemi live, strategie, backtest, config, l
 if st.button("Refresh"):
     st.rerun()
 
-tab_status, tab_config, tab_backtest, tab_strategies, tab_logs = st.tabs(
-    ["Stato sistemi", "Configurazione", "Backtest", "Strategie", "Log"]
+tab_status, tab_manual, tab_config, tab_backtest, tab_strategies, tab_logs = st.tabs(
+    ["Stato sistemi", "Manual Trade", "Configurazione", "Backtest", "Strategie", "Log"]
 )
 
 with tab_status:
@@ -139,6 +149,129 @@ with tab_status:
 
     st.caption("Auto-refresh leggero ogni 30 secondi.")
     time.sleep(0.1)
+
+
+with tab_manual:
+    st.subheader("Manual Trade - TradinGO-Math")
+    st.warning(
+        "Fase 1: questa schermata calcola e mette in coda piani manuali. "
+        "Non invia ancora ordini reali a MT5."
+    )
+
+    defaults = {
+        "tenant_id": manual_config.get("default_tenant_id", "daniele"),
+        "symbol": manual_config.get("default_symbol", "XAUUSD"),
+        "entry_price": float(manual_config.get("default_reference_price", 3300.0)),
+        "sl_distance": float(manual_config.get("default_sl_distance", 10.0)),
+        "tp_distance": float(manual_config.get("default_tp_distance", 20.0)),
+        "prop_balance": float(manual_config.get("default_prop_balance", 100000.0)),
+        "hedge_balance": float(manual_config.get("default_hedge_balance", 10000.0)),
+        "prop_risk_pct": float(manual_config.get("default_prop_risk_pct", 0.5)),
+        "contract_size": float(manual_config.get("contract_size", 100.0)),
+        "hedge_multiplier": float(manual_config.get("hedge_lot_multiplier", 1.4)),
+        "max_prop_lot": float(manual_config.get("max_prop_lot", 10.0)),
+        "max_hedge_lot": float(manual_config.get("max_hedge_lot", 10.0)),
+    }
+
+    with st.form("manual_trade_form"):
+        c1, c2, c3 = st.columns(3)
+        tenant_id = c1.text_input("Tenant / utente", value=defaults["tenant_id"])
+        symbol = c2.text_input("Symbol", value=defaults["symbol"])
+        hedge_direction = c3.selectbox("Direzione Hedge", options=["BUY", "SELL"], help="La prop viene calcolata speculare/contraria.")
+
+        c4, c5, c6 = st.columns(3)
+        entry_price = c4.number_input("Prezzo riferimento", min_value=0.00001, value=defaults["entry_price"], step=0.1)
+        sl_distance = c5.number_input("Distanza SL punti/prezzo", min_value=0.00001, value=defaults["sl_distance"], step=0.1)
+        tp_distance = c6.number_input("Distanza TP punti/prezzo", min_value=0.00001, value=defaults["tp_distance"], step=0.1)
+
+        c7, c8, c9 = st.columns(3)
+        prop_balance = c7.number_input("Balance prop", min_value=0.0, value=defaults["prop_balance"], step=1000.0)
+        hedge_balance = c8.number_input("Balance hedge", min_value=0.0, value=defaults["hedge_balance"], step=1000.0)
+        prop_risk_pct = c9.number_input("Rischio prop per trade %", min_value=0.0, value=defaults["prop_risk_pct"], step=0.1)
+
+        c10, c11, c12, c13 = st.columns(4)
+        daily_dd_max = c10.number_input("Max DD daily prop %", min_value=0.0, value=float(config.get("risk_limits", {}).get("prop_daily_drawdown_max_pct", 3.0)), step=0.1)
+        total_dd_max = c11.number_input("Max DD total prop %", min_value=0.0, value=float(config.get("risk_limits", {}).get("prop_total_drawdown_max_pct", 10.0)), step=0.1)
+        daily_dd_used = c12.number_input("DD daily gia' usato %", min_value=0.0, value=0.0, step=0.1)
+        total_dd_used = c13.number_input("DD total gia' usato %", min_value=0.0, value=0.0, step=0.1)
+
+        c14, c15, c16 = st.columns(3)
+        contract_size = c14.number_input("Contract size", min_value=0.00001, value=defaults["contract_size"], step=1.0)
+        hedge_multiplier = c15.number_input("Moltiplicatore hedge", min_value=0.0, value=defaults["hedge_multiplier"], step=0.1)
+        max_hedge_lot = c16.number_input("Max hedge lot", min_value=0.01, value=defaults["max_hedge_lot"], step=0.1)
+
+        notes = st.text_area("Note piano", value="")
+        calculate = st.form_submit_button("Calcola piano")
+        queue = st.form_submit_button("Metti in coda (non esegue MT5)")
+
+    if calculate or queue:
+        try:
+            manual_input = ManualTradeInput(
+                tenant_id=tenant_id.strip() or "daniele",
+                symbol=symbol.strip().upper() or "XAUUSD",
+                hedge_direction=hedge_direction,
+                entry_price=entry_price,
+                sl_distance=sl_distance,
+                tp_distance=tp_distance,
+                prop_balance=prop_balance,
+                hedge_balance=hedge_balance,
+                prop_daily_dd_max_pct=daily_dd_max,
+                prop_total_dd_max_pct=total_dd_max,
+                prop_daily_dd_used_pct=daily_dd_used,
+                prop_total_dd_used_pct=total_dd_used,
+                prop_risk_pct=prop_risk_pct,
+                prop_contract_size=contract_size,
+                hedge_lot_multiplier=hedge_multiplier,
+                max_prop_lot=defaults["max_prop_lot"],
+                max_hedge_lot=max_hedge_lot,
+                notes=notes,
+            )
+            plan = build_manual_trade_plan(manual_input)
+            st.session_state["last_manual_plan"] = plan
+            if queue:
+                order_manager.queue_plan(plan)
+                st.success(f"Piano messo in coda: {plan.plan_id}")
+        except Exception as exc:
+            st.error(f"Errore calcolo piano: {exc}")
+
+    plan = st.session_state.get("last_manual_plan")
+    if plan:
+        st.markdown("### Piano suggerito")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Prop", f"{plan.prop_direction} {plan.prop_lot:.2f} lot")
+        m2.metric("Hedge", f"{plan.hedge_direction} {plan.hedge_lot:.2f} lot")
+        m3.metric("Risk budget prop", f"{plan.risk_budget:.2f}")
+        m4.metric("Perdita prop stimata", f"{plan.estimated_prop_loss:.2f}")
+
+        st.json(
+            {
+                "plan_id": plan.plan_id,
+                "symbol": plan.symbol,
+                "entry_price": plan.entry_price,
+                "prop": {"direction": plan.prop_direction, "lot": plan.prop_lot, "sl": plan.prop_sl, "tp": plan.prop_tp},
+                "hedge": {"direction": plan.hedge_direction, "lot": plan.hedge_lot, "sl": plan.hedge_sl, "tp": plan.hedge_tp},
+                "estimates": {
+                    "prop_loss": plan.estimated_prop_loss,
+                    "prop_profit": plan.estimated_prop_profit,
+                    "hedge_loss": plan.estimated_hedge_loss,
+                    "hedge_profit": plan.estimated_hedge_profit,
+                    "remaining_daily_dd_pct": plan.remaining_daily_dd_pct,
+                    "remaining_total_dd_pct": plan.remaining_total_dd_pct,
+                },
+            }
+        )
+
+    st.markdown("### Coda ordini manuali")
+    orders = order_manager.list_orders(limit=50)
+    if orders:
+        visible_cols = [
+            "created_at", "tenant_id", "symbol", "status", "hedge_direction", "prop_direction",
+            "prop_lot", "hedge_lot", "prop_sl", "prop_tp", "hedge_sl", "hedge_tp",
+            "estimated_prop_loss", "estimated_hedge_profit",
+        ]
+        st.dataframe([{k: row.get(k) for k in visible_cols} for row in orders], use_container_width=True)
+    else:
+        st.info("Nessun ordine manuale in coda.")
 
 with tab_config:
     st.subheader("Configurazione parametri")

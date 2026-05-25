@@ -12,3 +12,5 @@ logs/*
 backtest/data/*
 !backtest/data/.gitkeep
 backtest/output/
+data/*
+!data/.gitkeep

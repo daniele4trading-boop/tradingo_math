@@ -44,5 +44,23 @@
       "enabled": true,
       "port": 8502
     }
+  },
+  "manual_trading": {
+    "orders_db": "data/manual_orders.sqlite",
+    "default_tenant_id": "daniele",
+    "default_symbol": "XAUUSD",
+    "default_reference_price": 3300.0,
+    "default_sl_distance": 10.0,
+    "default_tp_distance": 20.0,
+    "default_prop_balance": 100000.0,
+    "default_hedge_balance": 10000.0,
+    "default_prop_risk_pct": 0.5,
+    "contract_size": 100.0,
+    "hedge_lot_multiplier": 1.4,
+    "max_prop_lot": 10.0,
+    "max_hedge_lot": 10.0,
+    "execution_enabled": false,
+    "setup_scanner_enabled": false,
+    "notes": "Fase 1: calcolo e queue manuale. Esecuzione MT5 reale disabilitata finche non vengono collegati worker dedicati."
   }
 }

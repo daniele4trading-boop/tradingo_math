@@ -216,9 +216,10 @@ with tab_manual:
 
         notes = st.text_area("Note piano", value="")
         calculate = st.form_submit_button("Calcola piano")
-        queue = st.form_submit_button("Metti in coda (non esegue MT5)")
+        queue = st.form_submit_button("Metti in coda")
+        execute_now = st.form_submit_button("Apri subito su MT5 demo", type="primary")
 
-    if calculate or queue:
+    if calculate or queue or execute_now:
         manual_config.update({
             "default_symbol": symbol.strip().upper() or "XAUUSD",
             "default_reference_price": entry_price,
@@ -258,9 +259,21 @@ with tab_manual:
             )
             plan = build_manual_trade_plan(manual_input)
             st.session_state["last_manual_plan"] = plan
-            if queue:
+            if queue or execute_now:
                 order_manager.queue_plan(plan)
                 st.success(f"Piano messo in coda: {plan.plan_id}")
+            if execute_now:
+                if not manual_config.get("execution_enabled", False):
+                    st.error("execution_enabled e' false. Abilita la spunta nel form prima di eseguire.")
+                else:
+                    code, out = run_python_module("manual_trading.executor", "--once", timeout=180)
+                    if code == 0:
+                        st.success("Executor completato: controlla ticket/stato nella coda.")
+                    else:
+                        st.error(f"Executor errore {code}")
+                    if out:
+                        st.code(out, language="text")
+                    st.rerun()
         except Exception as exc:
             st.error(f"Errore calcolo piano: {exc}")
 
@@ -292,6 +305,7 @@ with tab_manual:
         )
 
     st.markdown("### Esecuzione demo")
+    st.caption("Se hai gia' ordini in coda, usa il bottone qui sotto. Per un nuovo trade puoi usare direttamente 'Apri subito su MT5 demo' nel form.")
     c_exec1, c_exec2 = st.columns(2)
     if c_exec1.button("Esegui coda ora su MT5", type="primary"):
         if not manual_config.get("execution_enabled", False):

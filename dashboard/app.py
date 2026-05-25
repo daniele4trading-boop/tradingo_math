@@ -101,6 +101,34 @@ def tail_file(path: str, lines: int = 100) -> str:
         return f"Errore lettura log {path}: {exc}"
 
 
+def fetch_live_price(symbol: str, terminal_path: str) -> tuple[float | None, str]:
+    if platform.system().lower() != "windows":
+        return None, "Prezzo live disponibile solo sulla VPS Windows."
+    try:
+        import MetaTrader5 as mt5
+    except Exception as exc:
+        return None, f"MetaTrader5 non importabile: {exc}"
+    try:
+        mt5.shutdown()
+        if not mt5.initialize(path=terminal_path):
+            return None, f"MT5 initialize failed: {mt5.last_error()}"
+        tick = mt5.symbol_info_tick(symbol)
+        if tick is None:
+            return None, f"Nessun tick per {symbol}"
+        bid = float(tick.bid)
+        ask = float(tick.ask)
+        if bid <= 0 or ask <= 0:
+            return None, f"Tick non valido per {symbol}: bid={bid} ask={ask}"
+        return round((bid + ask) / 2.0, 5), f"Live mid {symbol}: bid={bid}, ask={ask}"
+    except Exception as exc:
+        return None, f"Errore prezzo live: {exc}"
+    finally:
+        try:
+            mt5.shutdown()
+        except Exception:
+            pass
+
+
 st.set_page_config(page_title="TradinGO Platform", page_icon="TG", layout="wide")
 
 registry = load_json(REGISTRY_PATH, {"systems": []})
@@ -173,7 +201,8 @@ with tab_manual:
         "prop_balance": float(manual_config.get("default_prop_balance", 100000.0)),
         "hedge_balance": float(manual_config.get("default_hedge_balance", 10000.0)),
         "prop_risk_pct": float(manual_config.get("default_prop_risk_pct", 0.5)),
-        "contract_size": float(manual_config.get("contract_size", 100.0)),
+        "prop_contract_size": float(manual_config.get("prop_contract_size", manual_config.get("contract_size", 100.0))),
+        "hedge_contract_size": float(manual_config.get("hedge_contract_size", manual_config.get("contract_size", 100.0))),
         "hedge_multiplier": float(manual_config.get("hedge_lot_multiplier", 1.4)),
         "max_prop_lot": float(manual_config.get("max_prop_lot", 10.0)),
         "max_hedge_lot": float(manual_config.get("max_hedge_lot", 10.0)),
@@ -182,6 +211,19 @@ with tab_manual:
         "execution_enabled": bool(manual_config.get("execution_enabled", False)),
     }
 
+    st.info("Prezzo riferimento: se non premi 'Aggiorna prezzo live', viene usato il valore manuale salvato nel form. Per XAUUSD il valore per 1 lotto per 1 punto/prezzo e' normalmente 100.")
+    live_col1, live_col2 = st.columns([1, 3])
+    if live_col1.button("Aggiorna prezzo live MT5"):
+        terminal = manual_config.get("hedge_terminal") or manual_config.get("prop_terminal") or r"C:\Program Files\Ultima Markets MT5 Terminal\terminal64.exe"
+        price, msg = fetch_live_price(defaults["symbol"], terminal)
+        if price is not None:
+            st.session_state["manual_live_price"] = price
+            st.success(msg)
+        else:
+            st.error(msg)
+    live_col2.caption(f"Prezzo live in sessione: {st.session_state.get('manual_live_price', 'non aggiornato')}")
+    default_entry_price = max(0.00001, float(st.session_state.get("manual_live_price", defaults["entry_price"])))
+
     with st.form("manual_trade_form"):
         c1, c2, c3 = st.columns(3)
         tenant_id = c1.text_input("Tenant / utente", value=defaults["tenant_id"])
@@ -189,7 +231,7 @@ with tab_manual:
         hedge_direction = c3.selectbox("Direzione Hedge", options=["BUY", "SELL"], help="La prop viene calcolata speculare/contraria.")
 
         c4, c5, c6 = st.columns(3)
-        entry_price = c4.number_input("Prezzo riferimento", min_value=0.00001, value=defaults["entry_price"], step=0.1)
+        entry_price = c4.number_input("Prezzo riferimento", min_value=0.00001, value=default_entry_price, step=0.1, help="Prezzo manuale o live mid MT5 se hai premuto Aggiorna prezzo live MT5.")
         sl_distance = c5.number_input("Distanza SL punti/prezzo", min_value=0.00001, value=defaults["sl_distance"], step=0.1)
         tp_distance = c6.number_input("Distanza TP punti/prezzo", min_value=0.00001, value=defaults["tp_distance"], step=0.1)
 
@@ -205,9 +247,13 @@ with tab_manual:
         total_dd_used = c13.number_input("DD total gia' usato %", min_value=0.0, value=0.0, step=0.1)
 
         c14, c15, c16 = st.columns(3)
-        contract_size = c14.number_input("Contract size", min_value=0.00001, value=defaults["contract_size"], step=1.0)
-        hedge_multiplier = c15.number_input("Moltiplicatore hedge", min_value=0.0, value=defaults["hedge_multiplier"], step=0.1)
-        max_hedge_lot = c16.number_input("Max hedge lot", min_value=0.01, value=defaults["max_hedge_lot"], step=0.1)
+        prop_contract_size = c14.number_input("Prop valore 1 lotto x 1 punto", min_value=0.00001, value=defaults["prop_contract_size"], step=1.0, help="Per XAUUSD spesso 100. Formula perdita prop = lotto * distanza SL * questo valore.")
+        hedge_contract_size = c15.number_input("Hedge valore 1 lotto x 1 punto", min_value=0.00001, value=defaults["hedge_contract_size"], step=1.0, help="Per XAUUSD spesso 100. Formula P/L hedge = lotto * distanza * questo valore.")
+        hedge_multiplier = c16.number_input("Moltiplicatore hedge", min_value=0.0, value=defaults["hedge_multiplier"], step=0.1)
+
+        c16b, c16c = st.columns(2)
+        max_prop_lot = c16b.number_input("Max prop lot", min_value=0.01, value=defaults["max_prop_lot"], step=0.1)
+        max_hedge_lot = c16c.number_input("Max hedge lot", min_value=0.01, value=defaults["max_hedge_lot"], step=0.1)
 
         c17, c18, c19 = st.columns(3)
         hedge_equity_floor = c17.number_input("Equity floor hedge assoluto", min_value=0.0, value=defaults["hedge_equity_floor"], step=100.0, help="Se equity hedge <= questo valore, l'executor chiude le posizioni hedge secondo lo scope configurato.")
@@ -228,8 +274,11 @@ with tab_manual:
             "default_prop_balance": prop_balance,
             "default_hedge_balance": hedge_balance,
             "default_prop_risk_pct": prop_risk_pct,
-            "contract_size": contract_size,
+            "prop_contract_size": prop_contract_size,
+            "hedge_contract_size": hedge_contract_size,
+            "contract_size": prop_contract_size,
             "hedge_lot_multiplier": hedge_multiplier,
+            "max_prop_lot": max_prop_lot,
             "max_hedge_lot": max_hedge_lot,
             "hedge_equity_floor": hedge_equity_floor,
             "phase2_trigger_sl_fraction": phase2_fraction,
@@ -251,9 +300,10 @@ with tab_manual:
                 prop_daily_dd_used_pct=daily_dd_used,
                 prop_total_dd_used_pct=total_dd_used,
                 prop_risk_pct=prop_risk_pct,
-                prop_contract_size=contract_size,
+                prop_contract_size=prop_contract_size,
+                hedge_contract_size=hedge_contract_size,
                 hedge_lot_multiplier=hedge_multiplier,
-                max_prop_lot=defaults["max_prop_lot"],
+                max_prop_lot=max_prop_lot,
                 max_hedge_lot=max_hedge_lot,
                 notes=notes,
             )
@@ -285,6 +335,14 @@ with tab_manual:
         m2.metric("Hedge", f"{plan.hedge_direction} {plan.hedge_lot:.2f} lot")
         m3.metric("Risk budget prop", f"{plan.risk_budget:.2f}")
         m4.metric("Perdita prop stimata", f"{plan.estimated_prop_loss:.2f}")
+        st.caption(
+            f"Formula prop: rischio={plan.risk_budget:.2f} / (SL={sl_distance:.2f} * valore={plan.prop_contract_size:.2f}) "
+            f"= lotto teorico {plan.raw_prop_lot:.4f}; lotto usato {plan.prop_lot:.2f}."
+        )
+        if plan.prop_lot_capped:
+            st.warning(f"Prop lotto cappato: teorico {plan.raw_prop_lot:.4f}, max {max_prop_lot:.2f}. Il rischio effettivo puo' essere diverso dal budget.")
+        if plan.hedge_lot_capped:
+            st.warning(f"Hedge lotto cappato: teorico {plan.raw_hedge_lot:.4f}, max {max_hedge_lot:.2f}.")
 
         st.json(
             {
@@ -300,6 +358,10 @@ with tab_manual:
                     "hedge_profit": plan.estimated_hedge_profit,
                     "remaining_daily_dd_pct": plan.remaining_daily_dd_pct,
                     "remaining_total_dd_pct": plan.remaining_total_dd_pct,
+                    "raw_prop_lot": plan.raw_prop_lot,
+                    "raw_hedge_lot": plan.raw_hedge_lot,
+                    "prop_contract_size": plan.prop_contract_size,
+                    "hedge_contract_size": plan.hedge_contract_size,
                 },
             }
         )

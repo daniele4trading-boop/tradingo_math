@@ -28,6 +28,7 @@ class ManualTradeInput:
     prop_total_dd_used_pct: float = 0.0
     prop_risk_pct: float = 0.5
     prop_contract_size: float = 100.0
+    hedge_contract_size: float = 100.0
     hedge_lot_multiplier: float = 1.4
     max_prop_lot: float = 10.0
     max_hedge_lot: float = 10.0
@@ -58,6 +59,12 @@ class ManualTradePlan:
     remaining_daily_dd_pct: float
     remaining_total_dd_pct: float
     risk_budget: float
+    raw_prop_lot: float
+    raw_hedge_lot: float
+    prop_lot_capped: bool
+    hedge_lot_capped: bool
+    prop_contract_size: float
+    hedge_contract_size: float
     status: str = "PLANNED"
     notes: str = ""
 
@@ -94,7 +101,10 @@ def build_manual_trade_plan(inp: ManualTradeInput) -> ManualTradePlan:
 
     raw_prop_lot = risk_budget / (inp.sl_distance * inp.prop_contract_size)
     prop_lot = round_lot(raw_prop_lot, inp.lot_step, inp.min_lot, inp.max_prop_lot)
-    hedge_lot = round_lot(prop_lot * inp.hedge_lot_multiplier, inp.lot_step, inp.min_lot, inp.max_hedge_lot)
+    raw_hedge_lot = prop_lot * inp.hedge_lot_multiplier
+    hedge_lot = round_lot(raw_hedge_lot, inp.lot_step, inp.min_lot, inp.max_hedge_lot)
+    prop_lot_capped = raw_prop_lot > inp.max_prop_lot
+    hedge_lot_capped = raw_hedge_lot > inp.max_hedge_lot
 
     hedge_direction = inp.hedge_direction
     prop_direction = opposite(hedge_direction)
@@ -111,9 +121,9 @@ def build_manual_trade_plan(inp: ManualTradeInput) -> ManualTradePlan:
         prop_tp = inp.entry_price + inp.tp_distance
 
     estimated_prop_loss = prop_lot * inp.sl_distance * inp.prop_contract_size
-    estimated_hedge_loss = hedge_lot * inp.sl_distance * inp.prop_contract_size
+    estimated_hedge_loss = hedge_lot * inp.sl_distance * inp.hedge_contract_size
     estimated_prop_profit = prop_lot * inp.tp_distance * inp.prop_contract_size
-    estimated_hedge_profit = hedge_lot * inp.tp_distance * inp.prop_contract_size
+    estimated_hedge_profit = hedge_lot * inp.tp_distance * inp.hedge_contract_size
 
     return ManualTradePlan(
         plan_id=str(uuid.uuid4()),
@@ -136,6 +146,12 @@ def build_manual_trade_plan(inp: ManualTradeInput) -> ManualTradePlan:
         remaining_daily_dd_pct=round(remaining_daily, 4),
         remaining_total_dd_pct=round(remaining_total, 4),
         risk_budget=round(risk_budget, 2),
+        raw_prop_lot=round(raw_prop_lot, 4),
+        raw_hedge_lot=round(raw_hedge_lot, 4),
+        prop_lot_capped=prop_lot_capped,
+        hedge_lot_capped=hedge_lot_capped,
+        prop_contract_size=inp.prop_contract_size,
+        hedge_contract_size=inp.hedge_contract_size,
         notes=inp.notes,
     )
 

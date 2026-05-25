@@ -49,7 +49,7 @@
     "orders_db": "data/manual_orders.sqlite",
     "default_tenant_id": "daniele",
     "default_symbol": "XAUUSD",
-    "default_reference_price": 3300.0,
+    "default_reference_price": 0.0,
     "default_sl_distance": 10.0,
     "default_tp_distance": 20.0,
     "default_prop_balance": 100000.0,
@@ -73,6 +73,8 @@
     "hedge_equity_floor": 0.0,
     "hedge_close_scope": "all",
     "phase2_enabled": true,
-    "phase2_trigger_sl_fraction": 0.5
+    "phase2_trigger_sl_fraction": 0.5,
+    "prop_contract_size": 100.0,
+    "hedge_contract_size": 100.0
   }
 }

@@ -1,0 +1,22 @@
+{
+  "lookback_bars": 200,
+  "fast_ma_period": 20,
+  "slow_ma_period": 50,
+  "atr_period": 14,
+  "adx_period": 14,
+  "swing_window": 2,
+  "liquidity_lookback": 30,
+  "fvg_lookahead": 5,
+  "bos_lookahead": 5,
+  "ob_search_bars": 5,
+  "max_ob_age_bars": 200,
+  "min_stars": 3,
+  "momentum_atr_mult": 1.2,
+  "momentum_body_ratio": 0.6,
+  "sl_atr_mult": 1.5,
+  "trailing_atr_mult": 1.5,
+  "adx_entry_soft_filter": 20.0,
+  "adx_upgrade_threshold": 25.0,
+  "enable_max_gain": true,
+  "point_value": 1.0
+}

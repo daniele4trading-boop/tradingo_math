@@ -74,7 +74,7 @@
       "working_directory": "C:\\tradingo_system",
       "entrypoint": "dashboard\\app.py",
       "start_command": "python -m streamlit run dashboard\\app.py --server.port 8502 --server.address 0.0.0.0",
-      "process_match": "streamlit run dashboard\\app.py --server.port 8502",
+      "process_match": "8502",
       "broker": "N/A",
       "account": "",
       "server": "",
@@ -85,7 +85,7 @@
         "C:\\tradingo_system\\logs\\platform_dashboard.err.log"
       ],
       "state_files": [],
-      "notes": "Dashboard unificata di controllo piattaforma su porta 8502."
+      "notes": "Dashboard unificata di controllo piattaforma su porta 8502. Match processo basato sulla porta per robustezza."
     },
     {
       "id": "tradingo_main",

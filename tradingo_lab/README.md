@@ -92,6 +92,32 @@ python scripts/run_first_backtest.py --config config/research_config.json --bars
 ```
 
 
+## Ottimizzazione primi setup
+
+Dopo avere creato `data/bars/XAUUSD/1min.parquet`:
+
+```powershell
+python scripts/optimize_first_setups.py --config config/research_config.json --bars data/bars/XAUUSD/1min.parquet --min-trades 15 --top 30
+```
+
+Genera:
+
+```text
+data/reports/XAUUSD/optimization_candidates.csv
+data/reports/XAUUSD/optimization_top.csv
+```
+
+L'optimizer testa famiglie di setup oggettive:
+
+- ICT reversal: sweep high/low con conferma displacement/FVG;
+- RSI reversion: soglie RSI con/senza sweep;
+- trend continuation: EMA trend + VWAP + ADX, con/senza displacement;
+- target/stop/horizon multipli;
+- filtri London/NY/all day;
+- filtro spread.
+
+I risultati vanno letti cercando profit factor, expectancy positiva, numero trade sufficiente e stabilita' tra sessioni.
+
 ## Report diagnostico
 
 Dopo il primo backtest:

@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+convergenza7_trades.csv
+convergenza7_stats.json
+

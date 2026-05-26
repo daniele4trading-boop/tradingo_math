@@ -91,6 +91,23 @@ python scripts/build_dataset.py --config config/research_config.json --timeframe
 python scripts/run_first_backtest.py --config config/research_config.json --bars data/bars/XAUUSD/1min.parquet
 ```
 
+## Backtest CONVERGENZA 7
+
+Il backtester CONVERGENZA 7 lavora solo su storico OHLCV e non apre trade live.
+Da questa cartella:
+
+```powershell
+python backtest_engine.py --m1 data/bars/XAUUSD/1min.parquet --trades-csv data/reports/XAUUSD/convergenza7_trades.csv --stats-json data/reports/XAUUSD/convergenza7_stats.json
+```
+
+Moduli principali:
+
+- `data_loader.py`: lettura CSV/Parquet e aggregazione M1 -> M5/M15/H1;
+- `structure_detector.py`: swing, bias H1, lateralita M15, livelli e sweep;
+- `pattern_detector.py`: trigger candlestick M1;
+- `risk_manager.py`: R:R, SL/TP e breakeven;
+- `stats_reporter.py`: trade log CSV, statistiche JSON e summary console.
+
 
 ## Ottimizzazione primi setup
 

@@ -92,6 +92,23 @@ python scripts/run_first_backtest.py --config config/research_config.json --bars
 ```
 
 
+## Report diagnostico
+
+Dopo il primo backtest:
+
+```powershell
+python scripts/report_dataset.py --config config/research_config.json --bars data/bars/XAUUSD/1min.parquet
+```
+
+Genera:
+
+```text
+data/reports/XAUUSD/diagnostic_report.json
+data/reports/XAUUSD/diagnostic_trades_by_hour.csv
+```
+
+Serve a controllare copertura dati, gap, spread, distribuzione oraria e win rate dei setup.
+
 ## Se MT5/XM esporta solo M1 e non tick
 
 Lo script `build_dataset.py` ora usa `--source auto` di default: prova prima i tick e, se non trova file tick, usa i rates M1 esportati in `data/rates/XAUUSD/M1/`.

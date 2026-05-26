@@ -91,6 +91,30 @@ python scripts/build_dataset.py --config config/research_config.json --timeframe
 python scripts/run_first_backtest.py --config config/research_config.json --bars data/bars/XAUUSD/1min.parquet
 ```
 
+
+## Se MT5/XM esporta solo M1 e non tick
+
+Lo script `build_dataset.py` ora usa `--source auto` di default: prova prima i tick e, se non trova file tick, usa i rates M1 esportati in `data/rates/XAUUSD/M1/`.
+
+Dopo una riga simile a:
+
+```text
+Rates file written: ...\data\rates\XAUUSD\M1\YYYYMMDD_YYYYMMDD.parquet
+```
+
+puoi continuare con:
+
+```powershell
+python scripts/build_dataset.py --config config/research_config.json --timeframe 1min
+python scripts/run_first_backtest.py --config config/research_config.json --bars data/bars/XAUUSD/1min.parquet
+```
+
+Se vuoi forzare l'uso delle candele M1 esportate da MT5:
+
+```powershell
+python scripts/build_dataset.py --config config/research_config.json --timeframe 1min --source rates
+```
+
 ## Convenzioni importanti
 
 - `point` viene letto da MT5. Su XAUUSD a 2 decimali normalmente `point = 0.01`.

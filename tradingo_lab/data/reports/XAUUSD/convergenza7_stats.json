@@ -1,0 +1,19 @@
+{
+  "avg_rr_winners": 3.6170354771250035,
+  "distribution_by_pattern": {
+    "Pattern 1": 320,
+    "Pattern 2": 474,
+    "Pattern 3": 33
+  },
+  "distribution_by_setup": {
+    "Setup A": 814,
+    "Setup B": 13
+  },
+  "gross_loss_percent": 491.0,
+  "gross_profit_percent": 473.83164750337545,
+  "max_drawdown_percent": 41.63729872830459,
+  "net_pnl_percent": -17.16835249662458,
+  "profit_factor": 0.9650339053021904,
+  "total_trades": 827,
+  "win_rate_percent": 15.840386940749699
+}

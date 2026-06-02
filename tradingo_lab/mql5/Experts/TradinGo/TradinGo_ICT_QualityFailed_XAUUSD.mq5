@@ -24,7 +24,7 @@ enum ENUM_TG_SESSION_CLOCK
    TG_SESSION_SERVER_TIME = 1
 };
 
-input string                InpTradeSymbol = "XAUUSD";
+input string                InpTradeSymbol = "";
 input ENUM_TIMEFRAMES       InpSignalTimeframe = PERIOD_M1;
 input ENUM_TG_STRATEGY_MODE InpStrategyMode = TG_QUALITY_PLUS_FAILED;
 input long                  InpMagicNumber = 2026060201;
@@ -69,12 +69,16 @@ input bool                  InpRiskIncludesSlippage = true;
 input int                   InpEstimatedRoundTripSlippagePoints = 10;
 
 input bool                  InpPrintSignalDiagnostics = true;
+input bool                  InpPrintOnlyWhenIctSignal = true;
+input bool                  InpPrintSessionDiagnostics = false;
+input int                   InpDiagnosticsMaxLines = 500;
 input int                   InpDeviationPoints = 30;
 
 CTrade trade;
 int atr_handle = INVALID_HANDLE;
 datetime last_bar_time = 0;
 datetime last_trade_signal_bar_time = 0;
+int diagnostics_lines_printed = 0;
 
 struct TradeDecision
 {
@@ -129,7 +133,12 @@ void OnTick()
 {
    string symbol = EffectiveSymbol();
    if(_Symbol != symbol && InpTradeSymbol != "")
+   {
+      Print("Symbol mismatch: chart/tester symbol=", _Symbol,
+            " InpTradeSymbol=", InpTradeSymbol,
+            ". Set InpTradeSymbol empty to use chart/tester symbol.");
       return;
+   }
 
    ManageOpenPositions(symbol);
 
@@ -151,17 +160,7 @@ void OnTick()
    if(!BuildDecision(symbol, decision))
       return;
 
-   if(InpPrintSignalDiagnostics)
-   {
-      Print("Decision: trade=", decision.should_trade,
-            " component=", decision.component,
-            " reason=", decision.reason,
-            " dir=", decision.direction,
-            " atr_points=", DoubleToString(decision.atr_points, 1),
-            " dir_prev10=", DoubleToString(decision.dir_prev10_points, 1),
-            " signal_spread=", decision.signal_bar_spread,
-            " current_spread=", CurrentSpreadPoints(symbol));
-   }
+   PrintDecisionDiagnostics(symbol, decision);
 
    if(!decision.should_trade)
       return;
@@ -245,7 +244,8 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
 
    if(!InSession(signal_bar.time))
    {
-      decision.reason = "outside_session";
+      decision.reason = "outside_session signal_time=" + TimeToString(signal_bar.time, TIME_DATE|TIME_MINUTES)
+                        + " session_time=" + TimeToString(ConvertToSessionTime(signal_bar.time), TIME_DATE|TIME_MINUTES);
       return true;
    }
 
@@ -364,6 +364,36 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
 }
 
 //+------------------------------------------------------------------+
+void PrintDecisionDiagnostics(const string symbol, const TradeDecision &decision)
+{
+   if(!InpPrintSignalDiagnostics)
+      return;
+   if(InpDiagnosticsMaxLines > 0 && diagnostics_lines_printed >= InpDiagnosticsMaxLines)
+      return;
+
+   bool signal_related = (decision.reason != "outside_session" &&
+                          StringFind(decision.reason, "outside_session") != 0 &&
+                          decision.reason != "no_ict_reversal_displacement");
+   bool outside_session = (StringFind(decision.reason, "outside_session") == 0);
+   if(outside_session && !InpPrintSessionDiagnostics)
+      return;
+   if(InpPrintOnlyWhenIctSignal && !signal_related && !decision.should_trade && !outside_session)
+      return;
+
+   diagnostics_lines_printed++;
+   Print("TG_DIAG trade=", decision.should_trade,
+         " component=", decision.component,
+         " reason=", decision.reason,
+         " dir=", decision.direction,
+         " atr_points=", DoubleToString(decision.atr_points, 1),
+         " dir_prev10=", DoubleToString(decision.dir_prev10_points, 1),
+         " signal_spread=", decision.signal_bar_spread,
+         " current_spread=", CurrentSpreadPoints(symbol),
+         " chart_symbol=", _Symbol,
+         " trade_symbol=", symbol);
+}
+
+//+------------------------------------------------------------------+
 void FillDecision(TradeDecision &decision, const int direction, const int target_points, const int stop_points, const int horizon_bars, const string component, const string reason)
 {
    decision.should_trade = true;
@@ -402,12 +432,7 @@ int CurrentSpreadPoints(const string symbol)
 //+------------------------------------------------------------------+
 bool InSession(const datetime server_time)
 {
-   datetime session_time = server_time;
-   if(InpSessionClock == TG_SESSION_EUROPE_ROME)
-   {
-      datetime utc_time = server_time - InpServerUtcOffsetHours * 3600;
-      session_time = utc_time + EuropeRomeOffsetHours(utc_time) * 3600;
-   }
+   datetime session_time = ConvertToSessionTime(server_time);
 
    MqlDateTime dt;
    TimeToStruct(session_time, dt);
@@ -418,6 +443,16 @@ bool InSession(const datetime server_time)
    if(start_minutes <= end_minutes)
       return (minutes >= start_minutes && minutes < end_minutes);
    return (minutes >= start_minutes || minutes < end_minutes);
+}
+
+//+------------------------------------------------------------------+
+datetime ConvertToSessionTime(const datetime server_time)
+{
+   if(InpSessionClock == TG_SESSION_SERVER_TIME)
+      return server_time;
+
+   datetime utc_time = server_time - InpServerUtcOffsetHours * 3600;
+   return utc_time + EuropeRomeOffsetHours(utc_time) * 3600;
 }
 
 //+------------------------------------------------------------------+

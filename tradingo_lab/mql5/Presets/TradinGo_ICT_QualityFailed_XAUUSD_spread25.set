@@ -1,4 +1,4 @@
-InpTradeSymbol=XAUUSD
+InpTradeSymbol=
 InpSignalTimeframe=1
 InpStrategyMode=0
 InpMagicNumber=2026060201
@@ -35,4 +35,7 @@ InpFixedLots=1.0
 InpRiskIncludesSlippage=true
 InpEstimatedRoundTripSlippagePoints=10
 InpPrintSignalDiagnostics=true
+InpPrintOnlyWhenIctSignal=true
+InpPrintSessionDiagnostics=false
+InpDiagnosticsMaxLines=500
 InpDeviationPoints=30

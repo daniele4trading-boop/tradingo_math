@@ -33,6 +33,8 @@ input bool                  InpEnableTrading = true;
 input bool                  InpRequireDemoAccount = true;
 input bool                  InpAllowMultiplePositions = false;
 input bool                  InpOneTradePerBar = true;
+input bool                  InpStopTradingAfterDailyLoss = false;
+input int                   InpMaxDailyTrades = 0;
 
 input int                   InpMaxSpreadPoints = 25;
 input bool                  InpCheckSignalBarSpread = true;
@@ -154,6 +156,8 @@ void OnTick()
    if(!TradingAccountAllowed())
       return;
    if(!InpAllowMultiplePositions && CountOpenPositions(symbol) > 0)
+      return;
+   if(DailyRiskBlockActive(symbol))
       return;
 
    TradeDecision decision;
@@ -591,6 +595,72 @@ int CountOpenPositions(const string symbol)
       count++;
    }
    return count;
+}
+
+//+------------------------------------------------------------------+
+bool DailyRiskBlockActive(const string symbol)
+{
+   if(InpMaxDailyTrades <= 0 && !InpStopTradingAfterDailyLoss)
+      return false;
+
+   datetime day_start = ServerDayStart(TimeCurrent());
+   datetime now = TimeCurrent();
+   if(!HistorySelect(day_start, now))
+      return false;
+
+   int entries_today = 0;
+   bool has_loss_today = false;
+   int total_deals = HistoryDealsTotal();
+   for(int i = 0; i < total_deals; i++)
+   {
+      ulong deal_ticket = HistoryDealGetTicket(i);
+      if(deal_ticket == 0)
+         continue;
+      if(HistoryDealGetString(deal_ticket, DEAL_SYMBOL) != symbol)
+         continue;
+      if(HistoryDealGetInteger(deal_ticket, DEAL_MAGIC) != InpMagicNumber)
+         continue;
+
+      ENUM_DEAL_ENTRY entry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
+      if(entry == DEAL_ENTRY_IN)
+         entries_today++;
+      if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY || entry == DEAL_ENTRY_INOUT)
+      {
+         double pnl = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT)
+                    + HistoryDealGetDouble(deal_ticket, DEAL_SWAP)
+                    + HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
+         if(pnl < 0.0)
+            has_loss_today = true;
+      }
+   }
+
+   if(InpStopTradingAfterDailyLoss && has_loss_today)
+   {
+      if(InpPrintSignalDiagnostics)
+         Print("Daily risk block: losing closed trade already occurred today.");
+      return true;
+   }
+
+   if(InpMaxDailyTrades > 0 && entries_today >= InpMaxDailyTrades)
+   {
+      if(InpPrintSignalDiagnostics)
+         Print("Daily risk block: max daily trades reached. entries_today=", entries_today,
+               " max=", InpMaxDailyTrades);
+      return true;
+   }
+
+   return false;
+}
+
+//+------------------------------------------------------------------+
+datetime ServerDayStart(const datetime value)
+{
+   MqlDateTime dt;
+   TimeToStruct(value, dt);
+   dt.hour = 0;
+   dt.min = 0;
+   dt.sec = 0;
+   return StructToTime(dt);
 }
 
 //+------------------------------------------------------------------+

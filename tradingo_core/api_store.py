@@ -18,6 +18,27 @@ EntryType = Literal["LIMIT", "MARKET"]
 SignalStatus = Literal["ACTIVE", "CANCELLED", "EXPIRED"]
 
 
+def parse_key_set(value: str) -> frozenset[str]:
+    return frozenset(k.strip() for k in value.split(",") if k.strip())
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def parse_iso(value: str) -> datetime:
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def to_utc_iso(value: str) -> str:
+    return parse_iso(value).isoformat()
+
+
 @dataclass(frozen=True)
 class ApiSettings:
     """Runtime settings read from environment on the VPS."""
@@ -219,22 +240,3 @@ class JsonSignalStore:
             tmp_path.replace(path)
 
 
-def parse_key_set(value: str) -> frozenset[str]:
-    return frozenset(k.strip() for k in value.split(",") if k.strip())
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def parse_iso(value: str) -> datetime:
-    if value.endswith("Z"):
-        value = value[:-1] + "+00:00"
-    dt = datetime.fromisoformat(value)
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def to_utc_iso(value: str) -> str:
-    return parse_iso(value).isoformat()

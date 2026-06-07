@@ -271,6 +271,41 @@ Installazione:
 Per sicurezza l'EA parte in dry-run. In dry-run riceve segnali e invia ack, ma
 non piazza ordini.
 
+Installazione automatica dry-run sui terminali VPS principali:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\install_ea_dryrun.ps1 `
+  -RepoDir C:\TradinGO_Research `
+  -ApiBaseUrl http://127.0.0.1:8080 `
+  -ApiKey dev-local-key `
+  -TradeSymbol XAUUSD
+```
+
+Lo script copia e compila l'EA in:
+
+- Ultima Markets MT5;
+- STARTRADER Financial MetaTrader 5;
+- XM MT5;
+- Vantage International MT5.
+
+Crea anche il preset:
+
+```text
+MQL5\Presets\TradinGoSignalClient_DRYRUN.set
+```
+
+con `EnableLiveTrading=false`.
+
+Attach manuale consigliato per il primo test:
+
+1. aprire un grafico `XAUUSD` su una MT5 demo;
+2. verificare `Algo Trading` attivo;
+3. abilitare WebRequest verso `http://127.0.0.1:8080`;
+4. trascinare `Expert Advisors > TradinGo > TradinGoSignalClient` sul grafico;
+5. caricare il preset `TradinGoSignalClient_DRYRUN.set`;
+6. controllare nei log Experts che arrivi `DRY_RUN`;
+7. verificare nell'API `/accounts/heartbeats` e `/signals/ack`.
+
 Controlli locali dell'EA:
 
 - API key obbligatoria;

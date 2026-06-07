@@ -3,6 +3,7 @@ import unittest
 import pandas as pd
 
 from tradingo_core import BacktestConfig, ICTSniperBacktester, ICTSniperConfig, ICTSniperStrategy
+from tradingo_core.ict_sniper import pandas_resample_rule
 
 
 def synthetic_bullish_m1() -> pd.DataFrame:
@@ -52,6 +53,11 @@ def synthetic_bullish_m1() -> pd.DataFrame:
 
 
 class ICTSniperStrategyTest(unittest.TestCase):
+    def test_pandas_resample_rule_accepts_trading_aliases(self):
+        self.assertEqual(pandas_resample_rule("H1"), "1h")
+        self.assertEqual(pandas_resample_rule("1H"), "1h")
+        self.assertEqual(pandas_resample_rule("M5"), "5min")
+
     def test_detects_bullish_sweep_fvg_retest(self):
         cfg = ICTSniperConfig(
             htf_timeframe="5min",

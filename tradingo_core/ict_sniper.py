@@ -227,9 +227,35 @@ def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
         "spread": "mean",
         "real_volume": "sum",
     }
-    out = clean.resample(rule, label="right", closed="right").agg(agg)
+    out = clean.resample(pandas_resample_rule(rule), label="right", closed="right").agg(agg)
     out = out.dropna(subset=["open", "high", "low", "close"]).reset_index()
     return normalize_rates_frame(out)
+
+
+def pandas_resample_rule(rule: str) -> str:
+    """Return a pandas 3 compatible resample rule.
+
+    Pandas 3 rejects uppercase hourly aliases such as ``1H``. Strategy configs
+    still use trading-friendly labels like H1/H4/1H, so we normalize here.
+    """
+    text = rule.strip()
+    aliases = {
+        "M1": "1min",
+        "M3": "3min",
+        "M5": "5min",
+        "M15": "15min",
+        "M30": "30min",
+        "H1": "1h",
+        "H4": "4h",
+        "D1": "1D",
+        "1H": "1h",
+        "4H": "4h",
+    }
+    if text in aliases:
+        return aliases[text]
+    if text.endswith("H"):
+        return text[:-1] + "h"
+    return text
 
 
 def add_quality_metrics(df: pd.DataFrame, cfg: ICTSniperConfig) -> pd.DataFrame:

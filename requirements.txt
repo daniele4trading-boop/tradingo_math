@@ -1,0 +1,5 @@
+# Core runtime dependencies used by the trading scripts.
+MetaTrader5; platform_system == "Windows"
+numpy
+pandas
+streamlit

@@ -7,6 +7,7 @@ venv/
 data/
 reports/
 logs/
+runtime/
 
 *.log
 tradingo_state.json

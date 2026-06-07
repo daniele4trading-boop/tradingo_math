@@ -145,7 +145,7 @@ contratti dei provider esterni.
 
 ## Roadmap API/EA
 
-Il passo successivo, dopo validazione della strategia, e':
+Il primo scheletro API/EA e' gia' presente:
 
 ```text
 Python VPS API:
@@ -166,3 +166,105 @@ EA MQL5:
 
 L'EA distribuito agli amici deve restare leggero: il cervello resta sulla VPS,
 mentre l'EA fa execution e fail-safe locale.
+
+## Avvio API sulla VPS
+
+Installare dipendenze:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Configurare chiavi API con variabili ambiente. Usare chiavi diverse per admin e
+client; non committarle mai nel repository.
+
+```powershell
+$env:TRADINGO_API_DATA_DIR="C:\TradinGO_Math\runtime\api_state"
+$env:TRADINGO_API_KEYS="client-key-1,client-key-2"
+$env:TRADINGO_ADMIN_API_KEYS="admin-key-1"
+```
+
+Avvio locale:
+
+```powershell
+python -m uvicorn tradingo_core.api_server:create_app --factory --host 0.0.0.0 --port 8080
+```
+
+Endpoint principali:
+
+```text
+GET  /health
+GET  /signals/latest?symbol=XAUUSD       header X-API-Key: client
+POST /signals/publish                    header X-API-Key: admin
+POST /signals/ack                        header X-API-Key: client
+POST /accounts/heartbeat                 header X-API-Key: client
+GET  /accounts/heartbeats                header X-API-Key: admin
+GET  /risk/config                        header X-API-Key: client
+POST /risk/config                        header X-API-Key: admin
+```
+
+Esempio publish segnale:
+
+```json
+{
+  "signal_id": "demo-001",
+  "symbol": "XAUUSD",
+  "direction": "BUY",
+  "entry_type": "LIMIT",
+  "entry": 2300.0,
+  "sl": 2298.0,
+  "tp1": 2302.0,
+  "tp2": 2304.0,
+  "risk_pct": 0.005,
+  "score": 82,
+  "expires_at": "2026-06-08T10:00:00+00:00"
+}
+```
+
+L'API rifiuta segnali con rischio non valido o RR inferiore a 1:2.
+
+## EA MQL5 client
+
+File:
+
+```text
+mt5_ea/TradinGoSignalClient.mq5
+```
+
+Installazione:
+
+1. copiare il file in `MQL5\Experts\TradinGo\`;
+2. aprire MetaEditor e compilare;
+3. in MT5 abilitare:
+   - `Tools > Options > Expert Advisors > Allow WebRequest for listed URL`;
+   - aggiungere l'URL API, es. `http://144.91.76.28:8080`;
+4. attach dell'EA al grafico del simbolo;
+5. impostare:
+   - `ApiBaseUrl`;
+   - `ApiKey`;
+   - `ClientId`;
+   - `BrokerName`;
+   - `TradeSymbol`;
+   - `EnableLiveTrading=false` per i primi test.
+
+Per sicurezza l'EA parte in dry-run. In dry-run riceve segnali e invia ack, ma
+non piazza ordini.
+
+Controlli locali dell'EA:
+
+- API key obbligatoria;
+- simbolo coerente;
+- spread massimo;
+- RR minimo 1:2;
+- risk_pct non superiore al limite locale;
+- sizing basato su equity, tick size e tick value;
+- ack remoto per `DRY_RUN`, `REJECTED`, `EXECUTED`, `ERROR`.
+
+## Test demo multi-broker suggerito
+
+1. avviare API in locale sulla VPS;
+2. pubblicare un segnale demo con `EnableLiveTrading=false`;
+3. verificare ack e heartbeat da ogni MT5;
+4. passare un solo terminale demo a `EnableLiveTrading=true`;
+5. testare solo lotti minimi e mercato chiuso/riaperto;
+6. confrontare ordini, spread, rejection e log per broker.

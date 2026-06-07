@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+
+.venv/
+venv/
+
+data/
+reports/
+logs/
+
+*.log
+tradingo_state.json
+tradingo_state.tmp
+ftmo_state.json

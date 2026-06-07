@@ -190,6 +190,27 @@ Avvio locale:
 python -m uvicorn tradingo_core.api_server:create_app --factory --host 0.0.0.0 --port 8080
 ```
 
+Su Windows Server e' preferibile installare l'API come Scheduled Task:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\install_api_task.ps1 `
+  -RepoDir C:\TradinGO_Research `
+  -HostAddress 127.0.0.1 `
+  -Port 8080 `
+  -AllowDevKey
+```
+
+Per produzione rimuovere `-AllowDevKey` e passare chiavi reali:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\windows\install_api_task.ps1 `
+  -RepoDir C:\TradinGO_Research `
+  -HostAddress 0.0.0.0 `
+  -Port 8080 `
+  -ApiKeys "client-key-1,client-key-2" `
+  -AdminApiKeys "admin-key-1"
+```
+
 Endpoint principali:
 
 ```text

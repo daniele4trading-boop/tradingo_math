@@ -45,7 +45,7 @@ def synthetic_bullish_m1() -> pd.DataFrame:
 
     # Retest into the FVG with lower volume, then move to target.
     rows[248].update({"open": 104.10, "high": 104.25, "low": 103.20, "close": 103.90, "tick_volume": 70})
-    rows[249].update({"open": 103.90, "high": 104.80, "low": 103.85, "close": 104.70, "tick_volume": 230})
+    rows[249].update({"open": 103.90, "high": 104.80, "low": 103.25, "close": 104.70, "tick_volume": 230})
     rows[250].update({"open": 104.70, "high": 106.20, "low": 104.60, "close": 106.00, "tick_volume": 260})
     rows[251].update({"open": 106.00, "high": 107.20, "low": 105.90, "close": 107.00, "tick_volume": 240})
     return pd.DataFrame(rows)
@@ -54,7 +54,7 @@ def synthetic_bullish_m1() -> pd.DataFrame:
 class ICTSniperStrategyTest(unittest.TestCase):
     def test_detects_bullish_sweep_fvg_retest(self):
         cfg = ICTSniperConfig(
-            htf_timeframe="15min",
+            htf_timeframe="5min",
             setup_timeframe="1min",
             volume_z_window=20,
             atr_z_window=20,
@@ -74,7 +74,7 @@ class ICTSniperStrategyTest(unittest.TestCase):
 
     def test_backtester_closes_synthetic_trade(self):
         strategy_cfg = ICTSniperConfig(
-            htf_timeframe="15min",
+            htf_timeframe="5min",
             setup_timeframe="1min",
             volume_z_window=20,
             atr_z_window=20,

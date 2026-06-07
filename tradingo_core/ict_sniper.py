@@ -287,7 +287,12 @@ def infer_bias(df: pd.DataFrame, swing_lookback: int = 2) -> Bias:
 
 
 def find_swings(df: pd.DataFrame, lookback: int) -> pd.DataFrame:
-    out = normalize_rates_frame(df).copy()
+    out = df.copy()
+    if pd.api.types.is_numeric_dtype(out["time"]):
+        out["time"] = pd.to_datetime(out["time"], unit="s", utc=True)
+    else:
+        out["time"] = pd.to_datetime(out["time"], utc=True)
+    out = out.sort_values("time").reset_index(drop=True)
     out["swing_high"] = False
     out["swing_low"] = False
     for i in range(lookback, len(out) - lookback):

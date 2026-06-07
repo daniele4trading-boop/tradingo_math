@@ -5,7 +5,7 @@
 //| safety checks, order placement, and execution acknowledgements.   |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "0.1"
+#property version   "0.100"
 
 #include <Trade/Trade.mqh>
 

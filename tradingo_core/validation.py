@@ -33,6 +33,8 @@ def run_validation(args) -> int:
         risk_per_trade_pct=args.risk_pct,
         max_daily_dd_pct=args.max_daily_dd_pct,
         max_daily_trades=args.max_daily_trades,
+        signal_evaluation_minutes=args.signal_evaluation_minutes,
+        signal_history_bars=args.signal_history_bars,
     )
     report = ICTSniperBacktester(strategy_cfg, backtest_cfg).run(data)
 
@@ -110,6 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-daily-trades", type=int, default=3)
     parser.add_argument("--min-score", type=float, default=65.0)
     parser.add_argument("--rr", type=float, default=2.0)
+    parser.add_argument("--signal-evaluation-minutes", type=int, default=5)
+    parser.add_argument("--signal-history-bars", type=int, default=2500)
     parser.add_argument("--trades-csv", default=None)
     return parser
 

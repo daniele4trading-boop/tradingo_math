@@ -163,6 +163,8 @@ class ICTSniperBacktester:
                 and ts.minute % self.backtest_config.signal_evaluation_minutes != 0
             ):
                 continue
+            if self.strategy.session_name(ts) is None:
+                continue
 
             start_idx = max(0, i + 1 - self.backtest_config.signal_history_bars)
             history = data.iloc[start_idx : i + 1]

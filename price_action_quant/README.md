@@ -18,7 +18,8 @@ The local MT5 terminal must be installed, openable by the Python `MetaTrader5`
 package, and have the symbol available in Market Watch.
 
 ```bash
-python -m price_action_quant.research download-mt5 \
+python3 -m pip install -r requirements.txt
+python3 -m price_action_quant.research download-mt5 \
   --symbol EURUSD \
   --timeframe H1 \
   --bars 50000 \
@@ -30,7 +31,7 @@ Repeat with `GBPUSD`, `H4`, or the exact broker symbol names.
 ## 2. Run one baseline backtest
 
 ```bash
-python -m price_action_quant.research backtest \
+python3 -m price_action_quant.research backtest \
   --csv data/backtests/EURUSD_H1.csv \
   --symbol EURUSD \
   --timeframe H1 \
@@ -51,7 +52,7 @@ The baseline matches the `.set` files:
 ## 3. Run the first constrained optimization
 
 ```bash
-python -m price_action_quant.research optimize \
+python3 -m price_action_quant.research optimize \
   --csv data/backtests/EURUSD_H1.csv \
   --symbol EURUSD \
   --timeframe H1 \

@@ -68,6 +68,7 @@ class StrategyConfig:
     max_lower_wick_atr_mult: float = 0.0
     same_bar_exit_policy: str = "stop_first"
     cost_per_trade_r: float = 0.0
+    cost_per_trade_price: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -414,6 +415,7 @@ def backtest_prepared(data: pd.DataFrame, cfg: StrategyConfig) -> tuple[list[Tra
             "stop": stop,
             "target": target,
             "risk_distance": risk_distance,
+            "cost_r": trade_cost_r(cfg, risk_distance),
             "atr": float(row["atr"]),
             "rsi_z": float(row["rsi_z"]) if math.isfinite(row["rsi_z"]) else 0.0,
             "regime_ok": regime_ok(data, i, direction, cfg),
@@ -435,7 +437,7 @@ def backtest_prepared(data: pd.DataFrame, cfg: StrategyConfig) -> tuple[list[Tra
                 target=position["target"],
                 exit_price=float(last["close"]),
                 result="open_marked_to_market",
-                pnl_r=pnl_r - cfg.cost_per_trade_r,
+                pnl_r=pnl_r - position["cost_r"],
                 atr=position["atr"],
                 rsi_z=position["rsi_z"],
                 regime_ok=position["regime_ok"],
@@ -469,7 +471,7 @@ def _try_close_position(df: pd.DataFrame, i: int, position: dict, cfg: StrategyC
         result = "loss"
 
     exit_price = position["target"] if result == "win" else position["stop"]
-    pnl_r = _pnl_r(direction, position["entry"], exit_price, position["risk_distance"]) - cfg.cost_per_trade_r
+    pnl_r = _pnl_r(direction, position["entry"], exit_price, position["risk_distance"]) - position["cost_r"]
     return Trade(
         symbol=position["symbol"],
         timeframe=position["timeframe"],
@@ -493,6 +495,12 @@ def _pnl_r(direction: str, entry: float, exit_price: float, risk_distance: float
     if direction == "long":
         return (exit_price - entry) / risk_distance
     return (entry - exit_price) / risk_distance
+
+
+def trade_cost_r(cfg: StrategyConfig, risk_distance: float) -> float:
+    if risk_distance <= 0:
+        return cfg.cost_per_trade_r
+    return cfg.cost_per_trade_r + (cfg.cost_per_trade_price / risk_distance)
 
 
 def metrics(trades: list[Trade], cfg: StrategyConfig) -> dict:
@@ -550,19 +558,21 @@ def config_from_args(args: argparse.Namespace) -> StrategyConfig:
         enable_regime_filter=not args.no_regime_filter,
         require_close_break=not args.no_close_break,
         cost_per_trade_r=args.cost_per_trade_r,
+        cost_per_trade_price=args.cost_per_trade_price,
     )
 
 
 def optimize(df: pd.DataFrame, base_cfg: StrategyConfig, min_trades: int) -> pd.DataFrame:
     data = add_indicators(df, base_cfg)
     rows = []
-    for z in (-1.5, -1.75, -2.0, -2.25, -2.5):
+    for z_long, z_short in threshold_grid(base_cfg.direction):
         for atr_mult in (1.5, 2.0, 2.5):
             for rr in (1.0, 1.5, 2.0):
                 for close_break in (True, False):
                     cfg = replace(
                         base_cfg,
-                        rsi_z_threshold_long=z,
+                        rsi_z_threshold_long=z_long,
+                        rsi_z_threshold_short=z_short,
                         atr_stop_mult=atr_mult,
                         reward_risk=rr,
                         require_close_break=close_break,
@@ -571,7 +581,8 @@ def optimize(df: pd.DataFrame, base_cfg: StrategyConfig, min_trades: int) -> pd.
                     if summary["trades"] >= min_trades:
                         rows.append(
                             {
-                                "z_long": z,
+                                "z_long": z_long,
+                                "z_short": z_short,
                                 "atr_stop_mult": atr_mult,
                                 "reward_risk": rr,
                                 "close_break": close_break,
@@ -591,6 +602,82 @@ def optimize(df: pd.DataFrame, base_cfg: StrategyConfig, min_trades: int) -> pd.
         by=["expectancy_r", "profit_factor", "trades"],
         ascending=[False, False, False],
     ).reset_index(drop=True)
+
+
+def threshold_grid(direction: str) -> list[tuple[float, float]]:
+    long_values = (-1.5, -1.75, -2.0, -2.25, -2.5)
+    short_values = (1.5, 1.75, 2.0, 2.25, 2.5)
+    if direction == "short":
+        return [(-2.0, value) for value in short_values]
+    if direction == "both":
+        return [(-value, value) for value in short_values]
+    return [(value, 2.0) for value in long_values]
+
+
+def config_from_optimization_row(base_cfg: StrategyConfig, row: pd.Series) -> StrategyConfig:
+    return replace(
+        base_cfg,
+        rsi_z_threshold_long=float(row.get("z_long", base_cfg.rsi_z_threshold_long)),
+        rsi_z_threshold_short=float(row.get("z_short", base_cfg.rsi_z_threshold_short)),
+        atr_stop_mult=float(row["atr_stop_mult"]),
+        reward_risk=float(row["reward_risk"]),
+        require_close_break=bool(row["close_break"]),
+    )
+
+
+def split_evaluate(
+    df: pd.DataFrame,
+    base_cfg: StrategyConfig,
+    split_date: str,
+    min_trades: int,
+    top_n: int,
+) -> pd.DataFrame:
+    data = normalize_ohlc(df)
+    split_ts = pd.Timestamp(split_date, tz="UTC")
+    train = data[data["time"] < split_ts].reset_index(drop=True)
+    test = data[data["time"] >= split_ts].reset_index(drop=True)
+    if train.empty or test.empty:
+        raise ValueError("Split date produced an empty train or test set")
+
+    optimized = optimize(train, base_cfg, min_trades)
+    rows = []
+    for rank, row in optimized.head(top_n).iterrows():
+        cfg = config_from_optimization_row(base_cfg, row)
+        train_trades, train_summary = backtest(train, cfg)
+        test_trades, test_summary = backtest(test, cfg)
+        rows.append(
+            {
+                "rank": int(rank + 1),
+                "symbol": cfg.symbol,
+                "timeframe": cfg.timeframe,
+                "direction": cfg.direction,
+                "split_date": split_date,
+                "z_long": cfg.rsi_z_threshold_long,
+                "z_short": cfg.rsi_z_threshold_short,
+                "atr_stop_mult": cfg.atr_stop_mult,
+                "reward_risk": cfg.reward_risk,
+                "close_break": cfg.require_close_break,
+                "cost_per_trade_r": cfg.cost_per_trade_r,
+                "cost_per_trade_price": cfg.cost_per_trade_price,
+                "train_trades": train_summary["trades"],
+                "train_win_rate": train_summary["win_rate"],
+                "train_profit_factor": train_summary["profit_factor"] or 0.0,
+                "train_expectancy_r": train_summary["expectancy_r"],
+                "train_total_r": train_summary["total_r"],
+                "train_max_drawdown_r": train_summary["max_drawdown_r"],
+                "train_losing_streak": train_summary["longest_losing_streak"],
+                "test_trades": test_summary["trades"],
+                "test_win_rate": test_summary["win_rate"],
+                "test_profit_factor": test_summary["profit_factor"] or 0.0,
+                "test_expectancy_r": test_summary["expectancy_r"],
+                "test_total_r": test_summary["total_r"],
+                "test_max_drawdown_r": test_summary["max_drawdown_r"],
+                "test_losing_streak": test_summary["longest_losing_streak"],
+                "train_trade_count_raw": len(train_trades),
+                "test_trade_count_raw": len(test_trades),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def write_summary(summary: dict, path: Path) -> None:
@@ -626,6 +713,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--atr-stop-mult", type=float, default=2.0)
     common.add_argument("--reward-risk", type=float, default=1.5)
     common.add_argument("--cost-per-trade-r", type=float, default=0.0)
+    common.add_argument("--cost-per-trade-price", type=float, default=0.0)
     common.add_argument("--no-regime-filter", action="store_true")
     common.add_argument("--no-close-break", action="store_true")
 
@@ -636,6 +724,12 @@ def build_parser() -> argparse.ArgumentParser:
     opt = sub.add_parser("optimize", parents=[common], help="Run a small parameter grid")
     opt.add_argument("--min-trades", type=int, default=20)
     opt.add_argument("--out", required=True, type=Path)
+
+    split = sub.add_parser("split-evaluate", parents=[common], help="Optimize before split date and evaluate after it")
+    split.add_argument("--split-date", required=True, help="UTC split date, e.g. 2024-01-01")
+    split.add_argument("--min-trades", type=int, default=10)
+    split.add_argument("--top-n", type=int, default=10)
+    split.add_argument("--out", required=True, type=Path)
 
     return parser
 
@@ -681,6 +775,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             print("No parameter set met the minimum trade threshold")
         else:
             print(result.head(10).to_string(index=False))
+        return 0
+
+    if args.command == "split-evaluate":
+        result = split_evaluate(df, cfg, args.split_date, args.min_trades, args.top_n)
+        save_csv(result, args.out)
+        if result.empty:
+            print("No parameter set met the minimum trade threshold")
+        else:
+            print(result.to_string(index=False))
         return 0
 
     parser.error(f"Unknown command {args.command}")

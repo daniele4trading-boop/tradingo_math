@@ -89,7 +89,26 @@ The initial grid only varies:
 
 This is intentionally small so that the first results do not become curve-fit.
 
-## 4. MT5 EA installation
+## 4. Run an in-sample / out-of-sample split
+
+```bash
+python3 -m price_action_quant.research split-evaluate \
+  --csv data/backtests/GBPUSD_H1.csv \
+  --symbol GBPUSD \
+  --timeframe H1 \
+  --direction short \
+  --split-date 2024-01-01 \
+  --min-trades 5 \
+  --top-n 10 \
+  --cost-per-trade-price 0.00012 \
+  --out data/backtests/GBPUSD_H1_split_short_cost_2024.csv
+```
+
+`--cost-per-trade-price` is converted into R using each trade's ATR-based
+stop distance. For example, `0.00012` on GBPUSD is roughly a 1.2-pip
+round-trip cost proxy.
+
+## 5. MT5 EA installation
 
 1. Copy `mt5/PriceActionQuantEA.mq5` into the MT5 `MQL5/Experts` folder.
 2. Compile it from MetaEditor.
@@ -102,5 +121,9 @@ Current baseline sets:
 - `EURUSD_H4_PriceActionQuant_v0.1.set`
 - `GBPUSD_H1_PriceActionQuant_v0.1.set`
 - `GBPUSD_H4_PriceActionQuant_v0.1.set`
+- `GBPUSD_H1_SHORT_PriceActionQuant_v0.2_candidate.set`
+- `XAUUSD_H1_LONG_PriceActionQuant_v0.2_candidate.set`
 
-These are not optimized. They are the baseline for the first test cycle.
+The v0.1 files are not optimized. The v0.2 candidate files are based on the
+first split/OOS research pass and still require broker MT5 Strategy Tester
+validation before paper/live use.

@@ -25,6 +25,7 @@ class BacktestConfig:
     break_even_at_r: float = 1.0
     conservative_intrabar: bool = True
     signal_evaluation_minutes: int = 5
+    signal_history_bars: int = 2_500
 
 
 @dataclass(frozen=True)
@@ -163,7 +164,8 @@ class ICTSniperBacktester:
             ):
                 continue
 
-            history = data.iloc[: i + 1]
+            start_idx = max(0, i + 1 - self.backtest_config.signal_history_bars)
+            history = data.iloc[start_idx : i + 1]
             setup = self.strategy.find_setup(history)
             if setup is None:
                 continue

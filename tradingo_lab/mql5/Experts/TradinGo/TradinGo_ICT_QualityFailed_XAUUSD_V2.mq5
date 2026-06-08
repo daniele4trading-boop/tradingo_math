@@ -64,6 +64,12 @@ input double                InpFailedAtrMinPoints = 450.0;
 input double                InpFailedDirPrev10MaxPoints = -100.0;
 input double                InpFailedBodyAtrMin = 1.20;
 
+input bool                  InpUseVolumeFilter = false;
+input bool                  InpVolumeFilterFailedOnly = true;
+input int                   InpVolumeLookbackBars = 20;
+input double                InpMinRelativeVolume = 1.20;
+input double                InpMaxRelativeVolume = 3.50;
+
 input bool                  InpUseRiskPercent = true;
 input double                InpRiskPercent = 1.0;
 input double                InpFixedLots = 1.0;
@@ -93,6 +99,7 @@ struct TradeDecision
    string reason;
    double atr_points;
    double dir_prev10_points;
+   double relative_volume;
    int signal_bar_spread;
 };
 
@@ -231,9 +238,10 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
    decision.reason = "no_signal";
    decision.atr_points = 0.0;
    decision.dir_prev10_points = 0.0;
+   decision.relative_volume = 0.0;
    decision.signal_bar_spread = 0;
 
-   int required_bars = MathMax(InpSweepLookbackBars + 3, 12);
+   int required_bars = MathMax(MathMax(InpSweepLookbackBars + 3, InpVolumeLookbackBars + 3), 12);
    MqlRates rates[];
    ArraySetAsSeries(rates, true);
    int copied = CopyRates(symbol, InpSignalTimeframe, 0, required_bars + 5, rates);
@@ -305,6 +313,7 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
 
    decision.dir_prev10_points = ((signal_bar.close - rates[11].close) / point) * reversal_signal;
    double body_atr = body / atr;
+   decision.relative_volume = RelativeVolume(rates, copied, 1, InpVolumeLookbackBars);
 
    bool quality = (decision.atr_points <= InpQualityAtrMaxPoints &&
                    decision.dir_prev10_points > InpQualityDirPrev10MinPoints);
@@ -316,11 +325,15 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
    {
       if(quality)
       {
+         if(!VolumeFilterAllows(decision, false))
+            return true;
          FillDecision(decision, reversal_signal, InpQualityTargetPoints, InpQualityStopPoints, InpQualityHorizonBars, "Q_REVERSAL", "quality_reversal");
          return true;
       }
       if(failed)
       {
+         if(!VolumeFilterAllows(decision, true))
+            return true;
          FillDecision(decision, -reversal_signal, InpFailedTargetPoints, InpFailedStopPoints, InpFailedHorizonBars, "F_CONT", "failed_continuation");
          return true;
       }
@@ -332,9 +345,13 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
    {
       if(failed)
       {
+         if(!VolumeFilterAllows(decision, true))
+            return true;
          FillDecision(decision, -reversal_signal, InpFailedTargetPoints, InpFailedStopPoints, InpFailedHorizonBars, "F_CONT", "failed_replaces_core");
          return true;
       }
+      if(!VolumeFilterAllows(decision, false))
+         return true;
       FillDecision(decision, reversal_signal, InpQualityTargetPoints, InpQualityStopPoints, InpQualityHorizonBars, "CORE_REV", "core_reversal");
       return true;
    }
@@ -342,7 +359,11 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
    if(InpStrategyMode == TG_QUALITY_ONLY)
    {
       if(quality)
+      {
+         if(!VolumeFilterAllows(decision, false))
+            return true;
          FillDecision(decision, reversal_signal, InpQualityTargetPoints, InpQualityStopPoints, InpQualityHorizonBars, "Q_REVERSAL", "quality_reversal");
+      }
       else
          decision.reason = "not_quality";
       return true;
@@ -351,7 +372,11 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
    if(InpStrategyMode == TG_FAILED_ONLY)
    {
       if(failed)
+      {
+         if(!VolumeFilterAllows(decision, true))
+            return true;
          FillDecision(decision, -reversal_signal, InpFailedTargetPoints, InpFailedStopPoints, InpFailedHorizonBars, "F_CONT", "failed_continuation");
+      }
       else
          decision.reason = "not_failed";
       return true;
@@ -359,6 +384,8 @@ bool BuildDecision(const string symbol, TradeDecision &decision)
 
    if(InpStrategyMode == TG_CORE_ONLY)
    {
+      if(!VolumeFilterAllows(decision, false))
+         return true;
       FillDecision(decision, reversal_signal, InpQualityTargetPoints, InpQualityStopPoints, InpQualityHorizonBars, "CORE_REV", "core_reversal");
       return true;
    }
@@ -391,6 +418,7 @@ void PrintDecisionDiagnostics(const string symbol, const TradeDecision &decision
          " dir=", decision.direction,
          " atr_points=", DoubleToString(decision.atr_points, 1),
          " dir_prev10=", DoubleToString(decision.dir_prev10_points, 1),
+         " rel_volume=", DoubleToString(decision.relative_volume, 2),
          " signal_spread=", decision.signal_bar_spread,
          " current_spread=", CurrentSpreadPoints(symbol),
          " chart_symbol=", _Symbol,
@@ -407,6 +435,59 @@ void FillDecision(TradeDecision &decision, const int direction, const int target
    decision.horizon_bars = horizon_bars;
    decision.component = component;
    decision.reason = reason;
+}
+
+//+------------------------------------------------------------------+
+double RelativeVolume(const MqlRates &rates[], const int copied, const int signal_shift, const int lookback_bars)
+{
+   if(lookback_bars <= 0)
+      return 0.0;
+
+   int start = signal_shift + 1;
+   int end = start + lookback_bars;
+   if(copied < end)
+      return 0.0;
+
+   double total_volume = 0.0;
+   int count = 0;
+   for(int i = start; i < end; i++)
+   {
+      if(rates[i].tick_volume <= 0)
+         continue;
+      total_volume += (double)rates[i].tick_volume;
+      count++;
+   }
+   if(count <= 0 || total_volume <= 0.0)
+      return 0.0;
+
+   return (double)rates[signal_shift].tick_volume / (total_volume / count);
+}
+
+//+------------------------------------------------------------------+
+bool VolumeFilterAllows(TradeDecision &decision, const bool failed_candidate)
+{
+   if(!InpUseVolumeFilter)
+      return true;
+   if(InpVolumeFilterFailedOnly && !failed_candidate)
+      return true;
+
+   if(decision.relative_volume <= 0.0)
+   {
+      decision.reason = "volume_unavailable";
+      return false;
+   }
+   if(InpMinRelativeVolume > 0.0 && decision.relative_volume < InpMinRelativeVolume)
+   {
+      decision.reason = "relative_volume_too_low";
+      return false;
+   }
+   if(InpMaxRelativeVolume > 0.0 && decision.relative_volume > InpMaxRelativeVolume)
+   {
+      decision.reason = "relative_volume_too_high";
+      return false;
+   }
+
+   return true;
 }
 
 //+------------------------------------------------------------------+

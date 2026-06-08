@@ -1,7 +1,7 @@
 InpTradeSymbol=
 InpSignalTimeframe=1
 InpStrategyMode=0
-InpMagicNumber=2026060204
+InpMagicNumber=2026060210
 InpEnableTrading=true
 InpRequireDemoAccount=true
 InpAllowMultiplePositions=false

@@ -9,6 +9,7 @@ Research/test EA for XAUUSD M1 based on the combined ICT setup found in `trading
 - quality ICT reversal in NY Open;
 - failed-reversal continuation in high-volatility/overextended conditions;
 - configurable spread filter, default `InpMaxSpreadPoints=25`;
+- optional relative tick-volume filter, disabled by default, to test whether extra failed-continuation trades can be filtered by participation;
 - demo/tester protection enabled by default via `InpRequireDemoAccount=true`;
 - risk-percent sizing enabled by default at `InpRiskPercent=1.0`;
 - time exit after the configured horizon bars if neither SL nor TP is hit.
@@ -44,6 +45,31 @@ Then compile in MetaEditor and run Strategy Tester on:
 - timeframe: `M1`
 - initial deposit: `50000`
 - model: real ticks if available, otherwise every tick based on real ticks.
+
+## Research presets
+
+Use these V2 presets to compare the current research direction:
+
+1. `TradinGo_ICT_QualityFailed_XAUUSD_V2_test_a_robust.set`
+   - robust baseline from the earlier optimizer cluster;
+   - keeps `InpQualityAtrMaxPoints=50`, `InpQualityStopPoints=50`, `InpFailedTargetPoints=500`, `InpFailedStopPoints=210`;
+   - volume filter disabled.
+2. `TradinGo_ICT_QualityFailed_XAUUSD_V2_test_b_more_trades.set`
+   - more-trades candidate from the later Vantage optimizer;
+   - uses `InpQualityStopPoints=130` with the same failed-continuation target/stop;
+   - volume filter disabled.
+3. `TradinGo_ICT_QualityFailed_XAUUSD_V2_test_c_volume_rel_1p2.set`
+   - same as test B, but enables the failed-continuation relative volume filter with `InpMinRelativeVolume=1.20`.
+4. `TradinGo_ICT_QualityFailed_XAUUSD_V2_test_d_volume_rel_1p4.set`
+   - same as test B, but requires stronger relative volume with `InpMinRelativeVolume=1.40`.
+
+The volume filter uses:
+
+```text
+relative_volume = signal_bar_tick_volume / average_tick_volume_previous_N_closed_bars
+```
+
+Keep the candidate only if it stays between `InpMinRelativeVolume` and `InpMaxRelativeVolume`. The research goal is not to maximize trades; prefer a candidate that keeps drawdown materially below the unfiltered more-trades result while preserving enough trades to be statistically useful.
 
 ## Safety
 

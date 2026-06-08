@@ -96,6 +96,7 @@ class ICTSniperStrategyTest(unittest.TestCase):
             max_daily_dd_pct=0.02,
             max_daily_trades=3,
             pending_expiry_minutes=30,
+            signal_evaluation_minutes=1,
         )
         report = ICTSniperBacktester(strategy_cfg, backtest_cfg).run(synthetic_bullish_m1())
         closed = [t for t in report.trades if t.status not in ("EXPIRED", "OPEN")]

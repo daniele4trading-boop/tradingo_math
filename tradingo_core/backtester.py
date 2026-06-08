@@ -24,6 +24,7 @@ class BacktestConfig:
     pending_expiry_minutes: int = 90
     break_even_at_r: float = 1.0
     conservative_intrabar: bool = True
+    signal_evaluation_minutes: int = 5
 
 
 @dataclass(frozen=True)
@@ -155,6 +156,11 @@ class ICTSniperBacktester:
             if open_trade is not None or pending is not None or daily_halted:
                 continue
             if daily_trades >= self.backtest_config.max_daily_trades:
+                continue
+            if (
+                self.backtest_config.signal_evaluation_minutes > 1
+                and ts.minute % self.backtest_config.signal_evaluation_minutes != 0
+            ):
                 continue
 
             history = data.iloc[: i + 1]

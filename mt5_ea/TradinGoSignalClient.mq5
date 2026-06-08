@@ -271,9 +271,12 @@ void SendAck(string signal_id, string status, string message, string order_ticke
 int HttpRequest(string method, string url, string payload, string &response)
 {
    char post[];
-   int payload_len = StringLen(payload);
-   if(payload_len > 0)
-      StringToCharArray(payload, post, 0, payload_len, CP_UTF8);
+   if(payload != "")
+   {
+      int copied = StringToCharArray(payload, post, 0, WHOLE_ARRAY, CP_UTF8);
+      if(copied > 0 && post[copied - 1] == 0)
+         ArrayResize(post, copied - 1);
+   }
    else
       ArrayResize(post, 0);
 

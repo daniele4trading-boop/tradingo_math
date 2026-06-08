@@ -189,6 +189,8 @@ class JsonSignalStore:
         now: Optional[datetime] = None,
     ) -> list[SignalRecord]:
         raw = self._read_json("signals.json", [])
+        if isinstance(raw, dict):
+            raw = [raw]
         out = [SignalRecord(**item).normalized() for item in raw]
         if include_inactive:
             return out

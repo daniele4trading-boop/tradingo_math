@@ -109,6 +109,31 @@ class SignalApiTest(unittest.TestCase):
         response = self.client.get("/signals/latest?symbol=XAUUSD")
         self.assertEqual(response.status_code, 401)
 
+    def test_latest_accepts_single_object_signal_file(self):
+        signal_file = Path(self.tmp.name) / "signals.json"
+        signal_file.write_text(
+            """{
+              "signal_id": "legacy-single",
+              "symbol": "XAUUSD",
+              "direction": "SELL",
+              "entry_type": "LIMIT",
+              "entry": 2300.0,
+              "sl": 2302.0,
+              "tp1": 2298.0,
+              "tp2": 2296.0,
+              "risk_pct": 0.005,
+              "score": 75,
+              "status": "ACTIVE"
+            }""",
+            encoding="utf-8",
+        )
+        latest = self.client.get(
+            "/signals/latest?symbol=XAUUSD",
+            headers={"X-API-Key": "client-key"},
+        )
+        self.assertEqual(latest.status_code, 200)
+        self.assertEqual(latest.json()["signal"]["signal_id"], "legacy-single")
+
 
 if __name__ == "__main__":
     unittest.main()

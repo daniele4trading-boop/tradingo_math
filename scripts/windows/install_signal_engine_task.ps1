@@ -39,7 +39,11 @@ python -m tradingo_core.signal_engine --loop --symbol $Symbol --terminal-path "$
 
 Set-Content -Path $Launcher -Value $launcherBody -Encoding ASCII
 
-schtasks /Delete /TN $TaskName /F 2>$null | Out-Null
+try {
+    schtasks /Delete /TN $TaskName /F 2>$null | Out-Null
+} catch {
+    # Task may not exist on first install.
+}
 schtasks /Create /TN $TaskName /SC ONSTART /RL HIGHEST /TR $Launcher /F | Out-Host
 schtasks /Run /TN $TaskName | Out-Host
 

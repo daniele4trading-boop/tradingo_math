@@ -134,6 +134,16 @@ class SignalApiTest(unittest.TestCase):
         self.assertEqual(latest.status_code, 200)
         self.assertEqual(latest.json()["signal"]["signal_id"], "legacy-single")
 
+    def test_latest_accepts_bom_encoded_signal_file(self):
+        signal_file = Path(self.tmp.name) / "signals.json"
+        signal_file.write_text("[]", encoding="utf-8-sig")
+        latest = self.client.get(
+            "/signals/latest?symbol=XAUUSD",
+            headers={"X-API-Key": "client-key"},
+        )
+        self.assertEqual(latest.status_code, 200)
+        self.assertIsNone(latest.json()["signal"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -61,6 +61,7 @@ MaxRiskPct=$MaxRiskPct
 FixedLotFallback=0.01
 RequestTimeoutMs=5000
 PendingExpiryMinutes=90
+DebugHttp=true
 "@
 
     $PresetPath = Join-Path $PresetsDir "TradinGoSignalClient_DRYRUN.set"

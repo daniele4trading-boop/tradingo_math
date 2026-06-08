@@ -21,6 +21,7 @@ input double MaxRiskPct          = 0.005;
 input double FixedLotFallback    = 0.01;
 input int    RequestTimeoutMs    = 5000;
 input int    PendingExpiryMinutes= 90;
+input bool   DebugHttp           = true;
 
 CTrade trade;
 string last_signal_id = "";
@@ -103,7 +104,7 @@ bool FetchLatestSignal(SignalData &signal)
    int code = HttpRequest("GET", url, "", response);
    if(code != 200)
    {
-      Print("FetchLatestSignal HTTP error: ", code, " body=", response);
+      Print("FetchLatestSignal failed: ", response);
       return false;
    }
    if(StringFind(response, "\"signal\":null") >= 0)
@@ -240,7 +241,9 @@ void SendHeartbeat(string last_error)
    payload += "\"last_error\":\"" + JsonEscape(last_error) + "\"";
    payload += "}";
    string response = "";
-   HttpRequest("POST", ApiBaseUrl + "/accounts/heartbeat", payload, response);
+   int code = HttpRequest("POST", ApiBaseUrl + "/accounts/heartbeat", payload, response);
+   if(code != 200)
+      Print("Heartbeat failed: ", response);
 }
 
 void SendAck(string signal_id, string status, string message, string order_ticket)
@@ -257,7 +260,7 @@ void SendAck(string signal_id, string status, string message, string order_ticke
    string response = "";
    int code = HttpRequest("POST", ApiBaseUrl + "/signals/ack", payload, response);
    if(code != 200)
-      Print("Ack failed HTTP=", code, " body=", response);
+      Print("Ack failed: ", response);
 }
 
 int HttpRequest(string method, string url, string payload, string &response)
@@ -272,15 +275,39 @@ int HttpRequest(string method, string url, string payload, string &response)
    string headers = "X-API-Key: " + ApiKey + "\r\nContent-Type: application/json\r\n";
    ResetLastError();
    int code = WebRequest(method, url, headers, RequestTimeoutMs, post, result, result_headers);
+   int err = GetLastError();
+   string body = CharArrayToString(result, 0, ArraySize(result), CP_UTF8);
    if(code == -1)
    {
-      int err = GetLastError();
-      response = "WebRequest failed: " + IntegerToString(err);
-      Print(response, ". Add API URL in MT5: Tools > Options > Expert Advisors > Allow WebRequest.");
+      response = "WebRequest failed method=" + method
+               + " url=" + url
+               + " mt5err=" + IntegerToString(err)
+               + " headers=" + ShortenForLog(result_headers)
+               + " body=" + ShortenForLog(body)
+               + ". Add API URL in MT5: Tools > Options > Expert Advisors > Allow WebRequest.";
+      Print(response);
       return -1;
    }
-   response = CharArrayToString(result, 0, -1, CP_UTF8);
+   response = body;
+   if(DebugHttp && code != 200)
+   {
+      response = "HTTP code=" + IntegerToString(code)
+               + " method=" + method
+               + " url=" + url
+               + " mt5err=" + IntegerToString(err)
+               + " response_headers=" + ShortenForLog(result_headers)
+               + " body=" + ShortenForLog(body);
+   }
    return code;
+}
+
+string ShortenForLog(string value)
+{
+   StringReplace(value, "\r", " ");
+   StringReplace(value, "\n", " ");
+   if(StringLen(value) > 500)
+      return StringSubstr(value, 0, 500) + "...";
+   return value;
 }
 
 string JsonString(string json, string key)

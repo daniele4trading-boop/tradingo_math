@@ -26,7 +26,7 @@ input bool   DebugHttp           = true;
 CTrade trade;
 string last_signal_id = "";
 datetime last_heartbeat = 0;
-const string EA_BUILD = "20260608-httpdiag";
+const string EA_BUILD = "20260608-jsonfix";
 
 struct SignalData
 {

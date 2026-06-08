@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--db-path",
         default=get_tsentry_db_path(),
-        help=f"SQLite DB path. Defaults to %{TSENTRY_DB_PATH_ENV}% or the repo default.",
+        help=f"SQLite DB path. Defaults to the {TSENTRY_DB_PATH_ENV} env var or the repo default.",
     )
     return parser.parse_args()
 

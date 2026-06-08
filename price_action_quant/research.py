@@ -21,6 +21,28 @@ TIMEFRAME_MT5 = {
     "D1": "TIMEFRAME_D1",
 }
 
+DUKASCOPY_INTERVALS = {
+    "M1": "INTERVAL_MIN_1",
+    "M5": "INTERVAL_MIN_5",
+    "M15": "INTERVAL_MIN_15",
+    "M30": "INTERVAL_MIN_30",
+    "H1": "INTERVAL_HOUR_1",
+    "H4": "INTERVAL_HOUR_4",
+    "D1": "INTERVAL_DAY_1",
+}
+
+DUKASCOPY_INSTRUMENTS = {
+    "EURUSD": "INSTRUMENT_FX_MAJORS_EUR_USD",
+    "GBPUSD": "INSTRUMENT_FX_MAJORS_GBP_USD",
+    "USDJPY": "INSTRUMENT_FX_MAJORS_USD_JPY",
+    "AUDUSD": "INSTRUMENT_FX_MAJORS_AUD_USD",
+    "USDCAD": "INSTRUMENT_FX_MAJORS_USD_CAD",
+    "USDCHF": "INSTRUMENT_FX_MAJORS_USD_CHF",
+    "NZDUSD": "INSTRUMENT_FX_MAJORS_NZD_USD",
+    "XAUUSD": "INSTRUMENT_FX_METALS_XAU_USD",
+    "GOLD": "INSTRUMENT_FX_METALS_XAU_USD",
+}
+
 
 @dataclass(frozen=True)
 class StrategyConfig:
@@ -89,6 +111,12 @@ def normalize_ohlc(df: pd.DataFrame) -> pd.DataFrame:
     if "time" in df.columns:
         df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
         df = df.dropna(subset=["time"]).sort_values("time")
+    elif isinstance(df.index, pd.DatetimeIndex):
+        df = df.reset_index()
+        index_col = df.columns[0]
+        df = df.rename(columns={index_col: "time"})
+        df["time"] = pd.to_datetime(df["time"], utc=True, errors="coerce")
+        df = df.dropna(subset=["time"]).sort_values("time")
     else:
         df["time"] = pd.RangeIndex(start=0, stop=len(df), step=1).astype(str)
 
@@ -139,6 +167,58 @@ def download_mt5_history(symbol: str, timeframe: str, bars: int) -> pd.DataFrame
 
     df = pd.DataFrame(rates)
     df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    return normalize_ohlc(df)
+
+
+def parse_date(value: str) -> pd.Timestamp:
+    parsed = pd.Timestamp(value)
+    if parsed.tzinfo is not None:
+        parsed = parsed.tz_convert("UTC").tz_localize(None)
+    return parsed
+
+
+def download_dukascopy_history(
+    symbol: str,
+    timeframe: str,
+    start: str,
+    end: str,
+    offer_side: str = "bid",
+) -> pd.DataFrame:
+    try:
+        import dukascopy_python as dukascopy  # type: ignore
+        import dukascopy_python.instruments as instruments  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError("Install dukascopy-python to use download-dukascopy") from exc
+
+    symbol_key = symbol.replace("/", "").replace("_", "").upper()
+    instrument_name = DUKASCOPY_INSTRUMENTS.get(symbol_key)
+    if not instrument_name:
+        raise ValueError(
+            f"Unsupported Dukascopy symbol {symbol}. "
+            f"Supported: {sorted(DUKASCOPY_INSTRUMENTS)}"
+        )
+
+    interval_name = DUKASCOPY_INTERVALS.get(timeframe.upper())
+    if not interval_name:
+        raise ValueError(f"Unsupported Dukascopy timeframe {timeframe}. Use one of {sorted(DUKASCOPY_INTERVALS)}")
+
+    side = offer_side.lower()
+    if side not in ("bid", "ask"):
+        raise ValueError("--offer-side must be bid or ask")
+
+    instrument = getattr(instruments, instrument_name)
+    interval = getattr(dukascopy, interval_name)
+    side_value = dukascopy.OFFER_SIDE_BID if side == "bid" else dukascopy.OFFER_SIDE_ASK
+
+    df = dukascopy.fetch(
+        instrument=instrument,
+        interval=interval,
+        offer_side=side_value,
+        start=parse_date(start).to_pydatetime(),
+        end=parse_date(end).to_pydatetime(),
+        max_retries=5,
+        debug=False,
+    )
     return normalize_ohlc(df)
 
 
@@ -273,7 +353,11 @@ def short_signal(df: pd.DataFrame, i: int, cfg: StrategyConfig) -> bool:
 
 
 def backtest(df: pd.DataFrame, cfg: StrategyConfig) -> tuple[list[Trade], dict]:
-    data = add_indicators(df, cfg)
+    return backtest_prepared(add_indicators(df, cfg), cfg)
+
+
+def backtest_prepared(data: pd.DataFrame, cfg: StrategyConfig) -> tuple[list[Trade], dict]:
+    """Run a backtest on data that already contains indicator columns."""
     trades: list[Trade] = []
     position: Optional[dict] = None
 
@@ -470,6 +554,7 @@ def config_from_args(args: argparse.Namespace) -> StrategyConfig:
 
 
 def optimize(df: pd.DataFrame, base_cfg: StrategyConfig, min_trades: int) -> pd.DataFrame:
+    data = add_indicators(df, base_cfg)
     rows = []
     for z in (-1.5, -1.75, -2.0, -2.25, -2.5):
         for atr_mult in (1.5, 2.0, 2.5):
@@ -482,7 +567,7 @@ def optimize(df: pd.DataFrame, base_cfg: StrategyConfig, min_trades: int) -> pd.
                         reward_risk=rr,
                         require_close_break=close_break,
                     )
-                    trades, summary = backtest(df, cfg)
+                    trades, summary = backtest_prepared(data, cfg)
                     if summary["trades"] >= min_trades:
                         rows.append(
                             {
@@ -523,6 +608,14 @@ def build_parser() -> argparse.ArgumentParser:
     dl.add_argument("--bars", type=int, default=50_000)
     dl.add_argument("--out", required=True, type=Path)
 
+    duk = sub.add_parser("download-dukascopy", help="Download OHLC data from Dukascopy")
+    duk.add_argument("--symbol", required=True)
+    duk.add_argument("--timeframe", default="H1", choices=sorted(DUKASCOPY_INTERVALS))
+    duk.add_argument("--start", required=True, help="UTC start date, e.g. 2021-01-01")
+    duk.add_argument("--end", required=True, help="UTC end date, e.g. 2026-06-08")
+    duk.add_argument("--offer-side", default="bid", choices=("bid", "ask"))
+    duk.add_argument("--out", required=True, type=Path)
+
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--csv", required=True, type=Path)
     common.add_argument("--symbol", default="EURUSD")
@@ -553,6 +646,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
     if args.command == "download-mt5":
         df = download_mt5_history(args.symbol, args.timeframe, args.bars)
+        save_csv(df, args.out)
+        print(f"Saved {len(df)} bars to {args.out}")
+        return 0
+
+    if args.command == "download-dukascopy":
+        df = download_dukascopy_history(
+            symbol=args.symbol,
+            timeframe=args.timeframe,
+            start=args.start,
+            end=args.end,
+            offer_side=args.offer_side,
+        )
         save_csv(df, args.out)
         print(f"Saved {len(df)} bars to {args.out}")
         return 0

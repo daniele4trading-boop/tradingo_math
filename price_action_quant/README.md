@@ -12,7 +12,26 @@ strategy:
 
 The live MT5 Expert Advisor is in `../mt5/PriceActionQuantEA.mq5`.
 
-## 1. Download data from the broker MT5 terminal
+## 1. Download data
+
+### Dukascopy
+
+Use this route when the VPS does not expose a local MT5 terminal to Python.
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 -m price_action_quant.research download-dukascopy \
+  --symbol EURUSD \
+  --timeframe H1 \
+  --start 2021-01-01 \
+  --end 2026-06-08 \
+  --out data/backtests/EURUSD_H1.csv
+```
+
+Supported initial symbols: `EURUSD`, `GBPUSD`, `USDJPY`, `AUDUSD`,
+`USDCAD`, `USDCHF`, `NZDUSD`, `XAUUSD`/`GOLD`.
+
+### Broker MT5 terminal
 
 The local MT5 terminal must be installed, openable by the Python `MetaTrader5`
 package, and have the symbol available in Market Watch.

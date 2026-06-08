@@ -26,6 +26,7 @@ input bool   DebugHttp           = true;
 CTrade trade;
 string last_signal_id = "";
 datetime last_heartbeat = 0;
+const string EA_BUILD = "20260608-httpdiag";
 
 struct SignalData
 {
@@ -45,7 +46,11 @@ int OnInit()
 {
    trade.SetExpertMagicNumber(MagicNumber);
    EventSetTimer(MathMax(1, PollSeconds));
-   Print("TradinGo Signal Client initialized. LiveTrading=", EnableLiveTrading);
+   Print("TradinGo Signal Client initialized. Build=", EA_BUILD,
+         " LiveTrading=", EnableLiveTrading,
+         " ApiBaseUrl=", ApiBaseUrl,
+         " ClientId=", ClientId,
+         " DebugHttp=", DebugHttp);
    return INIT_SUCCEEDED;
 }
 

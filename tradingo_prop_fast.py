@@ -1,8 +1,9 @@
 ﻿import time, sqlite3, os, pandas as pd
 import MetaTrader5 as mt5
+from tsentry_config import get_tsentry_db_path
 
 # --- CONFIGURAZIONE v3.4.0 (SQLITE MODE) -----
-DB_PATH = "C:/tradingo_math/tradingo.db"
+DB_PATH = get_tsentry_db_path()
 PROP_PATH = "C:/Program Files/STARTRADER Financial MetaTrader 5/terminal64.exe" 
 SYMBOL, LOT_SIZE, MAGIC_PROP = "XAUUSD", 1.0, 1610077148
 

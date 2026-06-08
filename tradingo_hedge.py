@@ -1,8 +1,9 @@
 ﻿import time, sqlite3, os, pandas as pd
 import MetaTrader5 as mt5
+from tsentry_config import get_tsentry_db_path
 
 # --- CONFIGURAZIONE v3.5.0 ---
-DB_PATH = "C:/tradingo_math/tradingo.db"
+DB_PATH = get_tsentry_db_path()
 ULTIMA_PATH = "C:/Program Files/Ultima Markets MT5 Terminal/terminal64.exe"
 SYMBOL, LOT_SIZE, MAGIC_HEDGE = "XAUUSD", 0.10, 843409
 EQUITY_FLOOR = 47550.0

@@ -25,6 +25,11 @@ def run_validation(args) -> int:
 
     strategy_cfg = ICTSniperConfig(
         min_score=args.min_score,
+        min_sweep_volume_z=args.min_sweep_volume_z,
+        min_displacement_range_atr=args.min_displacement_range_atr,
+        min_displacement_volume_z=args.min_displacement_volume_z,
+        max_retest_volume_z=args.max_retest_volume_z,
+        sl_buffer_atr=args.sl_buffer_atr,
         rr_target=args.rr,
         max_daily_trades=args.max_daily_trades,
     )
@@ -111,6 +116,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-daily-dd-pct", type=float, default=0.02)
     parser.add_argument("--max-daily-trades", type=int, default=3)
     parser.add_argument("--min-score", type=float, default=65.0)
+    parser.add_argument("--min-sweep-volume-z", type=float, default=0.4)
+    parser.add_argument("--min-displacement-range-atr", type=float, default=0.8)
+    parser.add_argument("--min-displacement-volume-z", type=float, default=0.2)
+    parser.add_argument("--max-retest-volume-z", type=float, default=1.2)
+    parser.add_argument("--sl-buffer-atr", type=float, default=0.08)
     parser.add_argument("--rr", type=float, default=2.0)
     parser.add_argument("--signal-evaluation-minutes", type=int, default=5)
     parser.add_argument("--signal-history-bars", type=int, default=2500)

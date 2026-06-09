@@ -55,6 +55,47 @@ MT5_TIMEFRAMES = {
     "MN1": "TIMEFRAME_MN1",
 }
 
+TIMEFRAME_MINUTES = {
+    "M1": 1,
+    "M5": 5,
+    "M15": 15,
+    "M30": 30,
+    "H1": 60,
+    "H4": 240,
+    "D1": 1440,
+    "W1": 10080,
+    "MN1": 43200,
+}
+
+
+def load_csv_ohlc(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    renamed = {col: str(col).strip().lower() for col in df.columns}
+    df = df.rename(columns=renamed)
+    if "time" not in df.columns:
+        for candidate in ("datetime", "date", "timestamp"):
+            if candidate in df.columns:
+                df = df.rename(columns={candidate: "time"})
+                break
+    return normalize_ohlc(df)
+
+
+def discover_csv(data_dir: Path, symbol: str, timeframe: str, source: str) -> Optional[Path]:
+    pattern = f"{symbol.upper()}_{timeframe.upper()}_{source}_*.csv"
+    matches = sorted(data_dir.glob(pattern))
+    if not matches:
+        legacy = sorted(data_dir.glob(f"{symbol.upper()}_{timeframe.upper()}.csv"))
+        matches = legacy
+    return matches[-1] if matches else None
+
+
+def timeframe_can_support(base_timeframe: str, required_timeframe: str) -> bool:
+    base = TIMEFRAME_MINUTES.get(base_timeframe.upper())
+    required = TIMEFRAME_MINUTES.get(required_timeframe.upper())
+    if base is None or required is None:
+        return False
+    return base <= required
+
 
 class TsEntryArchive:
     def __init__(self, path: str):
@@ -430,6 +471,97 @@ def command_backtest(args) -> None:
         archive.close()
 
 
+def command_csv_backtest(args) -> None:
+    styles = list(STYLE_SPECS) if args.styles == ["all"] else args.styles
+    data_dir = Path(args.data_dir)
+    csv_path = args.csv or discover_csv(data_dir, args.symbol, args.csv_timeframe, args.source)
+    if csv_path is None:
+        raise RuntimeError(
+            f"No CSV found for {args.symbol} {args.csv_timeframe} in {data_dir}. "
+            "Download it first with price_action_quant.research download-dukascopy."
+        )
+    csv_path = Path(csv_path)
+    base_df = load_csv_ohlc(csv_path)
+
+    params = TsEntryParams(
+        symbol=args.symbol,
+        smt_symbol=args.smt_symbol,
+        risk_fraction=args.risk,
+        starting_equity=args.starting_equity,
+        spread_buffer_points=args.buffer_points,
+        point_size=args.point_size,
+        require_smt=args.require_smt,
+    )
+
+    smt_frames = None
+    smt_csv_path = args.smt_csv or discover_csv(data_dir, args.smt_symbol, args.csv_timeframe, args.source)
+    if smt_csv_path:
+        smt_base = load_csv_ohlc(Path(smt_csv_path))
+        smt_wanted = {
+            STYLE_SPECS[style].entry_tf
+            for style in styles
+            if timeframe_can_support(args.csv_timeframe, STYLE_SPECS[style].entry_tf)
+        }
+        if smt_wanted:
+            smt_frames = ensure_timeframes(smt_base, smt_wanted)
+
+    all_trades: List[BacktestTrade] = []
+    summaries: Dict[str, pd.DataFrame] = {}
+    skipped: Dict[str, str] = {}
+    for style_name in styles:
+        spec = STYLE_SPECS[style_name]
+        if not timeframe_can_support(args.csv_timeframe, spec.entry_tf):
+            skipped[style_name] = (
+                f"{args.csv_timeframe} CSV cannot be downsampled to required entry timeframe {spec.entry_tf}"
+            )
+            print(f"\n[{style_name}] skipped: {skipped[style_name]}")
+            continue
+
+        required = {spec.bias_tf, spec.range_tf, spec.entry_tf}
+        frames = ensure_timeframes(base_df, required)
+        trades, summary = backtest_style(style_name, frames, params, smt_frames=smt_frames)
+        summaries[style_name] = summary
+        all_trades.extend(trades)
+        print(f"\n[{style_name}]")
+        print(summary.to_string(index=False))
+
+        prefix = f"TSENTRY_{args.symbol.upper()}_{spec.entry_tf}_{style_name}"
+        trades_out = data_dir / f"{prefix}_trades.csv"
+        summary_out = data_dir / f"{prefix}_summary.json"
+        frame = trades_to_frame(trades)
+        trades_out.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_csv(trades_out, index=False)
+        summary_out.write_text(summary.to_json(orient="records", indent=2), encoding="utf-8")
+
+    overlay = trades_to_frame(all_trades).sort_values("entry_time") if all_trades else pd.DataFrame()
+    if not overlay.empty:
+        overlay_out = data_dir / f"TSENTRY_{args.symbol.upper()}_{args.csv_timeframe}_overlay_trades.csv"
+        overlay.to_csv(overlay_out, index=False)
+        print("\n[overlay]")
+        print(
+            pd.DataFrame(
+                [
+                    {
+                        "trades": len(overlay),
+                        "total_r": float(overlay["result_r"].sum()),
+                        "expectancy_r": float(overlay["result_r"].mean()),
+                        "net_pnl": float(overlay["pnl"].sum()),
+                    }
+                ]
+            ).to_string(index=False)
+        )
+
+    report_path = write_csv_backtest_report(
+        args=args,
+        csv_path=csv_path,
+        smt_csv_path=Path(smt_csv_path) if smt_csv_path else None,
+        summaries=summaries,
+        skipped=skipped,
+        trades=all_trades,
+    )
+    print(f"\nReport written: {report_path}")
+
+
 def command_live(args) -> None:
     params = TsEntryParams(
         symbol=args.symbol,
@@ -482,6 +614,106 @@ def command_live(args) -> None:
         archive.close()
         if mt5 is not None:
             mt5.shutdown()
+
+
+def write_csv_backtest_report(
+    args,
+    csv_path: Path,
+    smt_csv_path: Optional[Path],
+    summaries: Dict[str, pd.DataFrame],
+    skipped: Dict[str, str],
+    trades: Sequence[BacktestTrade],
+) -> Path:
+    report_dir = Path(args.report_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    report_path = report_dir / f"{args.symbol.lower()}_{args.csv_timeframe.lower()}_tsentry_csv_backtest_{stamp}.md"
+
+    data = load_csv_ohlc(csv_path)
+    first = data.index.min().strftime("%Y-%m-%d %H:%M UTC") if not data.empty else "n/a"
+    last = data.index.max().strftime("%Y-%m-%d %H:%M UTC") if not data.empty else "n/a"
+
+    lines = [
+        f"# TSEntry CSV Backtest - {args.symbol.upper()} {args.csv_timeframe.upper()}",
+        "",
+        "## Data used",
+        "",
+        f"- Primary file: `{csv_path}`",
+        f"- Symbol: `{args.symbol.upper()}`",
+        f"- Timeframe: `{args.csv_timeframe.upper()}`",
+        f"- Source: `{args.source}`",
+        f"- Period: {first} -> {last}",
+        f"- Bars: {len(data):,}",
+        f"- SMT file: `{smt_csv_path}`" if smt_csv_path else "- SMT file: not available / not used",
+        "",
+        "## Assumptions",
+        "",
+        f"- Risk per trade: {args.risk:.2%}",
+        f"- Starting equity for PnL normalization: {args.starting_equity:,.2f}",
+        f"- Sweep buffer: {args.buffer_points} points x point size {args.point_size}",
+        f"- SMT required: {args.require_smt}",
+        "- Spread/commission/slippage: not explicitly charged beyond the sweep buffer.",
+        "- Same-bar ambiguity: bar-based backtest uses conservative stop checks before target checks.",
+        "- Execution feed: historical CSV, not live broker tick feed.",
+        "",
+        "## Per-style results",
+        "",
+        "| Style | Trades | Win rate | Total R | Expectancy R | Net PnL | Max DD |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+
+    for style_name, summary in summaries.items():
+        row = summary.to_dict(orient="records")[0]
+        lines.append(
+            "| {style} | {trades} | {win_rate:.2%} | {total_r:.2f} | {expectancy_r:.3f} | {net_pnl:.2f} | {max_dd:.2f} |".format(
+                style=style_name,
+                trades=int(row["trades"]),
+                win_rate=float(row["win_rate"]),
+                total_r=float(row["total_r"]),
+                expectancy_r=float(row["expectancy_r"]),
+                net_pnl=float(row["net_pnl"]),
+                max_dd=float(row["max_drawdown"]),
+            )
+        )
+
+    if skipped:
+        lines.extend(["", "## Skipped styles", ""])
+        for style_name, reason in skipped.items():
+            lines.append(f"- `{style_name}`: {reason}")
+
+    if trades:
+        overlay = trades_to_frame(list(trades))
+        lines.extend(
+            [
+                "",
+                "## Overlay",
+                "",
+                f"- Trades: {len(overlay)}",
+                f"- Total R: {float(overlay['result_r'].sum()):.2f}",
+                f"- Expectancy R: {float(overlay['result_r'].mean()):.3f}",
+                f"- Net PnL: {float(overlay['pnl'].sum()):.2f}",
+            ]
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Reproducibility",
+            "",
+            "Example command:",
+            "",
+            "```bash",
+            (
+                "python3 tsentry_runner.py csv-backtest "
+                f"--symbol {args.symbol} --csv-timeframe {args.csv_timeframe} "
+                f"--source {args.source} --styles {' '.join(args.styles)}"
+            ),
+            "```",
+        ]
+    )
+
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return report_path
 
 
 def execute_split_order(symbol: str, signal, params: TsEntryParams) -> dict:
@@ -579,6 +811,23 @@ def build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--point-size", type=float, default=0.01)
     backtest.add_argument("--require-smt", action="store_true")
     backtest.set_defaults(func=command_backtest)
+
+    csv_bt = sub.add_parser("csv-backtest", help="Backtest TSEntry from shared CSV files under data/backtests")
+    csv_bt.add_argument("--data-dir", default="data/backtests")
+    csv_bt.add_argument("--report-dir", default="price_action_quant/reports")
+    csv_bt.add_argument("--csv", type=Path, default=None)
+    csv_bt.add_argument("--smt-csv", type=Path, default=None)
+    csv_bt.add_argument("--source", default="dukascopy")
+    csv_bt.add_argument("--symbol", default="XAUUSD")
+    csv_bt.add_argument("--smt-symbol", default="XAGUSD")
+    csv_bt.add_argument("--csv-timeframe", default="H1")
+    csv_bt.add_argument("--styles", nargs="+", default=["all"], choices=["all", *STYLE_SPECS.keys()])
+    csv_bt.add_argument("--risk", type=float, default=0.01)
+    csv_bt.add_argument("--starting-equity", type=float, default=100_000.0)
+    csv_bt.add_argument("--buffer-points", type=float, default=80.0)
+    csv_bt.add_argument("--point-size", type=float, default=0.01)
+    csv_bt.add_argument("--require-smt", action="store_true")
+    csv_bt.set_defaults(func=command_csv_backtest)
 
     live = sub.add_parser("live", help="Check current TSEntry setup and optionally execute on demo")
     live.add_argument("--broker-name", required=True)

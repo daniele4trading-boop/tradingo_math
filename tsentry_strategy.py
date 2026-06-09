@@ -121,7 +121,8 @@ class TsEntryParams:
     point_size: float = 0.01
     min_rr_to_tp1: float = 0.6
     require_smt: bool = False
-    one_trade_at_a_time: bool = True
+    max_consecutive_daily_losses: int = 2
+    one_trade_at_a_time: bool = False
 
     @property
     def price_buffer(self) -> float:
@@ -225,11 +226,15 @@ def ensure_timeframes(base_df: pd.DataFrame, wanted: Iterable[str]) -> Dict[str,
 def compute_bias_at(df: pd.DataFrame, timestamp: pd.Timestamp) -> Bias:
     """Bias from the last closed HTF candle before timestamp."""
     htf = normalize_ohlc(df)
-    closed = htf[htf.index < timestamp]
-    if len(closed) < 2:
+    return _compute_bias_from_frame(htf, timestamp)
+
+
+def _compute_bias_from_frame(htf: pd.DataFrame, timestamp: pd.Timestamp) -> Bias:
+    loc = htf.index.searchsorted(timestamp, side="left")
+    if loc < 2:
         return Bias.NEUTRAL
-    last = closed.iloc[-1]
-    prev = closed.iloc[-2]
+    last = htf.iloc[loc - 1]
+    prev = htf.iloc[loc - 2]
     if float(last["close"]) > float(prev["high"]):
         return Bias.BULLISH
     if float(last["close"]) < float(prev["low"]):
@@ -239,10 +244,14 @@ def compute_bias_at(df: pd.DataFrame, timestamp: pd.Timestamp) -> Bias:
 
 def _last_closed_range(df: pd.DataFrame, timestamp: pd.Timestamp) -> Optional[pd.Series]:
     closed = normalize_ohlc(df)
-    closed = closed[closed.index < timestamp]
-    if closed.empty:
+    return _last_closed_range_from_frame(closed, timestamp)
+
+
+def _last_closed_range_from_frame(closed: pd.DataFrame, timestamp: pd.Timestamp) -> Optional[pd.Series]:
+    loc = closed.index.searchsorted(timestamp, side="left")
+    if loc < 1:
         return None
-    return closed.iloc[-1]
+    return closed.iloc[loc - 1]
 
 
 def _ny_time(timestamp: pd.Timestamp) -> pd.Timestamp:
@@ -279,13 +288,34 @@ def _asia_range(entry_df: pd.DataFrame, timestamp: pd.Timestamp) -> Optional[Tup
     return float(sub["high"].max()), float(sub["low"].min())
 
 
+def _build_asia_range_cache(entry_df: pd.DataFrame) -> Dict[object, Tuple[float, float]]:
+    src = normalize_ohlc(entry_df)
+    if src.empty:
+        return {}
+    tmp = src.copy()
+    tmp["ny_time"] = tmp.index.tz_convert(NY_TZ)
+    tmp["ny_clock"] = tmp["ny_time"].dt.time
+    asia = tmp[(tmp["ny_clock"] >= time(20, 0)) & (tmp["ny_clock"] < time(23, 59, 59))]
+    if asia.empty:
+        return {}
+    asia = asia.copy()
+    asia["target_day"] = (asia["ny_time"] + pd.Timedelta(days=1)).dt.date
+    grouped = asia.groupby("target_day")
+    return {
+        day: (float(group["high"].max()), float(group["low"].min()))
+        for day, group in grouped
+        if not group.empty
+    }
+
+
 def _build_levels(
     style: StyleSpec,
     timestamp: pd.Timestamp,
     frames: Dict[str, pd.DataFrame],
+    asia_cache: Optional[Dict[object, Tuple[float, float]]] = None,
 ) -> List[KeyLevel]:
     levels: List[KeyLevel] = []
-    ref = _last_closed_range(frames[style.range_tf], timestamp)
+    ref = _last_closed_range_from_frame(frames[style.range_tf], timestamp)
     if ref is not None:
         high = float(ref["high"])
         low = float(ref["low"])
@@ -297,7 +327,7 @@ def _build_levels(
         )
 
     if style.include_prior_entry_range:
-        prior_entry = _last_closed_range(frames[style.entry_tf], timestamp)
+        prior_entry = _last_closed_range_from_frame(frames[style.entry_tf], timestamp)
         if prior_entry is not None:
             high = float(prior_entry["high"])
             low = float(prior_entry["low"])
@@ -309,7 +339,11 @@ def _build_levels(
             )
 
     if style.include_asia_range:
-        asia = _asia_range(frames[style.entry_tf], timestamp)
+        asia = None
+        if asia_cache is not None:
+            asia = asia_cache.get(_ny_time(timestamp).date())
+        if asia is None:
+            asia = _asia_range(frames[style.entry_tf], timestamp)
         if asia is not None:
             high, low = asia
             levels.extend(
@@ -359,7 +393,9 @@ def detect_tsentry_signals(
     if missing:
         raise ValueError(f"Missing frames for {style_name}: {sorted(missing)}")
 
-    entry_df = normalize_ohlc(frames[style.entry_tf])
+    frames = {timeframe: normalize_ohlc(frame) for timeframe, frame in frames.items()}
+    entry_df = frames[style.entry_tf]
+    asia_cache = _build_asia_range_cache(entry_df) if style.include_asia_range else None
     smt_df = None
     if smt_frames and style.entry_tf in smt_frames:
         smt_df = normalize_ohlc(smt_frames[style.entry_tf])
@@ -373,11 +409,11 @@ def detect_tsentry_signals(
         if style.require_h1_first_minutes and not _inside_h1_cutoff(timestamp, style.h1_entry_cutoff_minute):
             continue
 
-        bias = compute_bias_at(frames[style.bias_tf], timestamp)
+        bias = _compute_bias_from_frame(frames[style.bias_tf], timestamp)
         if bias == Bias.NEUTRAL:
             continue
 
-        for level in sorted(_build_levels(style, timestamp, frames), key=lambda item: item.priority, reverse=True):
+        for level in sorted(_build_levels(style, timestamp, frames, asia_cache), key=lambda item: item.priority, reverse=True):
             signal = _signal_from_bar(style.name, timestamp, bar, level, bias, params, smt_df)
             if signal is not None:
                 signals.append(signal)
@@ -463,8 +499,15 @@ def backtest_style(
     signals = detect_tsentry_signals(style_name, frames, params, smt_frames=smt_frames)
     trades: List[BacktestTrade] = []
     next_allowed_time: Optional[pd.Timestamp] = None
+    daily_loss_streak: Dict[object, int] = {}
 
     for signal in signals:
+        signal_day = _ny_time(signal.timestamp).date()
+        if (
+            params.max_consecutive_daily_losses > 0
+            and daily_loss_streak.get(signal_day, 0) >= params.max_consecutive_daily_losses
+        ):
+            continue
         if params.one_trade_at_a_time and next_allowed_time and signal.timestamp <= next_allowed_time:
             continue
 
@@ -477,6 +520,10 @@ def backtest_style(
         if simulated is None:
             continue
         trades.append(simulated)
+        if simulated.result_r < 0:
+            daily_loss_streak[signal_day] = daily_loss_streak.get(signal_day, 0) + 1
+        else:
+            daily_loss_streak[signal_day] = 0
         next_allowed_time = simulated.exit_time
 
     return trades, summarize_trades(trades, params)

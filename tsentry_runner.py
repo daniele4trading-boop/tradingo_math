@@ -427,6 +427,7 @@ def command_backtest(args) -> None:
         spread_buffer_points=args.buffer_points,
         point_size=args.point_size,
         require_smt=args.require_smt,
+        max_consecutive_daily_losses=args.max_consecutive_daily_losses,
     )
 
     archive = TsEntryArchive(args.db)
@@ -482,6 +483,12 @@ def command_csv_backtest(args) -> None:
         )
     csv_path = Path(csv_path)
     base_df = load_csv_ohlc(csv_path)
+    start = _parse_dt(args.start)
+    end = _parse_dt(args.end)
+    if start:
+        base_df = base_df[base_df.index >= pd.Timestamp(start)]
+    if end:
+        base_df = base_df[base_df.index <= pd.Timestamp(end)]
 
     params = TsEntryParams(
         symbol=args.symbol,
@@ -491,12 +498,17 @@ def command_csv_backtest(args) -> None:
         spread_buffer_points=args.buffer_points,
         point_size=args.point_size,
         require_smt=args.require_smt,
+        max_consecutive_daily_losses=args.max_consecutive_daily_losses,
     )
 
     smt_frames = None
     smt_csv_path = args.smt_csv or discover_csv(data_dir, args.smt_symbol, args.csv_timeframe, args.source)
     if smt_csv_path:
         smt_base = load_csv_ohlc(Path(smt_csv_path))
+        if start:
+            smt_base = smt_base[smt_base.index >= pd.Timestamp(start)]
+        if end:
+            smt_base = smt_base[smt_base.index <= pd.Timestamp(end)]
         smt_wanted = {
             STYLE_SPECS[style].entry_tf
             for style in styles
@@ -508,6 +520,7 @@ def command_csv_backtest(args) -> None:
     all_trades: List[BacktestTrade] = []
     summaries: Dict[str, pd.DataFrame] = {}
     skipped: Dict[str, str] = {}
+    run_label = csv_run_label(args)
     for style_name in styles:
         spec = STYLE_SPECS[style_name]
         if not timeframe_can_support(args.csv_timeframe, spec.entry_tf):
@@ -525,7 +538,7 @@ def command_csv_backtest(args) -> None:
         print(f"\n[{style_name}]")
         print(summary.to_string(index=False))
 
-        prefix = f"TSENTRY_{args.symbol.upper()}_{spec.entry_tf}_{style_name}"
+        prefix = f"TSENTRY_{args.symbol.upper()}_{spec.entry_tf}_{style_name}_{run_label}"
         trades_out = data_dir / f"{prefix}_trades.csv"
         summary_out = data_dir / f"{prefix}_summary.json"
         frame = trades_to_frame(trades)
@@ -535,7 +548,7 @@ def command_csv_backtest(args) -> None:
 
     overlay = trades_to_frame(all_trades).sort_values("entry_time") if all_trades else pd.DataFrame()
     if not overlay.empty:
-        overlay_out = data_dir / f"TSENTRY_{args.symbol.upper()}_{args.csv_timeframe}_overlay_trades.csv"
+        overlay_out = data_dir / f"TSENTRY_{args.symbol.upper()}_{args.csv_timeframe}_{run_label}_overlay_trades.csv"
         overlay.to_csv(overlay_out, index=False)
         print("\n[overlay]")
         print(
@@ -555,6 +568,7 @@ def command_csv_backtest(args) -> None:
         args=args,
         csv_path=csv_path,
         smt_csv_path=Path(smt_csv_path) if smt_csv_path else None,
+        data=base_df,
         summaries=summaries,
         skipped=skipped,
         trades=all_trades,
@@ -571,6 +585,7 @@ def command_live(args) -> None:
         spread_buffer_points=args.buffer_points,
         point_size=args.point_size,
         require_smt=args.require_smt,
+        max_consecutive_daily_losses=args.max_consecutive_daily_losses,
     )
     archive = TsEntryArchive(args.db)
     try:
@@ -620,6 +635,7 @@ def write_csv_backtest_report(
     args,
     csv_path: Path,
     smt_csv_path: Optional[Path],
+    data: pd.DataFrame,
     summaries: Dict[str, pd.DataFrame],
     skipped: Dict[str, str],
     trades: Sequence[BacktestTrade],
@@ -627,9 +643,11 @@ def write_csv_backtest_report(
     report_dir = Path(args.report_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
-    report_path = report_dir / f"{args.symbol.lower()}_{args.csv_timeframe.lower()}_tsentry_csv_backtest_{stamp}.md"
+    report_path = report_dir / (
+        f"{args.symbol.lower()}_{args.csv_timeframe.lower()}_tsentry_csv_backtest_"
+        f"{csv_run_label(args)}_{stamp}.md"
+    )
 
-    data = load_csv_ohlc(csv_path)
     first = data.index.min().strftime("%Y-%m-%d %H:%M UTC") if not data.empty else "n/a"
     last = data.index.max().strftime("%Y-%m-%d %H:%M UTC") if not data.empty else "n/a"
 
@@ -651,6 +669,7 @@ def write_csv_backtest_report(
         f"- Risk per trade: {args.risk:.2%}",
         f"- Starting equity for PnL normalization: {args.starting_equity:,.2f}",
         f"- Sweep buffer: {args.buffer_points} points x point size {args.point_size}",
+        f"- Max consecutive losing trades per NY day: {args.max_consecutive_daily_losses}",
         f"- SMT required: {args.require_smt}",
         "- Spread/commission/slippage: not explicitly charged beyond the sweep buffer.",
         "- Same-bar ambiguity: bar-based backtest uses conservative stop checks before target checks.",
@@ -707,6 +726,8 @@ def write_csv_backtest_report(
                 "python3 tsentry_runner.py csv-backtest "
                 f"--symbol {args.symbol} --csv-timeframe {args.csv_timeframe} "
                 f"--source {args.source} --styles {' '.join(args.styles)}"
+                + (f" --start {args.start}" if args.start else "")
+                + (f" --end {args.end}" if args.end else "")
             ),
             "```",
         ]
@@ -714,6 +735,15 @@ def write_csv_backtest_report(
 
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return report_path
+
+
+def csv_run_label(args) -> str:
+    parts = ["smt" if getattr(args, "require_smt", False) else "base"]
+    if getattr(args, "start", None):
+        parts.append(str(args.start).replace("-", "").replace(":", "").replace("+", "").replace("Z", ""))
+    if getattr(args, "end", None):
+        parts.append(str(args.end).replace("-", "").replace(":", "").replace("+", "").replace("Z", ""))
+    return "_".join(parts)
 
 
 def execute_split_order(symbol: str, signal, params: TsEntryParams) -> dict:
@@ -809,6 +839,7 @@ def build_parser() -> argparse.ArgumentParser:
     backtest.add_argument("--starting-equity", type=float, default=100_000.0)
     backtest.add_argument("--buffer-points", type=float, default=80.0)
     backtest.add_argument("--point-size", type=float, default=0.01)
+    backtest.add_argument("--max-consecutive-daily-losses", type=int, default=2)
     backtest.add_argument("--require-smt", action="store_true")
     backtest.set_defaults(func=command_backtest)
 
@@ -821,11 +852,14 @@ def build_parser() -> argparse.ArgumentParser:
     csv_bt.add_argument("--symbol", default="XAUUSD")
     csv_bt.add_argument("--smt-symbol", default="XAGUSD")
     csv_bt.add_argument("--csv-timeframe", default="H1")
+    csv_bt.add_argument("--start", default=None)
+    csv_bt.add_argument("--end", default=None)
     csv_bt.add_argument("--styles", nargs="+", default=["all"], choices=["all", *STYLE_SPECS.keys()])
     csv_bt.add_argument("--risk", type=float, default=0.01)
     csv_bt.add_argument("--starting-equity", type=float, default=100_000.0)
     csv_bt.add_argument("--buffer-points", type=float, default=80.0)
     csv_bt.add_argument("--point-size", type=float, default=0.01)
+    csv_bt.add_argument("--max-consecutive-daily-losses", type=int, default=2)
     csv_bt.add_argument("--require-smt", action="store_true")
     csv_bt.set_defaults(func=command_csv_backtest)
 
@@ -840,6 +874,7 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("--starting-equity", type=float, default=100_000.0)
     live.add_argument("--buffer-points", type=float, default=80.0)
     live.add_argument("--point-size", type=float, default=0.01)
+    live.add_argument("--max-consecutive-daily-losses", type=int, default=2)
     live.add_argument("--require-smt", action="store_true")
     live.add_argument("--execute", action="store_true", help="Actually place demo orders; omitted means dry-run")
     add_mt5_args(live)

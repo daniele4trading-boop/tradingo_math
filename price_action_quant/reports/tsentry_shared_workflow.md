@@ -46,6 +46,15 @@ python3 tsentry_runner.py csv-backtest \
   --styles all
 ```
 
+Risk control defaults:
+
+- `--risk 0.01`
+- `--max-consecutive-daily-losses 2`
+
+The daily loss circuit breaker is evaluated by New York calendar day. Once the
+configured number of consecutive losing trades is reached, the backtest skips
+the remaining signals for that same day.
+
 If the file follows the naming convention, the runner discovers it
 automatically. Otherwise pass it explicitly:
 
@@ -67,6 +76,17 @@ python3 tsentry_runner.py csv-backtest \
   --smt-csv data/backtests/XAGUSD_M5_dukascopy_2021_2026.csv \
   --styles daytrading_daily \
   --require-smt
+```
+
+Large M1 files can be tested in rolling windows first:
+
+```bash
+python3 tsentry_runner.py csv-backtest \
+  --symbol XAUUSD \
+  --csv-timeframe M1 \
+  --styles scalping_h1 \
+  --start 2025-01-01 \
+  --end 2026-06-08
 ```
 
 ## Timeframe compatibility

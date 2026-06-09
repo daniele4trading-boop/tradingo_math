@@ -616,9 +616,11 @@ def summarize_trades(trades: List[BacktestTrade], params: TsEntryParams) -> pd.D
                 {
                     "trades": 0,
                     "win_rate": 0.0,
+                    "profit_factor": 0.0,
                     "total_r": 0.0,
                     "expectancy_r": 0.0,
                     "net_pnl": 0.0,
+                    "max_daily_drawdown": 0.0,
                     "max_drawdown": 0.0,
                 }
             ]
@@ -627,21 +629,43 @@ def summarize_trades(trades: List[BacktestTrade], params: TsEntryParams) -> pd.D
     rows = [trade.__dict__ for trade in trades]
     df = pd.DataFrame(rows)
     wins = df[df["result_r"] > 0]
+    gross_profit = float(df.loc[df["pnl"] > 0, "pnl"].sum())
+    gross_loss = float(df.loc[df["pnl"] < 0, "pnl"].sum())
+    profit_factor = gross_profit / abs(gross_loss) if gross_loss < 0 else (float("inf") if gross_profit > 0 else 0.0)
     equity = params.starting_equity + df["pnl"].cumsum()
     peak = equity.cummax()
     drawdown = equity - peak
+    max_daily_drawdown = _max_realized_daily_drawdown(df)
     return pd.DataFrame(
         [
             {
                 "trades": int(len(df)),
                 "win_rate": float(len(wins) / len(df)),
+                "profit_factor": float(profit_factor),
                 "total_r": float(df["result_r"].sum()),
                 "expectancy_r": float(df["result_r"].mean()),
                 "net_pnl": float(df["pnl"].sum()),
+                "max_daily_drawdown": float(max_daily_drawdown),
                 "max_drawdown": float(drawdown.min()),
             }
         ]
     )
+
+
+def _max_realized_daily_drawdown(trades_df: pd.DataFrame) -> float:
+    if trades_df.empty:
+        return 0.0
+    work = trades_df.copy()
+    work["exit_time"] = pd.to_datetime(work["exit_time"], utc=True)
+    work = work.sort_values("exit_time")
+    work["ny_day"] = work["exit_time"].dt.tz_convert(NY_TZ).dt.date
+    worst = 0.0
+    for _, group in work.groupby("ny_day"):
+        cumulative = group["pnl"].cumsum()
+        peak = cumulative.cummax().clip(lower=0.0)
+        daily_dd = cumulative - peak
+        worst = min(worst, float(daily_dd.min()))
+    return worst
 
 
 def trades_to_frame(trades: List[BacktestTrade]) -> pd.DataFrame:

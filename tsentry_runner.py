@@ -677,20 +677,22 @@ def write_csv_backtest_report(
         "",
         "## Per-style results",
         "",
-        "| Style | Trades | Win rate | Total R | Expectancy R | Net PnL | Max DD |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Style | Trades | Win rate | PF | Total R | Expectancy R | Net PnL | Daily DD | Max DD |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
 
     for style_name, summary in summaries.items():
         row = summary.to_dict(orient="records")[0]
         lines.append(
-            "| {style} | {trades} | {win_rate:.2%} | {total_r:.2f} | {expectancy_r:.3f} | {net_pnl:.2f} | {max_dd:.2f} |".format(
+            "| {style} | {trades} | {win_rate:.2%} | {pf:.2f} | {total_r:.2f} | {expectancy_r:.3f} | {net_pnl:.2f} | {daily_dd:.2f} | {max_dd:.2f} |".format(
                 style=style_name,
                 trades=int(row["trades"]),
                 win_rate=float(row["win_rate"]),
+                pf=float(row["profit_factor"]),
                 total_r=float(row["total_r"]),
                 expectancy_r=float(row["expectancy_r"]),
                 net_pnl=float(row["net_pnl"]),
+                daily_dd=float(row["max_daily_drawdown"]),
                 max_dd=float(row["max_drawdown"]),
             )
         )

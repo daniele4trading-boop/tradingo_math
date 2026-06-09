@@ -123,7 +123,20 @@ Current baseline sets:
 - `GBPUSD_H4_PriceActionQuant_v0.1.set`
 - `GBPUSD_H1_SHORT_PriceActionQuant_v0.2_candidate.set`
 - `XAUUSD_H1_LONG_PriceActionQuant_v0.2_candidate.set`
+- `XAUUSD_H1_LONG_ATR25_PriceActionQuant_v0.2_candidate.set`
 
 The v0.1 files are not optimized. The v0.2 candidate files are based on the
 first split/OOS research pass and still require broker MT5 Strategy Tester
 validation before paper/live use.
+
+Strategy Tester templates are available in:
+
+```text
+mt5/tester/
+```
+
+Use the report template when saving MT5 validation results:
+
+```text
+price_action_quant/reports/mt5_strategy_tester_template.md
+```

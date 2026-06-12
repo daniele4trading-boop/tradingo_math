@@ -56,8 +56,14 @@ python -m uvicorn tradingo_core.api_server:create_app --factory --host $HostAddr
 
 Set-Content -Path $Launcher -Value $launcherBody -Encoding ASCII
 
-schtasks /Delete /TN $TaskName /F 2>$null | Out-Null
+try {
+    schtasks /Delete /TN $TaskName /F 2>$null | Out-Null
+} catch {
+    # Task may not exist on first install.
+}
 schtasks /Create /TN $TaskName /SC ONSTART /RL HIGHEST /TR $Launcher /F | Out-Host
+$Settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+Set-ScheduledTask -TaskName $TaskName -Settings $Settings | Out-Null
 schtasks /Run /TN $TaskName | Out-Host
 
 Start-Sleep -Seconds 5

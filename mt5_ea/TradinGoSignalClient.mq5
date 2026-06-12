@@ -14,19 +14,21 @@ input string ClientId            = "client-demo";
 input string BrokerName          = "";
 input string TradeSymbol         = "XAUUSD";
 input bool   EnableLiveTrading   = false;
-input int    PollSeconds         = 5;
+input int    PollSeconds         = 15;
 input int    MagicNumber         = 260607;
 input int    MaxSpreadPoints     = 80;
 input double MaxRiskPct          = 0.005;
 input double FixedLotFallback    = 0.01;
-input int    RequestTimeoutMs    = 5000;
+input int    RequestTimeoutMs    = 10000;
 input int    PendingExpiryMinutes= 90;
 input bool   DebugHttp           = true;
+input int    LogHttpEveryNFailures = 10;
 
 CTrade trade;
 string last_signal_id = "";
 datetime last_heartbeat = 0;
 const string EA_BUILD = "20260608-jsonfix";
+int consecutive_http_failures = 0;
 
 struct SignalData
 {
@@ -109,7 +111,7 @@ bool FetchLatestSignal(SignalData &signal)
    int code = HttpRequest("GET", url, "", response);
    if(code != 200)
    {
-      Print("FetchLatestSignal failed: ", response);
+      LogHttpFailure("FetchLatestSignal", response);
       return false;
    }
    if(StringFind(response, "\"signal\":null") >= 0)
@@ -248,7 +250,7 @@ void SendHeartbeat(string last_error)
    string response = "";
    int code = HttpRequest("POST", ApiBaseUrl + "/accounts/heartbeat", payload, response);
    if(code != 200)
-      Print("Heartbeat failed: ", response);
+      LogHttpFailure("Heartbeat", response);
 }
 
 void SendAck(string signal_id, string status, string message, string order_ticket)
@@ -265,7 +267,7 @@ void SendAck(string signal_id, string status, string message, string order_ticke
    string response = "";
    int code = HttpRequest("POST", ApiBaseUrl + "/signals/ack", payload, response);
    if(code != 200)
-      Print("Ack failed: ", response);
+      LogHttpFailure("Ack", response);
 }
 
 int HttpRequest(string method, string url, string payload, string &response)
@@ -295,10 +297,15 @@ int HttpRequest(string method, string url, string payload, string &response)
                + " headers=" + ShortenForLog(result_headers)
                + " body=" + ShortenForLog(body)
                + ". Add API URL in MT5: Tools > Options > Expert Advisors > Allow WebRequest.";
-      Print(response);
       return -1;
    }
    response = body;
+   if(code == 200)
+   {
+      if(consecutive_http_failures > 0 && DebugHttp)
+         Print("HTTP recovered after ", consecutive_http_failures, " consecutive failures");
+      consecutive_http_failures = 0;
+   }
    if(DebugHttp && code != 200)
    {
       response = "HTTP code=" + IntegerToString(code)
@@ -309,6 +316,19 @@ int HttpRequest(string method, string url, string payload, string &response)
                + " body=" + ShortenForLog(body);
    }
    return code;
+}
+
+void LogHttpFailure(string context, string detail)
+{
+   consecutive_http_failures++;
+   if(!DebugHttp)
+      return;
+   int n = MathMax(1, LogHttpEveryNFailures);
+   if(consecutive_http_failures == 1 || (consecutive_http_failures % n) == 0)
+   {
+      Print(context, " failed (", consecutive_http_failures,
+            " consecutive HTTP failures): ", detail);
+   }
 }
 
 string ShortenForLog(string value)

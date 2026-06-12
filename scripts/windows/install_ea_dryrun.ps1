@@ -4,7 +4,9 @@ param(
     [string]$ApiKey = "dev-local-key",
     [string]$TradeSymbol = "XAUUSD",
     [int]$MaxSpreadPoints = 80,
-    [double]$MaxRiskPct = 0.005
+    [double]$MaxRiskPct = 0.005,
+    [int]$PollSeconds = 15,
+    [int]$RequestTimeoutMs = 10000
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,14 +56,15 @@ ClientId=$($Target.Name)-dryrun
 BrokerName=$($Target.Name)
 TradeSymbol=$TradeSymbol
 EnableLiveTrading=false
-PollSeconds=5
+PollSeconds=$PollSeconds
 MagicNumber=260607
 MaxSpreadPoints=$MaxSpreadPoints
 MaxRiskPct=$MaxRiskPct
 FixedLotFallback=0.01
-RequestTimeoutMs=5000
+RequestTimeoutMs=$RequestTimeoutMs
 PendingExpiryMinutes=90
 DebugHttp=true
+LogHttpEveryNFailures=10
 "@
 
     $PresetPath = Join-Path $PresetsDir "TradinGoSignalClient_DRYRUN.set"

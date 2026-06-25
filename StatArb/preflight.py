@@ -80,7 +80,7 @@ def ensure_venv() -> CheckResult:
     if not VENV_DIR.exists():
         try:
             venv.EnvBuilder(with_pip=True, clear=False).create(VENV_DIR)
-        except Exception as exc:  # noqa: BLE001 - preflight must report every failure clearly.
+        except BaseException as exc:  # noqa: BLE001 - venv may raise SystemExit if ensurepip is absent.
             return CheckResult("Virtual environment dedicato", "FAIL", str(exc))
         return CheckResult("Virtual environment dedicato", "OK", f"creato: {VENV_DIR}")
     python_path = venv_python()

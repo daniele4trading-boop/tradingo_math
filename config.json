@@ -52,5 +52,27 @@
     "cooldown_after_sl_min": 30.0,
     "jitter_min_ms": 300,
     "jitter_max_ms": 800
+  },
+
+  "lqs_mtf": {
+    "_note": "Parametri strategia LQS-MTF backtest/live hook",
+    "fractal_left": 2,
+    "fractal_right": 2,
+    "atr_period": 14,
+    "h4_range_lookback": 50,
+    "equal_highs_tolerance_atr": 0.5,
+    "sweep_atr_mult": 0.3,
+    "impulsive_body_ratio": 0.55,
+    "bos_accept_bars": 1,
+    "min_rr": 1.5,
+    "limit_expire_bars_m5": 12,
+    "cooldown_bars_m5": 6,
+    "price_round_step": 0.5,
+    "sl_atr_buffer_mult": 0.2,
+    "spread_points": 65,
+    "point_size": 0.01,
+    "broker_utc_offset_hours": 2,
+    "session_filter": true,
+    "max_setup_age_bars_h1": 8
   }
 }

@@ -1,0 +1,8 @@
+data/XAUUSD/
+results/*.csv
+results/*.json
+!results/.gitkeep
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/

@@ -1,0 +1,18 @@
+@echo off
+REM Comandi git SEPARATI - esegui una riga alla volta (copia/incolla singola riga)
+
+cd /d C:\StatArb
+
+git init
+
+git remote add origin https://github.com/daniele4trading-boop/tradingo_system.git
+
+git checkout -B statarb-vps-mt5-modules-0-8
+
+git add .
+
+git status -sb
+
+git commit -m "Add TG TradinGo project and agent documentation"
+
+git push -u origin statarb-vps-mt5-modules-0-8

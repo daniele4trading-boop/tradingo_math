@@ -1,0 +1,14 @@
+{
+  "action": "OPEN",
+  "direction": "BUY",
+  "symbol": "XAUUSD",
+  "entry": 4769.0,
+  "tp_levels": [4772.0, 4774.0, 4779.0],
+  "sl": 4761.0,
+  "risk_percent": 0.5,
+  "splits": [0.4, 0.4, 0.2],
+  "magic_base": 11000,
+  "channel_id": "CH1",
+  "channel_name": "Zanni VIP Signals",
+  "raw_message": "BUY XAUUSD 4769\nTP1: 4772\nTP2: 4774\nTP3: 4779\nSL: 4761"
+}

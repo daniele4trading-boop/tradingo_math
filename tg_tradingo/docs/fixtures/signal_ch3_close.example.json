@@ -1,0 +1,8 @@
+{
+  "action": "CHECK_AND_CLOSE",
+  "symbol": "EURAUD",
+  "direction": "BUY",
+  "magic_base": 13000,
+  "channel_id": "CH3",
+  "raw_message": "CHIUSO - EURAUDpm Buy"
+}

@@ -1,0 +1,15 @@
+{
+  "action": "OPEN",
+  "direction": "BUY",
+  "symbol": "XAUUSD",
+  "entry": 4821.0,
+  "tp_levels": [4826.18],
+  "sl": 4804.78,
+  "risk_percent": 0.5,
+  "splits": [0.5, 0.4, 0.1],
+  "is_add_signal": false,
+  "inherit_from_first": false,
+  "magic_base": 14000,
+  "channel_id": "CH4",
+  "raw_message": "Apro una nuova operazione\nXAUUSD BUY\nEntry: 4821\nSL: 4804.78\nTP1: 4826.18"
+}

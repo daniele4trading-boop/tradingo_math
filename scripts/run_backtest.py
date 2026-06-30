@@ -16,7 +16,9 @@ import pandas as pd
 
 from backtest.data_loader import load_m1_directory, load_parquet_m1
 from backtest.engine import BacktestEngine
-from strategies.lqs_mtf import LQSMtfConfig, LQSMtfStrategy
+from dataclasses import replace
+
+from strategies.lqs_mtf import LQSMtfConfig, LQSMtfStrategy, LQSProfile
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,6 +60,8 @@ def main() -> None:
         config = strategy.cfg
     else:
         config = LQSMtfConfig()
+    if args.profile:
+        config = replace(config, profile=LQSProfile(args.profile))
 
     engine = BacktestEngine(m1, config=config, risk_per_trade_usd=args.risk_usd)
     result = engine.run(start=start, end=end)
@@ -72,6 +76,7 @@ def main() -> None:
         "backtest_from": str(start) if start else None,
         "backtest_to": str(end) if end else None,
         "bars_m1": len(m1),
+        "profile": config.profile.value,
         "metrics": result.metrics,
     }
     with (results_dir / "backtest_metrics.json").open("w") as f:

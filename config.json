@@ -55,7 +55,8 @@
   },
 
   "lqs_mtf": {
-    "_note": "Parametri strategia LQS-MTF backtest/live hook",
+    "_note": "Parametri strategia LQS-MTF — ottimizzati 2026-06-30",
+    "_optimized": "random20+refine, best train (OOS non confermato)",
     "fractal_left": 2,
     "fractal_right": 2,
     "atr_period": 14,
@@ -64,15 +65,15 @@
     "sweep_atr_mult": 0.3,
     "impulsive_body_ratio": 0.55,
     "bos_accept_bars": 1,
-    "min_rr": 1.5,
+    "min_rr": 2.0,
     "limit_expire_bars_m5": 12,
     "cooldown_bars_m5": 6,
     "price_round_step": 0.5,
-    "sl_atr_buffer_mult": 0.2,
+    "sl_atr_buffer_mult": 0.25,
     "spread_points": 65,
     "point_size": 0.01,
     "broker_utc_offset_hours": 2,
     "session_filter": true,
-    "max_setup_age_bars_h1": 8
+    "max_setup_age_bars_h1": 6
   }
 }

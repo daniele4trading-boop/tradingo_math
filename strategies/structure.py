@@ -237,18 +237,28 @@ def find_fvg(df: pd.DataFrame, direction: str, lookback: int = 30) -> Optional[T
 
 def detect_bos_after(
     df: pd.DataFrame,
-    lows: List[SwingPoint],
-    highs: List[SwingPoint],
     direction: str,
-    start_idx: int = 0,
+    start_idx: int = 3,
 ) -> Optional[Tuple[pd.Timestamp, float, int]]:
-    """Find first BOS after start_idx in direction."""
+    """Find first BOS after start_idx using incremental swing scan."""
+    if len(df) < 4:
+        return None
     for i in range(max(3, start_idx), len(df)):
-        sub = df.iloc[: i + 1]
-        h, l = fractal_swings(sub)
-        bos = detect_bos(sub, l, h, direction, accept_bars=1)
-        if bos is not None:
-            return bos
+        window = df.iloc[:i]
+        highs, lows = fractal_swings(window)
+        bar = df.iloc[i]
+        if direction == "SHORT":
+            if not lows:
+                continue
+            level = lows[-1].price
+            if float(bar["close"]) < level:
+                return pd.Timestamp(bar["time"]), level, i
+        else:
+            if not highs:
+                continue
+            level = highs[-1].price
+            if float(bar["close"]) > level:
+                return pd.Timestamp(bar["time"]), level, i
     return None
 
 

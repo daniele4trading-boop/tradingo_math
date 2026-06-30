@@ -1,0 +1,48 @@
+{
+  "method": "random_search_20 + refine_16 + walk_forward_oos",
+  "train_period": "2026-03-01 -> 2026-04-30",
+  "test_period": "2026-05-01 -> 2026-06-05",
+  "full_universe": 4374,
+  "best_train": {
+    "sweep_atr_mult": 0.3,
+    "equal_highs_tolerance_atr": 0.5,
+    "min_rr": 2.0,
+    "session_filter": true,
+    "limit_expire_bars_m5": 12,
+    "impulsive_body_ratio": 0.55,
+    "max_setup_age_bars_h1": 6,
+    "sl_atr_buffer_mult": 0.25,
+    "score": 2.802,
+    "trades": 6,
+    "expectancy_r": 1.013,
+    "profit_factor": 2.519,
+    "win_rate_pct": 33.33
+  },
+  "oos_note": "All top-5 train configs failed OOS (May-Jun 2026). Selected best train params.",
+  "recommended_params": {
+    "sweep_atr_mult": 0.3,
+    "equal_highs_tolerance_atr": 0.5,
+    "min_rr": 2.0,
+    "session_filter": true,
+    "limit_expire_bars_m5": 12,
+    "impulsive_body_ratio": 0.55,
+    "max_setup_age_bars_h1": 6,
+    "sl_atr_buffer_mult": 0.25
+  },
+  "full_sample_after_opt": {
+    "trades": 9,
+    "win_rate_pct": 22.22,
+    "expectancy_r": 0.342,
+    "profit_factor": 1.44,
+    "max_drawdown_pct": -2.83,
+    "net_pnl": 307.72
+  },
+  "default_vs_optimized": {
+    "default_expectancy_r": -0.347,
+    "optimized_expectancy_r": 0.342,
+    "default_trades": 41,
+    "optimized_trades": 9,
+    "default_profit_factor": 0.449,
+    "optimized_profit_factor": 1.44
+  }
+}

@@ -123,6 +123,45 @@ scripts/
 
 ---
 
+## Ottimizzazione parametri (2026-06-30)
+
+### Metodo
+- Random search: 20 combinazioni su universo di 4.374
+- Refine: 16 perturbazioni one-at-a-time sul miglior train
+- Walk-forward: train Mar–Apr 2026, test Mag–Giu 2026
+- Script: `scripts/optimize_lqs.py`
+
+### Migliori parametri (train Mar–Apr)
+
+| Parametro | Default | Ottimizzato |
+|-----------|---------|-------------|
+| sweep_atr_mult | 0.3 | **0.3** |
+| equal_highs_tolerance_atr | 0.5 | **0.5** |
+| min_rr | 1.5 | **2.0** |
+| session_filter | true | **true** |
+| limit_expire_bars_m5 | 12 | **12** |
+| max_setup_age_bars_h1 | 8 | **6** |
+| sl_atr_buffer_mult | 0.2 | **0.25** |
+
+### Risultati confronto (full sample Feb–Giu)
+
+| Metrica | Default | Ottimizzato |
+|---------|---------|-------------|
+| Trade | 41 | **9** |
+| Win rate | 29.3% | 22.2% |
+| Expectancy | -0.35 R | **+0.34 R** |
+| Profit factor | 0.45 | **1.44** |
+| Max DD | -14.4% | **-2.8%** |
+| PnL netto | -1.423 USD | **+308 USD** |
+
+### Note importanti
+- **OOS non confermato:** tutte le top-5 config train hanno fallito su Mag–Giu (mercato diverso)
+- Campione ridotto: 9 trade in 3 mesi — serve più dati (Dukascopy giugno) per validare
+- Train Mar–Apr mostrava expectancy +1.01 R su 6 trade (possibile overfitting)
+- Parametri salvati in `config.json` → `lqs_mtf`
+
+---
+
 ## Prossimi passi consigliati
 
 1. **Grid search** su `sweep_atr_mult`, `min_rr`, `session_filter` (walk-forward 6+2 mesi)

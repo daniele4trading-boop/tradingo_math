@@ -66,8 +66,9 @@ class BacktestEngine:
         config: Optional[LQSMtfConfig] = None,
         risk_per_trade_usd: float = 100.0,
         initial_balance: float = 10_000.0,
+        tf: Optional[Dict[str, pd.DataFrame]] = None,
     ):
-        self.tf = build_multitf(m1)
+        self.tf = tf if tf is not None else build_multitf(m1)
         self.strategy = LQSMtfStrategy(config)
         self.cfg = config or LQSMtfConfig()
         self.risk_per_trade_usd = risk_per_trade_usd
@@ -96,6 +97,7 @@ class BacktestEngine:
         open_trade: Optional[OpenTrade] = None
         closed: List[Dict] = []
         last_h1_end = -1
+        last_m15_end = -1
 
         warmup = 200
         for i in range(warmup, len(m5)):
@@ -130,6 +132,11 @@ class BacktestEngine:
 
             if h1_end[i] < 20:
                 continue
+
+            # Scan for new signals when M15 bar advances (BOS lives on M15)
+            if m15_end[i] == last_m15_end and pending is None:
+                continue
+            last_m15_end = m15_end[i]
 
             signal = self.strategy.try_signal(
                 m5_time=t,

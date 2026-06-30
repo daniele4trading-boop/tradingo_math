@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -92,6 +92,7 @@ class LQSMtfStrategy:
         self._recent_sweeps: List[_SweepEvent] = []
         self._last_signal_time: Optional[pd.Timestamp] = None
         self._cooldown_until: Optional[pd.Timestamp] = None
+        self._bos_cache: Dict[Tuple[pd.Timestamp, int, str], Optional[Tuple[pd.Timestamp, float, int]]] = {}
 
     def on_bar(
         self,
@@ -261,7 +262,10 @@ class LQSMtfStrategy:
             return None
 
         highs, lows = fractal_swings(m15_after, self.cfg.fractal_left, self.cfg.fractal_right)
-        bos = detect_bos_after(m15_after, lows, highs, direction, start_idx=3)
+        cache_key = (sweep.sweep_time, len(m15_after), direction)
+        if cache_key not in self._bos_cache:
+            self._bos_cache[cache_key] = detect_bos_after(m15_after, direction, start_idx=3)
+        bos = self._bos_cache[cache_key]
         if bos is None:
             return None
         bos_time, _, bos_idx = bos

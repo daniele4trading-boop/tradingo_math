@@ -1,4 +1,4 @@
-"""Bar-by-bar backtest engine for LQS-MTF."""
+"""Bar-by-bar backtest engine for LQS-MTF (multi-profile)."""
 
 from __future__ import annotations
 
@@ -20,13 +20,12 @@ class PendingOrder:
     expire_time: pd.Timestamp
     direction: TradeDirection
     entry_price: float
-    entry_low: float
-    entry_high: float
     sl: float
     tp1: float
     tp2: float
     tp3: float
     reason: str
+    profile: str
 
 
 @dataclass
@@ -45,6 +44,7 @@ class OpenTrade:
     be_active: bool = False
     risk_usd: float = 100.0
     reason: str = ""
+    profile: str = ""
 
 
 @dataclass
@@ -52,10 +52,10 @@ class BacktestResult:
     trades: pd.DataFrame
     metrics: Dict
     equity: pd.DataFrame
+    profile: str
 
 
 def _build_end_index(times: np.ndarray, ref_times: np.ndarray) -> np.ndarray:
-    """For each ref_time, index of last time <= ref_time."""
     return np.searchsorted(times, ref_times, side="right") - 1
 
 
@@ -83,21 +83,30 @@ class BacktestEngine:
             m5 = m5[m5["time"] <= end]
         m5 = m5.reset_index(drop=True)
 
-        h4, h1, m15 = self.tf["H4"], self.tf["H1"], self.tf["M15"]
-        h4_t = h4["time"].to_numpy()
-        h1_t = h1["time"].to_numpy()
-        m15_t = m15["time"].to_numpy()
+        liq_key = self.cfg.liquidity_tf
+        confirm_key = self.cfg.confirm_tf
+        context_key = str(self.cfg.spec["context_tf"])
+
+        df_liq = self.tf[liq_key]
+        df_confirm = self.tf[confirm_key]
+        df_context = self.tf[context_key]
+
+        liq_t = df_liq["time"].to_numpy()
+        confirm_t = df_confirm["time"].to_numpy()
+        context_t = df_context["time"].to_numpy()
         m5_t = m5["time"].to_numpy()
 
-        h4_end = _build_end_index(h4_t, m5_t)
-        h1_end = _build_end_index(h1_t, m5_t)
-        m15_end = _build_end_index(m15_t, m5_t)
+        liq_end = _build_end_index(liq_t, m5_t)
+        confirm_end = _build_end_index(confirm_t, m5_t)
+        context_end = _build_end_index(context_t, m5_t)
 
         pending: Optional[PendingOrder] = None
         open_trade: Optional[OpenTrade] = None
         closed: List[Dict] = []
-        last_h1_end = -1
-        last_m15_end = -1
+        last_liq_end = -1
+        last_confirm_end = -1
+        confirm_is_m5 = confirm_key == "M5"
+        min_liq_bars = 20
 
         warmup = 200
         for i in range(warmup, len(m5)):
@@ -122,27 +131,28 @@ class BacktestEngine:
                 if t >= pending.expire_time:
                     pending = None
 
-            # Register new H1 sweeps when H1 bar advances
-            if h1_end[i] > last_h1_end and h1_end[i] >= 20:
-                self.strategy.register_h1_bar(
-                    df_h4=h4.iloc[: h4_end[i] + 1],
-                    df_h1=h1.iloc[: h1_end[i] + 1],
+            if liq_end[i] > last_liq_end and liq_end[i] >= min_liq_bars:
+                self.strategy.register_liquidity_bar(
+                    df_context.iloc[: context_end[i] + 1],
+                    df_liq.iloc[: liq_end[i] + 1],
                 )
-                last_h1_end = h1_end[i]
+                last_liq_end = liq_end[i]
 
-            if h1_end[i] < 20:
+            if liq_end[i] < min_liq_bars:
                 continue
 
-            # Scan for new signals when M15 bar advances (BOS lives on M15)
-            if m15_end[i] == last_m15_end and pending is None:
-                continue
-            last_m15_end = m15_end[i]
+            # M5 confirm: scan every M5 bar; M15/H4 confirm: on confirm TF bar advance
+            if not confirm_is_m5:
+                if confirm_end[i] == last_confirm_end and pending is None:
+                    continue
+                last_confirm_end = confirm_end[i]
 
             signal = self.strategy.try_signal(
                 m5_time=t,
-                df_h4=h4.iloc[: h4_end[i] + 1],
-                df_h1=h1.iloc[: h1_end[i] + 1],
-                df_m15=m15.iloc[: m15_end[i] + 1],
+                df_context=df_context.iloc[: context_end[i] + 1],
+                df_liquidity=df_liq.iloc[: liq_end[i] + 1],
+                df_confirm=df_confirm.iloc[: confirm_end[i] + 1],
+                df_m5=m5.iloc[: i + 1],
             )
             if signal is not None and pending is None and open_trade is None:
                 pending = PendingOrder(
@@ -151,13 +161,12 @@ class BacktestEngine:
                     expire_time=t + pd.Timedelta(minutes=5 * self.cfg.limit_expire_bars_m5),
                     direction=signal.direction,
                     entry_price=signal.entry_price,
-                    entry_low=signal.entry_low,
-                    entry_high=signal.entry_high,
                     sl=signal.sl,
                     tp1=signal.tp1,
                     tp2=signal.tp2,
                     tp3=signal.tp3,
                     reason=signal.reason,
+                    profile=signal.profile,
                 )
 
         trades_df = pd.DataFrame(closed)
@@ -165,7 +174,12 @@ class BacktestEngine:
 
         metrics = compute_metrics(trades_df, self.initial_balance)
         eq = equity_curve(trades_df, self.initial_balance)
-        return BacktestResult(trades=trades_df, metrics=metrics, equity=eq)
+        return BacktestResult(
+            trades=trades_df,
+            metrics=metrics,
+            equity=eq,
+            profile=self.cfg.profile.value,
+        )
 
     def _half_spread(self) -> float:
         return self.spread_price / 2.0
@@ -193,6 +207,7 @@ class BacktestEngine:
             initial_sl=pending.sl,
             risk_usd=self.risk_per_trade_usd,
             reason=pending.reason,
+            profile=pending.profile,
         )
 
     def _manage_trade(self, trade: OpenTrade, bar: pd.Series) -> Tuple[Optional[OpenTrade], Optional[Dict]]:
@@ -260,15 +275,8 @@ class BacktestEngine:
         return trade, None
 
     def _close_trade(
-        self,
-        trade: OpenTrade,
-        bar: pd.Series,
-        exit_price: float,
-        reason: str,
-        pnl_r: float,
-        tp1_hit: bool,
-        tp2_hit: bool,
-        tp3_hit: bool,
+        self, trade: OpenTrade, bar: pd.Series, exit_price: float, reason: str,
+        pnl_r: float, tp1_hit: bool, tp2_hit: bool, tp3_hit: bool,
     ) -> Dict:
         t = pd.Timestamp(bar["time"])
         local = t + pd.Timedelta(hours=self.cfg.broker_utc_offset_hours)
@@ -280,6 +288,7 @@ class BacktestEngine:
         else:
             session = "Other"
         return {
+            "profile": trade.profile,
             "direction": trade.direction.value,
             "entry_time": trade.entry_time,
             "exit_time": t,

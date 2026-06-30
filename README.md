@@ -99,3 +99,61 @@ python tsentry_runner.py prop-fast --db-path "C:\tradingo_math\tradingo.db"
 
 Il runner crea la cartella del DB se manca, inizializza la tabella `state` e passa
 `TSENTRY_DB_PATH` agli engine avviati.
+
+## Backtest MZ_MA_Scalper
+
+Il file `backtest_mz_ma_scalper.py` ricostruisce in Python la logica dell'EA
+`MZ_MA_Scalper.mq5` basata su medie mobili:
+
+- EMA/SMA fast/slow su barra chiusa
+- setup `BREAK` e `BOUNCE`
+- filtro orario e filtro spread
+- SL iniziale
+- lotto fisso o rischio percentuale
+- trailing stop a scaglioni approssimato su OHLC
+
+Nota importante: il repo non contiene ancora un dataset storico OHLC Gold
+versionato (`.csv`, `.db`, `.parquet`). I log presenti sono utili per analisi
+forward/live, ma non bastano per un backtest riproducibile della strategia MA.
+
+### Export storico Gold da VPS Windows / MT5
+
+Esempio PowerShell su VPS, dopo aver attivato `.venv`:
+
+```powershell
+python export_mt5_gold_rates.py `
+  --symbol XAUUSD `
+  --timeframe M1 `
+  --from-date 2026-04-01T00:00:00 `
+  --to-date 2026-04-30T23:59:59 `
+  --output data\xauusd_m1_2026-04.csv `
+  --terminal-path "C:\Program Files\STARTRADER Financial MetaTrader 5\terminal64.exe"
+```
+
+Se il broker usa un nome diverso, sostituire `--symbol XAUUSD` con ad esempio
+`GOLD` o `GOLD#`.
+
+### Esecuzione backtest
+
+```powershell
+python backtest_mz_ma_scalper.py `
+  --csv data\xauusd_m1_2026-04.csv `
+  --fixed-spread-points 20 `
+  --trades-out reports\mz_ma_trades.csv `
+  --summary-out reports\mz_ma_summary.json
+```
+
+Esempio cloud/Linux sullo stesso CSV:
+
+```bash
+python3 backtest_mz_ma_scalper.py \
+  --csv data/xauusd_m1_2026-04.csv \
+  --fixed-spread-points 20 \
+  --trades-out reports/mz_ma_trades.csv \
+  --summary-out reports/mz_ma_summary.json
+```
+
+Il risultato stampato include numero trade, win rate, profitto netto,
+profit factor e drawdown monetario massimo. L'approssimazione usa candele OHLC,
+quindi non sostituisce il tester tick-by-tick nativo di MT5 quando servono spread
+variabile, slippage e sequenza intra-candela reale.

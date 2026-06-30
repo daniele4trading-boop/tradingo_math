@@ -1,0 +1,144 @@
+# TG TradinGo — contesto per agenti Cursor / Cloud
+
+Questo documento descrive il sistema **Telegram → JSON → MT5** nella repo `tradingo_system`.
+Leggilo prima di modificare parser, config o EA.
+
+## Dove sono i file
+
+| Percorso repo | Percorso VPS produzione |
+|---------------|-------------------------|
+| `tg_tradingo/` | `C:\TG_TradinGo\` |
+| `tg_tradingo/tradingo_config.example.json` | `C:\TG_TradinGo\tradingo_config.json` (segreti, non in git) |
+| `tg_tradingo/docs/fixtures/` | campioni messaggi Telegram reali |
+| `statarb/` (root `C:\StatArb`) | StatArb pairs trading — progetto separato nella stessa repo |
+
+**GitHub:** `https://github.com/daniele4trading-boop/tradingo_system.git`  
+**VPS:** `144.91.76.28` · SSH porta `2222` · utente `Administrator`
+
+---
+
+## Architettura
+
+```
+Telegram (4 canali VIP)
+        │
+        ▼
+tradingo_bridge.py  (Telethon, auto-restart)
+        │  parser per canale
+        ▼
+signal_chN.json  (uno per canale)
+        │
+        ▼
+TG_TradinGoEA.mq5  (legge JSON, esegue ordini MT5)
+```
+
+- Il bridge ascolta **NewMessage** e **MessageEdited** (importante per CH2 naked→completo).
+- Scrive lo stesso payload in tutti i path di `mt5_instances[].signals_path`.
+- Sessione Telegram condivisa: `C:\TelegramBridge\telegram_bridge_session.session`.
+
+---
+
+## Canali operativi
+
+| ID | Nome | Telegram ID | Parser | Magic base |
+|----|------|-------------|--------|------------|
+| CH1 | Zanni VIP Signals | -1003026686847 | `zanni_vip` | 11000 |
+| CH2 | Sala Gold VIP | -1003302540529 | `sala_gold` | 12000 |
+| CH3 | Sala VIP | -1002890661441 | `sala_vip` | 13000 |
+| CH4 | Sala Stark | -1002073368935 | `sala_stark` | 14000 |
+
+---
+
+## File sorgente (inventario `C:\TG_TradinGo`)
+
+### Codice (versionare in git)
+
+- `tradingo_bridge.py` — bridge principale, 4 parser, auto-restart
+- `dump_channels.py` — debug: dump canali Telegram
+- `sample_channels.py` — ultimi 50 messaggi per canale → `signal_samples.txt`
+- `fetch_apr21.py` — estrazione messaggi per data
+- `start_tradingo.bat` — avvio bridge
+- `README.md` — guida operativa
+
+### Config (NON versionare segreti)
+
+- `tradingo_config.json` — `api_id`, `api_hash`, path, canali, `mt5_instances`
+- Template in repo: `tradingo_config.example.json`
+
+### Runtime (NON versionare)
+
+- `logs/tradingo_*.log` — log giornalieri bridge
+- `signals/signal_ch*.json` — ultimo segnale scritto (stato live)
+
+### Fixture in repo (per sviluppo parser)
+
+- `docs/fixtures/signal_samples.txt` — ~50 msg/canale (apr 2026)
+- `docs/fixtures/signals_apr21.txt` — messaggi 20-21 apr
+- `docs/fixtures/channel_dump.txt` — dump canali completo
+
+### Mancante nella cartella VPS
+
+- `TG_TradinGoEA.mq5` — referenziato nel README ma **non presente** in `C:\TG_TradinGo`; probabilmente installato sotto `MQL5\Experts\` del terminale MT5.
+
+---
+
+## Azioni JSON per canale
+
+### CH1 (`zanni_vip`)
+
+- `OPEN` — BUY/SELL + TP1-3 + SL
+- `CHECK_AND_BE` — TP1 hit / sposta SL a BE
+- `CHECK_AND_CLOSE_TP` — chiudi TP N se non già chiuso
+- `CLOSE_ALL_SYMBOL` — chiusura generica
+
+### CH2 (`sala_gold`)
+
+- `OPEN_NOW` — "Gold sell now" senza numeri (mercato)
+- `UPDATE_OPEN` — messaggio successivo con SL/TP
+- `OPEN` — segnale completo standalone
+- `BREAK_EVEN_PRICE`, `CLOSE_ALL_SYMBOL`, `CLOSE_HALF_BE`
+- Stato interno: `_ch2_pending_open` per naked→update
+
+### CH3 (`sala_vip`)
+
+- `OPEN` — "NUOVO ORDINE - XAUUSDpm Buy", lotto fisso
+- `UPDATE_TP`, `UPDATE_SL` — "Modificato"
+- `CHECK_AND_CLOSE` — "CHIUSO - SIMBOLO Buy"
+
+### CH4 (`sala_stark`)
+
+- `OPEN` — formato markdown ("Apro una nuova operazione") o forex piatto
+- `is_add_signal` — "Aggiungo un'altra operazione" (lotto dimezzato)
+- `inherit_from_first` — secondo trade senza SL/TP copia dal primo
+
+---
+
+## Regole per modifiche
+
+1. **Non committare** `tradingo_config.json` con `api_hash` reale.
+2. Dopo modifica parser, testare con messaggi in `docs/fixtures/signal_samples.txt`.
+3. CH2 richiede test su **messaggi editati** (Telegram modifica il naked aggiungendo SL/TP).
+4. Magic numbers: `magic_base + 1..3` per split trade.
+5. Il bridge è indipendente da StatArb; non mescolare `params.json` StatArb con TradinGo.
+
+---
+
+## Comandi rapidi VPS
+
+```bat
+cd C:\TG_TradinGo
+start_tradingo.bat
+python sample_channels.py
+python dump_channels.py
+```
+
+---
+
+## Relazione con StatArb
+
+Nella stessa repo GitHub convivono:
+
+- **`tg_tradingo/`** — copy trading da segnali Telegram
+- **root `C:\StatArb`** — pairs trading stat-arb MT5 (moduli 0–8)
+
+Sono sistemi separati; condividono solo VPS e repository git.

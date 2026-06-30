@@ -1,0 +1,14 @@
+{
+  "action": "OPEN_NOW",
+  "direction": "SELL",
+  "symbol": "XAUUSD",
+  "entry": null,
+  "entry_range": null,
+  "tp_levels": [],
+  "sl": null,
+  "risk_percent": 0.5,
+  "splits": [0.6, 0.4],
+  "magic_base": 12000,
+  "channel_id": "CH2",
+  "raw_message": "Gold sell now"
+}

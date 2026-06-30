@@ -1,0 +1,72 @@
+{
+  "telegram": {
+    "api_id": 0,
+    "api_hash": "INSERISCI_API_HASH_TELEGRAM",
+    "session_file": "C:\\TelegramBridge\\telegram_bridge_session.session"
+  },
+
+  "paths": {
+    "base": "C:\\TG_TradinGo",
+    "signals": "C:\\TG_TradinGo\\signals",
+    "logs": "C:\\TG_TradinGo\\logs"
+  },
+
+  "mt5_instances": [
+    {
+      "name": "TradinGo_Local",
+      "enabled": true,
+      "signals_path": "C:\\TG_TradinGo\\signals"
+    }
+  ],
+
+  "channels": [
+    {
+      "id": "CH1",
+      "enabled": true,
+      "telegram_id": -1003026686847,
+      "name": "Zanni VIP Signals",
+      "parser": "zanni_vip",
+      "signal_file": "signal_ch1.json",
+      "magic_base": 11000,
+      "risk_percent": 0.5,
+      "splits": [0.4, 0.4, 0.2],
+      "notes": "3 trade 40/40/20%. BE auto su TP1."
+    },
+    {
+      "id": "CH2",
+      "enabled": true,
+      "telegram_id": -1003302540529,
+      "name": "Sala Gold VIP",
+      "parser": "sala_gold",
+      "signal_file": "signal_ch2.json",
+      "magic_base": 12000,
+      "risk_percent": 0.5,
+      "splits": [0.6, 0.4],
+      "notes": "Naked msg -> OPEN_NOW, poi UPDATE_OPEN con SL/TP."
+    },
+    {
+      "id": "CH3",
+      "enabled": true,
+      "telegram_id": -1002890661441,
+      "name": "Sala VIP",
+      "parser": "sala_vip",
+      "signal_file": "signal_ch3.json",
+      "magic_base": 13000,
+      "fixed_lot_xauusd": 0.05,
+      "fixed_lot_forex": 0.20,
+      "notes": "Lotto fisso. Apre senza SL/TP, aggiorna su messaggi successivi."
+    },
+    {
+      "id": "CH4",
+      "enabled": true,
+      "telegram_id": -1002073368935,
+      "name": "Sala Stark",
+      "parser": "sala_stark",
+      "signal_file": "signal_ch4.json",
+      "magic_base": 14000,
+      "risk_percent": 0.5,
+      "splits": [0.5, 0.4, 0.1],
+      "notes": "Aggiungo=lotto dimezzato. BE auto TP1."
+    }
+  ]
+}

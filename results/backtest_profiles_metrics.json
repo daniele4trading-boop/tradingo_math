@@ -1,0 +1,121 @@
+{
+  "data_from": "2026-02-24 11:58:00+00:00",
+  "data_to": "2026-06-05 23:56:00+00:00",
+  "bars_m1": 99750,
+  "config": {
+    "session_filter": false,
+    "min_rr": 1.5,
+    "sweep_atr_mult": 0.3,
+    "sl_atr_buffer_mult": 0.25
+  },
+  "profiles": [
+    {
+      "profile": "H4_M15",
+      "label": "H4 sweep \u2192 M15 BOS",
+      "liquidity_tf": "H4",
+      "confirm_tf": "M15",
+      "exec_tf": "M5",
+      "trades": 7,
+      "win_rate_pct": 14.29,
+      "avg_rr": -0.544,
+      "profit_factor": 0.135,
+      "max_drawdown_pct": -3.43,
+      "expectancy_r": -0.544,
+      "net_pnl": -380.71,
+      "tp1_hit_pct": 42.86,
+      "tp2_hit_pct": 42.86,
+      "tp3_hit_pct": 14.29,
+      "long_trades": 4,
+      "short_trades": 3,
+      "session_breakdown": {
+        "London": {
+          "count": 1,
+          "mean": -0.19999999999999996,
+          "sum": -0.19999999999999996
+        },
+        "NY": {
+          "count": 2,
+          "mean": -0.6,
+          "sum": -1.2
+        },
+        "Other": {
+          "count": 4,
+          "mean": -0.6017792663143029,
+          "sum": -2.4071170652572116
+        }
+      }
+    },
+    {
+      "profile": "H1_M15",
+      "label": "H1 sweep \u2192 M15 BOS",
+      "liquidity_tf": "H1",
+      "confirm_tf": "M15",
+      "exec_tf": "M5",
+      "trades": 54,
+      "win_rate_pct": 11.11,
+      "avg_rr": -0.726,
+      "profit_factor": 0.082,
+      "max_drawdown_pct": -39.06,
+      "expectancy_r": -0.726,
+      "net_pnl": -3917.96,
+      "tp1_hit_pct": 24.07,
+      "tp2_hit_pct": 22.22,
+      "tp3_hit_pct": 11.11,
+      "long_trades": 28,
+      "short_trades": 26,
+      "session_breakdown": {
+        "London": {
+          "count": 5,
+          "mean": -0.8400000000000001,
+          "sum": -4.2
+        },
+        "NY": {
+          "count": 20,
+          "mean": -0.6826069152114034,
+          "sum": -13.652138304228068
+        },
+        "Other": {
+          "count": 29,
+          "mean": -0.7354290576525068,
+          "sum": -21.327442671922697
+        }
+      }
+    },
+    {
+      "profile": "H1_M5",
+      "label": "H1 sweep \u2192 M5 BOS",
+      "liquidity_tf": "H1",
+      "confirm_tf": "M5",
+      "exec_tf": "M5",
+      "trades": 78,
+      "win_rate_pct": 21.79,
+      "avg_rr": -0.407,
+      "profit_factor": 0.451,
+      "max_drawdown_pct": -36.86,
+      "expectancy_r": -0.407,
+      "net_pnl": -3176.1,
+      "tp1_hit_pct": 26.92,
+      "tp2_hit_pct": 26.92,
+      "tp3_hit_pct": 21.79,
+      "long_trades": 43,
+      "short_trades": 35,
+      "session_breakdown": {
+        "London": {
+          "count": 8,
+          "mean": -0.7009115979776318,
+          "sum": -5.6072927838210544
+        },
+        "NY": {
+          "count": 35,
+          "mean": -0.5208659546764022,
+          "sum": -18.230308413674077
+        },
+        "Other": {
+          "count": 35,
+          "mean": -0.2263819515052764,
+          "sum": -7.923368302684674
+        }
+      }
+    }
+  ]
+}

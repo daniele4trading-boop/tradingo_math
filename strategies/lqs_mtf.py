@@ -30,11 +30,12 @@ class TradeDirection(str, Enum):
 
 
 class LQSProfile(str, Enum):
-    """3 profili allineati alla regola dei 2 gradini (video SMC)."""
+    """Profili allineati alla regola dei 2 gradini (video SMC)."""
 
     H4_M15 = "H4_M15"  # Liquidità H4 → conferma M15 (swing)
     H1_M15 = "H1_M15"  # Liquidità H1 → conferma M15 (intraday)
-    H1_M5 = "H1_M5"    # Liquidità H1 → conferma M5  (scalping/intraday rapido)
+    H1_M5 = "H1_M5"    # Liquidità H1 → conferma M5  (scalping)
+    M15_M5 = "M15_M5"  # Liquidità M15 → conferma M5 (scalping rapido)
 
 
 PROFILE_SPECS: Dict[LQSProfile, Dict[str, object]] = {
@@ -59,8 +60,16 @@ PROFILE_SPECS: Dict[LQSProfile, Dict[str, object]] = {
         "confirm_tf": "M5",
         "context_tf": "H4",
         "liquidity_lookback": 120,
-        "max_setup_age_bars": 8,
+        "max_setup_age_bars": 12,
         "label": "H1 sweep → M5 BOS",
+    },
+    LQSProfile.M15_M5: {
+        "liquidity_tf": "M15",
+        "confirm_tf": "M5",
+        "context_tf": "H4",
+        "liquidity_lookback": 96,
+        "max_setup_age_bars": 16,
+        "label": "M15 sweep → M5 BOS",
     },
 }
 
@@ -87,6 +96,9 @@ class LQSMtfConfig:
     point_size: float = 0.01
     broker_utc_offset_hours: int = 2
     session_filter: bool = False
+    context_filter: bool = True
+    max_setup_age_bars: Optional[int] = None
+    liquidity_lookback_bars: Optional[int] = None
 
     @property
     def spec(self) -> Dict[str, object]:
@@ -102,10 +114,14 @@ class LQSMtfConfig:
 
     @property
     def liquidity_lookback(self) -> int:
+        if self.liquidity_lookback_bars is not None:
+            return self.liquidity_lookback_bars
         return int(self.spec["liquidity_lookback"])
 
     @property
-    def max_setup_age_bars(self) -> int:
+    def effective_max_setup_age_bars(self) -> int:
+        if self.max_setup_age_bars is not None:
+            return self.max_setup_age_bars
         return int(self.spec["max_setup_age_bars"])
 
 
@@ -267,10 +283,12 @@ class LQSMtfStrategy:
     def _prune_sweeps(self, df_liq: pd.DataFrame) -> None:
         if not self._recent_sweeps:
             return
-        cutoff = len(df_liq) - 1 - self.cfg.max_setup_age_bars
+        cutoff = len(df_liq) - 1 - self.cfg.effective_max_setup_age_bars
         self._recent_sweeps = [s for s in self._recent_sweeps if s.liq_index >= cutoff]
 
     def _context_allows(self, direction: TradeDirection, df_context: pd.DataFrame) -> bool:
+        if not self.cfg.context_filter:
+            return True
         sub = df_context.iloc[-self.cfg.h4_range_lookback :]
         rng_low = float(sub["low"].min())
         rng_high = float(sub["high"].max())

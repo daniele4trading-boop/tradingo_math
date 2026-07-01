@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--from", dest="date_from", default=None)
     p.add_argument("--to", dest="date_to", default=None)
     p.add_argument("--report", default="results/backtest_metrics.json")
-    p.add_argument("--profile", default=None, choices=["H4_M15", "H1_M15", "H1_M5"],
+    p.add_argument("--profile", default=None, choices=["H4_M15", "H1_M15", "H1_M5", "M15_M5"],
                    help="LQS profile (default: from config.json)")
     p.add_argument("--risk-usd", type=float, default=100.0)
     return p.parse_args()

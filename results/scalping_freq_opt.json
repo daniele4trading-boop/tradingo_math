@@ -1,0 +1,66 @@
+{
+  "profiles": {
+    "H1_M5": {
+      "params": {
+        "sweep_atr_mult": 0.25,
+        "equal_highs_tolerance_atr": 0.8,
+        "min_rr": 1.5,
+        "limit_expire_bars_m5": 18,
+        "impulsive_body_ratio": 0.5,
+        "max_setup_age_bars": 18,
+        "sl_atr_buffer_mult": 0.25,
+        "cooldown_bars_m5": 6,
+        "h4_supply_pct": 0.95,
+        "context_filter": true,
+        "liquidity_lookback_bars": 80
+      },
+      "train": {
+        "trades": 61,
+        "expectancy_r": -0.78,
+        "profit_factor": 0.0,
+        "win_rate_pct": 0.0,
+        "freq_score": 17.2
+      },
+      "full": {
+        "trades": 96,
+        "expectancy_r": -0.703,
+        "profit_factor": 0.134,
+        "win_rate_pct": 12.5,
+        "max_drawdown_pct": -67.39,
+        "net_pnl": -6745.95
+      }
+    },
+    "M15_M5": {
+      "params": {
+        "sweep_atr_mult": 0.15,
+        "equal_highs_tolerance_atr": 0.8,
+        "min_rr": 1.0,
+        "limit_expire_bars_m5": 30,
+        "impulsive_body_ratio": 0.45,
+        "max_setup_age_bars": 18,
+        "sl_atr_buffer_mult": 0.3,
+        "cooldown_bars_m5": 3,
+        "h4_supply_pct": 0.95,
+        "context_filter": false,
+        "liquidity_lookback_bars": 120
+      },
+      "train": {
+        "trades": 96,
+        "expectancy_r": -0.47,
+        "profit_factor": 0.0,
+        "win_rate_pct": 0.0,
+        "freq_score": 28.1
+      },
+      "full": {
+        "trades": 180,
+        "expectancy_r": -0.518,
+        "profit_factor": 0.265,
+        "win_rate_pct": 17.22,
+        "max_drawdown_pct": -94.43,
+        "net_pnl": -9317.64
+      }
+    }
+  },
+  "train": "2026-03-01->2026-04-30",
+  "full": "2026-02-24->2026-06-05"
+}

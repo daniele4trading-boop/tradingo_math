@@ -1,6 +1,9 @@
 data/XAUUSD/
 results/*.csv
 results/*.json
+!results/opt_best_params.json
+!results/backtest_profiles_metrics.json
+!results/scalping_freq_opt.json
 !results/.gitkeep
 __pycache__/
 *.pyc

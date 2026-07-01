@@ -18,7 +18,7 @@ from backtest.data_loader import build_multitf, load_m1_directory
 from backtest.engine import BacktestEngine
 from strategies.lqs_mtf import LQSProfile, LQSMtfConfig, PROFILE_SPECS
 
-PROFILES = [LQSProfile.H4_M15, LQSProfile.H1_M15, LQSProfile.H1_M5]
+PROFILES = [LQSProfile.H4_M15, LQSProfile.H1_M15, LQSProfile.H1_M5, LQSProfile.M15_M5]
 
 
 def base_config() -> LQSMtfConfig:
@@ -118,7 +118,8 @@ def main() -> None:
         "\n## Descrizione profili\n",
         "- **H4_M15**: sweep liquidità su H4, BOS su M15, entry limit M5 (swing)",
         "- **H1_M15**: sweep su H1, BOS su M15, entry limit M5 (intraday)",
-        "- **H1_M5**: sweep su H1, BOS su M5, entry limit M5 (intraday rapido)\n",
+        "- **H1_M5**: sweep su H1, BOS su M5, entry limit M5 (scalping)",
+        "- **M15_M5**: sweep su M15, BOS su M5, entry limit M5 (scalping rapido)\n",
     ]
     (results_dir / "BACKTEST_PROFILES_REPORT.md").write_text("\n".join(lines))
 

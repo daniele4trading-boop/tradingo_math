@@ -1,20 +1,16 @@
 {
   "_note": "Modifica questo file per cambiare i parametri. Riavvia i motori dopo ogni modifica.",
-
   "symbol": "XAUUSD",
-
   "filtri": {
     "_note": "spread: 65 per produzione, 300 per test. zscore: 0.8 produzione, -1.0 test",
     "max_spread_points": 65,
     "atr_zscore_threshold": 0.8
   },
-
   "sizing": {
-    "prop_lot": 1.00,
+    "prop_lot": 1.0,
     "hedge_lot": 0.14,
     "reverse_lot_multiplier": 2.1
   },
-
   "sl_tp": {
     "_note": "Moltiplicatori ATR per SL e TP",
     "sl_atr_mult": 1.5,
@@ -22,20 +18,17 @@
     "reverse_sl_atr_mult": 2.0,
     "reverse_tp_atr_mult": 2.0
   },
-
   "indicatori": {
     "timeframe": "M5",
     "atr_period": 14,
     "vwap_period": 20,
     "cvd_period": 10
   },
-
   "gestione_rischio": {
-    "reverse_trigger_pct": 0.50,
+    "reverse_trigger_pct": 0.5,
     "trailing_atr_mult": 2.0,
     "hedge_floor_equity": 9400.0
   },
-
   "ftmo": {
     "_note": "Non superare mai i limiti reali (3% daily, 10% total)",
     "daily_dd_safety": 0.027,
@@ -43,7 +36,6 @@
     "prop_initial_balance": 100000.0,
     "prop_cost_eur": 680.0
   },
-
   "sistema": {
     "_note": "cooldown_after_sl_min: minuti di pausa dopo ogni SL sulla Prop",
     "prop_loop_interval_sec": 10.0,
@@ -53,9 +45,8 @@
     "jitter_min_ms": 300,
     "jitter_max_ms": 800
   },
-
   "lqs_mtf": {
-    "_note": "Parametri LQS-MTF — profile: H4_M15 | H1_M15 | H1_M5",
+    "_note": "Parametri LQS-MTF \u2014 profile: H4_M15 | H1_M15 | H1_M5",
     "_optimized": "2026-06-30 multi-profile",
     "profile": "H1_M15",
     "fractal_left": 2,
@@ -75,5 +66,35 @@
     "point_size": 0.01,
     "broker_utc_offset_hours": 2,
     "session_filter": false
+  },
+  "lqs_mtf_scalping": {
+    "_note": "Fase 1 frequenza \u2014 profili separati H1_M5 e M15_M5",
+    "_optimized": "2026-06-30",
+    "H1_M5": {
+      "sweep_atr_mult": 0.25,
+      "equal_highs_tolerance_atr": 0.8,
+      "min_rr": 1.5,
+      "limit_expire_bars_m5": 18,
+      "impulsive_body_ratio": 0.5,
+      "max_setup_age_bars": 18,
+      "sl_atr_buffer_mult": 0.25,
+      "cooldown_bars_m5": 6,
+      "h4_supply_pct": 0.95,
+      "context_filter": true,
+      "liquidity_lookback_bars": 80
+    },
+    "M15_M5": {
+      "sweep_atr_mult": 0.15,
+      "equal_highs_tolerance_atr": 0.8,
+      "min_rr": 1.0,
+      "limit_expire_bars_m5": 30,
+      "impulsive_body_ratio": 0.45,
+      "max_setup_age_bars": 18,
+      "sl_atr_buffer_mult": 0.3,
+      "cooldown_bars_m5": 3,
+      "h4_supply_pct": 0.95,
+      "context_filter": false,
+      "liquidity_lookback_bars": 120
+    }
   }
 }

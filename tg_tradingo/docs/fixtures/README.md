@@ -6,6 +6,7 @@ Campioni per sviluppo e test parser (estratti da VPS apr 2026).
 |------|-------------|
 | `signal_samples.txt` | Ultimi 50 messaggi per canale (CH1–CH4) |
 | `signals_apr21.txt` | Messaggi 20–21 aprile per analisi |
+| `signal_last_24h.txt` | Snapshot ultime 24h + dry-run parser (da VPS) |
 | `channel_dump.txt` | Dump completo canali/gruppi |
 | `signal_ch*_*.example.json` | Esempi payload JSON per azione |
 

@@ -135,6 +135,12 @@ python sample_channels.py
 python dump_channels.py
 ```
 
+Deploy repo → produzione (backup automatico):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_to_vps.ps1
+```
+
 ---
 
 ## Relazione con StatArb

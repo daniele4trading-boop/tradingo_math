@@ -23,6 +23,14 @@ Se trovato, copiare in `tg_tradingo/mql5/TG_TradinGoEA.mq5` prima di modifiche l
 
 Deploy: copiare `tradingo_bridge.py`, `bridge_core.py`, `start_tradingo.bat` in `C:\TG_TradinGo` **dopo backup**. Non sovrascrivere `tradingo_config.json`.
 
+Script automatico (backup + deploy):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_to_vps.ps1
+```
+
+Opzioni: `-DryRun` (simula), `-SkipBackup` (salta backup).
+
 ## Codice → in git
 
 - `tradingo_bridge.py`, `bridge_core.py`, `dump_channels.py`, `sample_channels.py`, `fetch_apr21.py`

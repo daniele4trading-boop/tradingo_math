@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.log
+*.pid
+*.sqlite
+*.db
+.env
+.venv/
+venv/
+logs/*
+!logs/.gitkeep
+backtest/data/*
+!backtest/data/.gitkeep
+backtest/output/
+data/*
+!data/.gitkeep

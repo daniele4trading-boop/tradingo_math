@@ -1,0 +1,36 @@
+
+=======================================================
+  H1_M5 — 13 candidati
+=======================================================
+  [1/13] trades= 45 exp=-0.44R score=12.9 (207s)
+  [2/13] trades= 51 exp=-0.31R score=14.9 (518s)
+  [3/13] trades= 61 exp=-0.78R score=17.2 (975s)
+  [4/13] trades= 41 exp=-0.34R score=11.9 (1189s)
+  [5/13] trades= 43 exp=-0.17R score=12.8 (1450s)
+  [6/13] trades= 59 exp=-0.56R score=16.9 (1920s)
+  [7/13] trades= 44 exp=-0.24R score=13.0 (2220s)
+  [8/13] trades= 45 exp=-0.50R score=12.9 (2556s)
+  [9/13] trades= 39 exp=-0.45R score=11.1 (2842s)
+  [10/13] trades= 40 exp=-0.30R score=11.7 (3108s)
+  [11/13] trades= 50 exp=-0.71R score=14.0 (3533s)
+  [12/13] trades= 57 exp=-0.33R score=16.7 (3839s)
+  [13/13] trades= 38 exp=-0.14R score=11.3 (4150s)
+
+  >> H1_M5 BEST: train=61 full=96 trades
+
+=======================================================
+  M15_M5 — 13 candidati
+=======================================================
+  [1/13] trades= 96 exp=-0.47R score=28.1 (770s)
+  [2/13] trades= 82 exp=-0.31R score=24.2 (1428s)
+  [3/13] trades= 72 exp=-0.28R score=21.3 (2117s)
+  [4/13] trades= 78 exp=-0.42R score=22.8 (2817s)
+  [5/13] trades= 79 exp=-0.30R score=23.3 (3534s)
+  [6/13] trades= 89 exp=-0.43R score=26.1 (4266s)
+  [7/13] trades= 78 exp=-0.49R score=22.7 (4975s)
+  [8/13] trades= 78 exp=-0.38R score=22.9 (5691s)
+  [9/13] trades= 79 exp=-0.41R score=23.1 (6431s)
+  [10/13] trades= 75 exp=-0.26R score=22.2 (7117s)
+  [11/13] trades= 85 exp=-0.46R score=24.8 (7836s)
+  [12/13] trades= 84 exp=-0.43R score=24.6 (8573s)
+  [13/13] trades= 81 exp=-0.45R score=23.7 (9317s)

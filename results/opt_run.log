@@ -1,0 +1,30 @@
+Phase 1: random search 20 / 4374 combos
+  [random_train] 5/20 best=0.340 t=1012s
+  [random_train] 10/20 best=0.468 t=1776s
+  [random_train] 15/20 best=2.071 t=2560s
+  [random_train] 20/20 best=2.071 t=3753s
+Phase 2: refine 16 combos around best random
+  [refine_train] 5/16 best=2.802 t=532s
+  [refine_train] 10/16 best=2.802 t=1077s
+  [refine_train] 15/16 best=2.802 t=1757s
+  [refine_train] 16/16 best=2.802 t=1864s
+Phase 3: OOS on top 5 train configs
+Traceback (most recent call last):
+  File "/workspace/scripts/optimize_lqs.py", line 177, in <module>
+    main()
+  File "/workspace/scripts/optimize_lqs.py", line 169, in main
+    json.dump(cfg, f, indent=2)
+  File "/usr/lib/python3.12/json/__init__.py", line 179, in dump
+    for chunk in iterable:
+  File "/usr/lib/python3.12/json/encoder.py", line 432, in _iterencode
+    yield from _iterencode_dict(o, _current_indent_level)
+  File "/usr/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/usr/lib/python3.12/json/encoder.py", line 406, in _iterencode_dict
+    yield from chunks
+  File "/usr/lib/python3.12/json/encoder.py", line 439, in _iterencode
+    o = _default(o)
+        ^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/encoder.py", line 180, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type int64 is not JSON serializable

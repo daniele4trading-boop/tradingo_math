@@ -1,0 +1,21 @@
+Data: 2026-02-24 11:58:00+00:00 -> 2026-06-05 23:56:00+00:00 (99750 M1 bars)
+
+--- H4_M15: H4 sweep → M15 BOS ---
+    Liquidità: H4 | Conferma: M15 | Esecuzione: M5
+    Trade: 7 | WR: 14.29% | Exp: -0.544R | PF: 0.135 | DD: -3.43% | PnL: -380.71 USD
+
+--- H1_M15: H1 sweep → M15 BOS ---
+    Liquidità: H1 | Conferma: M15 | Esecuzione: M5
+    Trade: 54 | WR: 11.11% | Exp: -0.726R | PF: 0.082 | DD: -39.06% | PnL: -3917.96 USD
+
+--- H1_M5: H1 sweep → M5 BOS ---
+    Liquidità: H1 | Conferma: M5 | Esecuzione: M5
+    Trade: 78 | WR: 21.79% | Exp: -0.407R | PF: 0.451 | DD: -36.86% | PnL: -3176.1 USD
+
+=== SUMMARY ===
+profile              label liquidity_tf confirm_tf exec_tf  trades  win_rate_pct  avg_rr  profit_factor  max_drawdown_pct  expectancy_r  net_pnl  tp1_hit_pct  tp2_hit_pct  tp3_hit_pct  long_trades  short_trades                                                                                                                                                                                                                               session_breakdown
+ H4_M15 H4 sweep → M15 BOS           H4        M15      M5       7         14.29  -0.544          0.135             -3.43        -0.544  -380.71        42.86        42.86        14.29            4             3                              {'London': {'count': 1, 'mean': -0.19999999999999996, 'sum': -0.19999999999999996}, 'NY': {'count': 2, 'mean': -0.6, 'sum': -1.2}, 'Other': {'count': 4, 'mean': -0.6017792663143029, 'sum': -2.4071170652572116}}
+ H1_M15 H1 sweep → M15 BOS           H1        M15      M5      54         11.11  -0.726          0.082            -39.06        -0.726 -3917.96        24.07        22.22        11.11           28            26               {'London': {'count': 5, 'mean': -0.8400000000000001, 'sum': -4.2}, 'NY': {'count': 20, 'mean': -0.6826069152114034, 'sum': -13.652138304228068}, 'Other': {'count': 29, 'mean': -0.7354290576525068, 'sum': -21.327442671922697}}
+  H1_M5  H1 sweep → M5 BOS           H1         M5      M5      78         21.79  -0.407          0.451            -36.86        -0.407 -3176.10        26.92        26.92        21.79           43            35 {'London': {'count': 8, 'mean': -0.7009115979776318, 'sum': -5.6072927838210544}, 'NY': {'count': 35, 'mean': -0.5208659546764022, 'sum': -18.230308413674077}, 'Other': {'count': 35, 'mean': -0.2263819515052764, 'sum': -7.923368302684674}}
+
+Report: results/BACKTEST_PROFILES_REPORT.md

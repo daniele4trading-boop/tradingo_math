@@ -9,7 +9,36 @@ import numpy as np
 import pandas as pd
 
 from backtest.data_loader import build_multitf
-from strategies.emission_mtf import EmissionMtfConfig, EmissionMtfStrategy, EntryMethod, TradeDirection
+from strategies.emission_mtf import EmissionMtfConfig, EmissionMtfStrategy, EmissionSignal, EntryMethod, TradeDirection
+
+
+def flip_signal(signal: EmissionSignal) -> EmissionSignal:
+    """Inverti direzione e specchia SL/TP attorno al prezzo di entry."""
+    entry = signal.entry_price
+    new_dir = TradeDirection.LONG if signal.direction == TradeDirection.SHORT else TradeDirection.SHORT
+    sl = 2 * entry - signal.sl
+    tp1 = 2 * entry - signal.tp1
+    tp2 = 2 * entry - signal.tp2
+    tp3 = 2 * entry - signal.tp3
+    risk = abs(entry - sl)
+    reward = abs(tp1 - entry)
+    rr = reward / risk if risk > 0 else 0.0
+    return EmissionSignal(
+        direction=new_dir,
+        signal_time=signal.signal_time,
+        entry_price=entry,
+        entry_low=signal.entry_low,
+        entry_high=signal.entry_high,
+        sl=sl,
+        tp1=tp1,
+        tp2=tp2,
+        tp3=tp3,
+        rr_tp1=rr,
+        reason=signal.reason + " [REVERSE]",
+        profile=signal.profile + "_REVERSE",
+        entry_type=signal.entry_type,
+        setup_id=signal.setup_id,
+    )
 
 
 @dataclass
@@ -155,6 +184,9 @@ class EmissionBacktestEngine:
                 continue
             if pending is not None and signal.setup_id == pending.setup_id:
                 continue
+
+            if self.cfg.reverse_signals:
+                signal = flip_signal(signal)
 
             if signal.entry_type == "market":
                 open_trade = self._open_market(signal, bar)

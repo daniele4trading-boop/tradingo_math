@@ -110,6 +110,7 @@ class EmissionMtfConfig:
     limit_expire_bars: Optional[int] = None
     cooldown_bars: Optional[int] = None
     max_setup_age_bars: Optional[int] = None
+    reverse_signals: bool = False
 
     @property
     def style(self) -> EmissionStyle:

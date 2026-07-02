@@ -1,0 +1,71 @@
+{
+  "reverse": true,
+  "profiles": [
+    {
+      "profile": "SCALPING_LIMIT_REVERSE",
+      "original_profile": "SCALPING_LIMIT",
+      "trades": 1335,
+      "win_rate_pct": 2.92,
+      "avg_rr": -0.891,
+      "profit_factor": 0.071,
+      "max_drawdown_pct": -1204.33,
+      "expectancy_r": -0.891,
+      "net_pnl": -118996.14,
+      "tp1_hit_pct": 4.79,
+      "tp2_hit_pct": 3.45,
+      "tp3_hit_pct": 2.92,
+      "long_trades": 674,
+      "short_trades": 661,
+      "session_breakdown": {
+        "London": {
+          "count": 177,
+          "mean": -0.9156383427463506,
+          "sum": -162.06798666610405
+        },
+        "NY": {
+          "count": 301,
+          "mean": -0.9122244632556926,
+          "sum": -274.57956343996347
+        },
+        "Other": {
+          "count": 857,
+          "mean": -0.8790126220319816,
+          "sum": -753.3138170814083
+        }
+      }
+    },
+    {
+      "profile": "SCALPING_MARKET_REVERSE",
+      "original_profile": "SCALPING_MARKET",
+      "trades": 579,
+      "win_rate_pct": 15.72,
+      "avg_rr": -0.529,
+      "profit_factor": 0.3,
+      "max_drawdown_pct": -301.9,
+      "expectancy_r": -0.529,
+      "net_pnl": -30658.03,
+      "tp1_hit_pct": 30.22,
+      "tp2_hit_pct": 20.38,
+      "tp3_hit_pct": 15.72,
+      "long_trades": 291,
+      "short_trades": 288,
+      "session_breakdown": {
+        "London": {
+          "count": 93,
+          "mean": -0.6136154430902592,
+          "sum": -57.066236207394105
+        },
+        "NY": {
+          "count": 150,
+          "mean": -0.576108059016126,
+          "sum": -86.4162088524189
+        },
+        "Other": {
+          "count": 336,
+          "mean": -0.4854102937820042,
+          "sum": -163.0978587107534
+        }
+      }
+    }
+  ]
+}

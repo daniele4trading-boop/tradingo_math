@@ -1,0 +1,21 @@
+Data: 2026-02-24 11:58:00+00:00 -> 2026-06-05 23:56:00+00:00 (99750 M1 bars)
+
+=== REVERSE: stessi setup/trigger, direzione opposta ===
+
+--- SCALPING_LIMIT_REVERSE ---
+    Trade: 1335 | WR: 2.92% | Exp: -0.891R | PF: 0.071 | DD: -1204.33% | PnL: -118996.14 USD
+
+--- SCALPING_MARKET_REVERSE ---
+    Trade: 579 | WR: 15.72% | Exp: -0.529R | PF: 0.3 | DD: -301.9% | PnL: -30658.03 USD
+
+=== CONFRONTO ORIGINALE vs REVERSE ===
+
+Profilo                           Trade     WR%      Exp     PF        PnL
+------------------------------------------------------------------------
+SCALPING_LIMIT              ORIG    451    18.4   -0.285    0.6  -12854.25
+                             REV   1335    2.92   -0.891  0.071 -118996.14
+
+SCALPING_MARKET             ORIG    543    14.0    -0.52  0.316  -28261.21
+                             REV    579   15.72   -0.529    0.3  -30658.03
+
+Report: results/SCALPING_REVERSE_REPORT.md

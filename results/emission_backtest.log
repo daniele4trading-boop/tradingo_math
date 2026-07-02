@@ -1,0 +1,22 @@
+Data: 2026-02-24 11:58:00+00:00 -> 2026-06-05 23:56:00+00:00 (99750 M1 bars)
+
+--- SCALPING_LIMIT: Scalping H4→H1 → M5 | metodo=LIMIT | exec=M5 ---
+    Trade: 451 | WR: 18.4% | Exp: -0.285R | PF: 0.6 | DD: -130.65% | PnL: -12854.25 USD
+
+--- SCALPING_MARKET: Scalping H4→H1 → M5 | metodo=MARKET | exec=M5 ---
+    Trade: 543 | WR: 14.0% | Exp: -0.52R | PF: 0.316 | DD: -284.46% | PnL: -28261.21 USD
+
+--- INTRADAY_LIMIT: Intraday D1→H4 → H1 | metodo=LIMIT | exec=H1 ---
+    Trade: 30 | WR: 23.33% | Exp: 0.457R | PF: 1.837 | DD: -8.15% | PnL: 1372.28 USD
+
+--- INTRADAY_MARKET: Intraday D1→H4 → H1 | metodo=MARKET | exec=H1 ---
+    Trade: 50 | WR: 6.0% | Exp: -0.78R | PF: 0.056 | DD: -38.36% | PnL: -3897.54 USD
+
+=== SUMMARY ===
+        profile    style method               label context operational_tf exec_tf  trades  win_rate_pct  avg_rr  profit_factor  max_drawdown_pct  expectancy_r   net_pnl  tp1_hit_pct  tp2_hit_pct  tp3_hit_pct  long_trades  short_trades                                                                                                                                                                                                                                    session_breakdown
+ SCALPING_LIMIT SCALPING  LIMIT Scalping H4→H1 → M5   H4→H1             M5      M5     451         18.40  -0.285          0.600           -130.65        -0.285 -12854.25        35.70        24.17        18.40          222           229 {'London': {'count': 65, 'mean': -0.07919839846140196, 'sum': -5.147895899991127}, 'NY': {'count': 117, 'mean': 0.006646602003727014, 'sum': 0.7776524344360607}, 'Other': {'count': 269, 'mean': -0.46160677103253145, 'sum': -124.17222140775095}}
+SCALPING_MARKET SCALPING MARKET Scalping H4→H1 → M5   H4→H1             M5      M5     543         14.00  -0.520          0.316           -284.46        -0.520 -28261.21        29.47        21.18        14.00          276           267    {'London': {'count': 76, 'mean': -0.4706717301775543, 'sum': -35.77105149349413}, 'NY': {'count': 145, 'mean': -0.4977059632794439, 'sum': -72.16736467551937}, 'Other': {'count': 322, 'mean': -0.5424648632981187, 'sum': -174.67368598199423}}
+ INTRADAY_LIMIT INTRADAY  LIMIT Intraday D1→H4 → H1   D1→H4             H1      H1      30         23.33   0.457          1.837             -8.15         0.457   1372.28        53.33        46.67        23.33           13            17           {'London': {'count': 3, 'mean': 2.3083340830512764, 'sum': 6.925002249153829}, 'NY': {'count': 7, 'mean': 1.444872377143394, 'sum': 10.114106640003758}, 'Other': {'count': 20, 'mean': -0.16581353779378008, 'sum': -3.3162707558756015}}
+INTRADAY_MARKET INTRADAY MARKET Intraday D1→H4 → H1   D1→H4             H1      H1      50          6.00  -0.780          0.056            -38.36        -0.780  -3897.54        24.00        14.00         6.00           27            23                   {'London': {'count': 10, 'mean': -0.5458616765151038, 'sum': -5.458616765151038}, 'NY': {'count': 12, 'mean': -0.8916666666666666, 'sum': -10.7}, 'Other': {'count': 28, 'mean': -0.8148854080891138, 'sum': -22.816791426495186}}
+
+Report: results/EMISSION_BACKTEST_REPORT.md

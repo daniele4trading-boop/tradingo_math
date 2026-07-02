@@ -59,6 +59,7 @@ TG_TradinGoEA.mq5  (legge JSON, esegue ordini MT5)
 - `tradingo_bridge.py` — bridge principale, 4 parser, auto-restart
 - `dump_channels.py` — debug: dump canali Telegram
 - `sample_channels.py` — ultimi 50 messaggi per canale → `signal_samples.txt`
+- `sample_last_24h.py` — ultimi N ore + dry-run parser + canali sconosciuti attivi
 - `fetch_apr21.py` — estrazione messaggi per data
 - `start_tradingo.bat` — avvio bridge
 - `README.md` — guida operativa

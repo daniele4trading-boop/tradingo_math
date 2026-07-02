@@ -16,19 +16,30 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Controlla Telethon
+:: Controlla dipendenze (non installa automaticamente in produzione)
 python -c "import telethon" >nul 2>&1
 if errorlevel 1 (
-    echo Telethon non trovato. Installazione...
-    pip install telethon
+    echo ERRORE: Telethon non installato.
+    echo.
+    echo Installa le dipendenze una tantum con:
+    echo   cd C:\StatArb\tg_tradingo
+    echo   pip install -r requirements.txt
+    echo.
+    echo Oppure dalla cartella produzione:
+    echo   pip install -r C:\StatArb\tg_tradingo\requirements.txt
+    echo.
+    pause
+    exit /b 1
 )
 
 :: Crea cartelle se non esistono
 if not exist "C:\TG_TradinGo\logs"    mkdir "C:\TG_TradinGo\logs"
 if not exist "C:\TG_TradinGo\signals" mkdir "C:\TG_TradinGo\signals"
+if not exist "C:\TG_TradinGo\state"   mkdir "C:\TG_TradinGo\state"
 
 echo Avvio bridge...
-echo Log: C:\TG_TradinGo\logs\
+echo Log:   C:\TG_TradinGo\logs\
+echo State: C:\TG_TradinGo\state\
 echo.
 
 :: Avvia con auto-restart gestito dal Python stesso

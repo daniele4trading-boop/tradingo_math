@@ -17,20 +17,35 @@ import sys
 import time
 import logging
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from telethon import TelegramClient, events
-from telethon.tl.types import UpdateChannel
+
+from bridge_core import (
+    BridgeState,
+    ProcessedMessageStore,
+    atomic_write_text,
+    validate_signal,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "tradingo_config.json")
+_BASE_DIR = os.path.dirname(__file__)
+CONFIG_FILE = os.environ.get(
+    "TRADINGO_CONFIG",
+    os.path.join(_BASE_DIR, "tradingo_config.json"),
+)
 
 def load_config():
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+    cfg_path = CONFIG_FILE
+    if not os.path.exists(cfg_path):
+        example = os.path.join(_BASE_DIR, "tradingo_config.example.json")
+        if os.path.exists(example):
+            cfg_path = example
+    with open(cfg_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 CONFIG = load_config()
@@ -57,27 +72,60 @@ log = logging.getLogger("TradinGo")
 # UTILITY
 # ─────────────────────────────────────────────────────────────────────────────
 
-SIGNALS_DIR = Path(CONFIG["paths"]["signals"])
-SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
+log = logging.getLogger("TradinGo")
+
+SIGNALS_DIR: Path | None = None
+STATE_DIR: Path | None = None
+BRIDGE_STATE: BridgeState | None = None
+PROCESSED_MESSAGES: ProcessedMessageStore | None = None
+
+
+def _paths() -> tuple[Path, Path]:
+    signals = Path(CONFIG["paths"]["signals"])
+    state = Path(CONFIG["paths"].get("state", Path(CONFIG["paths"]["base"]) / "state"))
+    return signals, state
+
+
+def _ensure_runtime() -> tuple[BridgeState, ProcessedMessageStore]:
+    global SIGNALS_DIR, STATE_DIR, BRIDGE_STATE, PROCESSED_MESSAGES
+    if BRIDGE_STATE is None:
+        SIGNALS_DIR, STATE_DIR = _paths()
+        SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        BRIDGE_STATE = BridgeState(STATE_DIR / "bridge_state.json")
+        PROCESSED_MESSAGES = ProcessedMessageStore(STATE_DIR / "processed_messages.json")
+    return BRIDGE_STATE, PROCESSED_MESSAGES
 
 def get_mt5_paths():
     return [i["signals_path"] for i in CONFIG.get("mt5_instances", []) if i.get("enabled", True)]
 
-def write_signal(channel_cfg: dict, signal: dict):
-    signal["timestamp"]    = datetime.utcnow().isoformat() + "Z"
+def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
+    signal["timestamp"]    = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     signal["channel_id"]   = channel_cfg["id"]
     signal["channel_name"] = channel_cfg["name"]
+    if meta:
+        signal["message_id"]    = meta.get("message_id")
+        signal["chat_id"]       = meta.get("chat_id")
+        signal["telegram_date"] = meta.get("telegram_date")
+        signal["event_type"]    = meta.get("event_type")
+
+    ok, reason = validate_signal(signal)
+    if not ok:
+        log.error(f"[{channel_cfg['id']}] Segnale non valido: {reason} | action={signal.get('action')}")
+        return False
+
     payload = json.dumps(signal, indent=2)
     for mt5_path in get_mt5_paths():
         out_file = Path(mt5_path) / channel_cfg["signal_file"]
-        out_file.parent.mkdir(parents=True, exist_ok=True)
         try:
-            out_file.write_text(payload, encoding="utf-8")
+            atomic_write_text(out_file, payload)
             log.info(f"[{channel_cfg['id']}] -> {out_file.name} | "
                      f"action={signal.get('action')} symbol={signal.get('symbol','')} "
                      f"dir={signal.get('direction','')}")
         except Exception as e:
             log.error(f"[{channel_cfg['id']}] Errore scrittura {out_file}: {e}")
+            return False
+    return True
 
 def pf(s: str) -> float:
     """Parse float pulito: rimuove asterischi, spazi, virgole."""
@@ -103,13 +151,6 @@ def strip_md(text: str) -> str:
 def contains_any(text: str, *words) -> bool:
     t = text.upper()
     return any(w.upper() in t for w in words)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# STATO CH2 — pending trade aperto senza SL/TP in attesa del segnale completo
-# ─────────────────────────────────────────────────────────────────────────────
-
-_ch2_pending_dir: str | None = None   # direzione dell'OPEN_NOW in attesa
-_ch2_pending_open: bool = False
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PARSER CH1 — ZANNI VIP SIGNALS
@@ -149,7 +190,7 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
         log.info(f"[CH1] CHECK_AND_CLOSE_TP{tp_n} (preso): {raw[:60]}")
         return {"action": "CHECK_AND_CLOSE_TP", "tp_index": tp_n, "raw_message": raw}
 
-    m_cl = re.search(r"(?:CHIUD[OI]\w*|CLOSING).*?TP\s*(\d)", upper)
+    m_cl = re.search(r"(?:CHIUD[OI]\w*|CLOSING)\b.*?TP\s*(\d)", upper)
     if m_cl:
         tp_n = int(m_cl.group(1))
         log.info(f"[CH1] CHECK_AND_CLOSE_TP{tp_n}: {raw[:60]}")
@@ -225,8 +266,9 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
 # Entry range: se c'e' un range [min, max], l'EA entra se il prezzo e' nel range
 # BE: AUTOMATICO nell'EA su TP1 hit — messaggi BE/SL/TP hit ignorati
 
-def parser_sala_gold(text: str, ch: dict) -> dict | None:
-    global _ch2_pending_dir, _ch2_pending_open
+def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
+    if state is None:
+        state, _ = _ensure_runtime()
     raw   = text.strip()
     upper = strip_md(raw).upper()
 
@@ -294,8 +336,7 @@ def parser_sala_gold(text: str, ch: dict) -> dict | None:
 
     # ── NAKED: messaggio senza numeri → OPEN_NOW a mercato ───────────────────
     if not has_numbers:
-        _ch2_pending_dir  = direction
-        _ch2_pending_open = True
+        state.set_ch2_pending(direction)
         log.info(f"[CH2] OPEN_NOW (naked) {direction} XAUUSD — in attesa completamento")
         return {
             "action":       "OPEN_NOW",
@@ -349,15 +390,13 @@ def parser_sala_gold(text: str, ch: dict) -> dict | None:
     tps        = [pf(v) for v in tp_matches]
 
     # Determina se e' completamento di un OPEN_NOW o nuovo segnale standalone
-    if _ch2_pending_open and _ch2_pending_dir == direction:
-        action            = "UPDATE_OPEN"
-        _ch2_pending_open = False
-        _ch2_pending_dir  = None
+    if state.ch2_pending_open and state.ch2_pending_dir == direction:
+        action = "UPDATE_OPEN"
+        state.clear_ch2_pending()
         log.info(f"[CH2] UPDATE_OPEN {direction} range={entry_range} TP={tps} SL={sl}")
     else:
-        action            = "OPEN"
-        _ch2_pending_open = False
-        _ch2_pending_dir  = None
+        action = "OPEN"
+        state.clear_ch2_pending()
         log.info(f"[CH2] OPEN {direction} range={entry_range} TP={tps} SL={sl}")
 
     return {
@@ -643,6 +682,7 @@ def build_channel_map() -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def run_bridge():
+    bridge_state, processed_messages = _ensure_runtime()
     tg_cfg = CONFIG["telegram"]
     log.info("=" * 60)
     log.info("TG TradinGo Bridge v2.0")
@@ -665,7 +705,7 @@ async def run_bridge():
             f = Path(mt5_path) / cfg["signal_file"]
             if not f.exists():
                 f.parent.mkdir(parents=True, exist_ok=True)
-                f.write_text(json.dumps({"action": "NONE"}, indent=2), encoding="utf-8")
+                atomic_write_text(f, json.dumps({"action": "NONE"}, indent=2))
                 log.info(f"Init: {f}")
 
     client = TelegramClient(tg_cfg["session_file"], tg_cfg["api_id"], tg_cfg["api_hash"])
@@ -684,6 +724,17 @@ async def run_bridge():
             if not parser:
                 return
 
+            event_type = "EDIT" if is_edit else "NEW"
+            message_id = event.id
+            dedup_key = ProcessedMessageStore.make_key(
+                int(chat_id), int(message_id), event_type, text
+            )
+            if processed_messages.is_duplicate(dedup_key):
+                log.debug(
+                    f"[{ch_cfg['id']}] Duplicato ignorato {event_type} id={message_id}"
+                )
+                return
+
             prefix = "EDIT" if is_edit else "MSG"
             log.info(f"[{ch_cfg['id']}] {prefix}: {text[:80].replace(chr(10), ' | ')}")
 
@@ -691,28 +742,40 @@ async def run_bridge():
             # sia la direzione che i dati completi (SL/TP), va trattato come
             # UPDATE_OPEN — forziamo il pending state se non era già impostato
             if is_edit and ch_cfg["parser"] == "sala_gold":
-                global _ch2_pending_dir, _ch2_pending_open
-                # Se il messaggio modificato ha numeri ed era un naked modificato
-                # impostiamo il pending in modo che venga processato come UPDATE_OPEN
                 upper = text.upper()
                 has_numbers = bool(re.search(r"\d{3,}", upper))
                 has_direction = bool(re.search(
                     r"(BUY|SELL)\s+(?:GOLD|XAUUSD)|(?:GOLD|XAUUSD)\s+(BUY|SELL)", upper
                 ))
-                if has_numbers and has_direction and not _ch2_pending_open:
-                    # Determina direzione
+                if has_numbers and has_direction and not bridge_state.ch2_pending_open:
                     m = re.search(
                         r"(BUY|SELL)\s+(?:GOLD|XAUUSD)|(?:GOLD|XAUUSD)\s+(BUY|SELL)", upper
                     )
                     if m:
                         direction = m.group(1) or m.group(2)
-                        _ch2_pending_dir  = direction
-                        _ch2_pending_open = True
+                        bridge_state.set_ch2_pending(direction)
                         log.info(f"[CH2] EDIT con dati completi → forzo UPDATE_OPEN {direction}")
 
-            signal = parser(text, ch_cfg)
+            if ch_cfg["parser"] == "sala_gold":
+                signal = parser(text, ch_cfg, bridge_state)
+            else:
+                signal = parser(text, ch_cfg)
+
             if signal:
-                write_signal(ch_cfg, signal)
+                msg_date = getattr(event, "date", None)
+                telegram_date = (
+                    msg_date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    if msg_date
+                    else None
+                )
+                meta = {
+                    "message_id": message_id,
+                    "chat_id": int(chat_id),
+                    "telegram_date": telegram_date,
+                    "event_type": event_type,
+                }
+                if write_signal(ch_cfg, signal, meta):
+                    processed_messages.mark_processed(dedup_key)
             else:
                 log.debug(f"[{ch_cfg['id']}] Ignorato")
 

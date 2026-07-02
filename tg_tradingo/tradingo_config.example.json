@@ -8,7 +8,8 @@
   "paths": {
     "base": "C:\\TG_TradinGo",
     "signals": "C:\\TG_TradinGo\\signals",
-    "logs": "C:\\TG_TradinGo\\logs"
+    "logs": "C:\\TG_TradinGo\\logs",
+    "state": "C:\\TG_TradinGo\\state"
   },
 
   "mt5_instances": [

@@ -2,12 +2,35 @@
 
 Elenco file trovati sulla VPS. Runtime non in git; sorgenti in `tg_tradingo/`.
 
+## VPS / deploy
+
+**TG_TradinGoEA.mq5** — non trovato in repo (ricerca cloud agent lug 2026).  
+Sulla VPS cercare con:
+
+```bat
+dir "C:\Program Files" /s /b TG_TradinGoEA.mq5
+dir "%APPDATA%\MetaQuotes\Terminal" /s /b TG_TradinGoEA.mq5
+dir C:\TG_TradinGo /s /b *.mq5
+```
+
+Se trovato, copiare in `tg_tradingo/mql5/TG_TradinGoEA.mq5` prima di modifiche lato EA.
+
+| Percorso VPS | Ruolo |
+|--------------|-------|
+| `C:\StatArb\tg_tradingo\` | sviluppo git |
+| `C:\TG_TradinGo\` | produzione bridge |
+| `C:\TG_TradinGo\state\` | `bridge_state.json`, `processed_messages.json` |
+
+Deploy: copiare `tradingo_bridge.py`, `bridge_core.py`, `start_tradingo.bat` in `C:\TG_TradinGo` **dopo backup**. Non sovrascrivere `tradingo_config.json`.
+
 ## Codice → in git
 
-- `tradingo_bridge.py`, `dump_channels.py`, `sample_channels.py`, `fetch_apr21.py`
-- `start_tradingo.bat`, `README.md`, `AGENTS.md`
+- `tradingo_bridge.py`, `bridge_core.py`, `dump_channels.py`, `sample_channels.py`, `fetch_apr21.py`
+- `start_tradingo.bat`, `requirements.txt`, `README.md`, `AGENTS.md`
+- `tests/test_parsers.py`, `tests/test_bridge_core.py`
 - `tradingo_config.example.json` (template; **non** il json con api_hash reale)
-- `TG_TradinGoEA.mq5` — **non presente** in `C:\TG_TradinGo` (probabilmente in `MQL5\Experts\`)
+- `TG_TradinGoEA.mq5` — **non presente** in repo né in `C:\TG_TradinGo` (snapshot apr 2026).
+  Cercare sotto `MQL5\Experts\` del terminale MT5 sulla VPS.
 
 ## Log VPS (runtime, non in git)
 

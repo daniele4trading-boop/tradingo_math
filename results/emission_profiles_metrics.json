@@ -1,0 +1,166 @@
+{
+  "data_from": "2026-02-24 11:58:00+00:00",
+  "data_to": "2026-06-05 23:56:00+00:00",
+  "bars_m1": 99750,
+  "config": {
+    "session_filter": false,
+    "context_filter": true,
+    "dominance_filter": true,
+    "fib_filter": false,
+    "min_rr": 2.0
+  },
+  "profiles": [
+    {
+      "profile": "SCALPING_LIMIT",
+      "style": "SCALPING",
+      "method": "LIMIT",
+      "label": "Scalping H4\u2192H1 \u2192 M5",
+      "context": "H4\u2192H1",
+      "operational_tf": "M5",
+      "exec_tf": "M5",
+      "trades": 451,
+      "win_rate_pct": 18.4,
+      "avg_rr": -0.285,
+      "profit_factor": 0.6,
+      "max_drawdown_pct": -130.65,
+      "expectancy_r": -0.285,
+      "net_pnl": -12854.25,
+      "tp1_hit_pct": 35.7,
+      "tp2_hit_pct": 24.17,
+      "tp3_hit_pct": 18.4,
+      "long_trades": 222,
+      "short_trades": 229,
+      "session_breakdown": {
+        "London": {
+          "count": 65,
+          "mean": -0.07919839846140196,
+          "sum": -5.147895899991127
+        },
+        "NY": {
+          "count": 117,
+          "mean": 0.006646602003727014,
+          "sum": 0.7776524344360607
+        },
+        "Other": {
+          "count": 269,
+          "mean": -0.46160677103253145,
+          "sum": -124.17222140775095
+        }
+      }
+    },
+    {
+      "profile": "SCALPING_MARKET",
+      "style": "SCALPING",
+      "method": "MARKET",
+      "label": "Scalping H4\u2192H1 \u2192 M5",
+      "context": "H4\u2192H1",
+      "operational_tf": "M5",
+      "exec_tf": "M5",
+      "trades": 543,
+      "win_rate_pct": 14.0,
+      "avg_rr": -0.52,
+      "profit_factor": 0.316,
+      "max_drawdown_pct": -284.46,
+      "expectancy_r": -0.52,
+      "net_pnl": -28261.21,
+      "tp1_hit_pct": 29.47,
+      "tp2_hit_pct": 21.18,
+      "tp3_hit_pct": 14.0,
+      "long_trades": 276,
+      "short_trades": 267,
+      "session_breakdown": {
+        "London": {
+          "count": 76,
+          "mean": -0.4706717301775543,
+          "sum": -35.77105149349413
+        },
+        "NY": {
+          "count": 145,
+          "mean": -0.4977059632794439,
+          "sum": -72.16736467551937
+        },
+        "Other": {
+          "count": 322,
+          "mean": -0.5424648632981187,
+          "sum": -174.67368598199423
+        }
+      }
+    },
+    {
+      "profile": "INTRADAY_LIMIT",
+      "style": "INTRADAY",
+      "method": "LIMIT",
+      "label": "Intraday D1\u2192H4 \u2192 H1",
+      "context": "D1\u2192H4",
+      "operational_tf": "H1",
+      "exec_tf": "H1",
+      "trades": 30,
+      "win_rate_pct": 23.33,
+      "avg_rr": 0.457,
+      "profit_factor": 1.837,
+      "max_drawdown_pct": -8.15,
+      "expectancy_r": 0.457,
+      "net_pnl": 1372.28,
+      "tp1_hit_pct": 53.33,
+      "tp2_hit_pct": 46.67,
+      "tp3_hit_pct": 23.33,
+      "long_trades": 13,
+      "short_trades": 17,
+      "session_breakdown": {
+        "London": {
+          "count": 3,
+          "mean": 2.3083340830512764,
+          "sum": 6.925002249153829
+        },
+        "NY": {
+          "count": 7,
+          "mean": 1.444872377143394,
+          "sum": 10.114106640003758
+        },
+        "Other": {
+          "count": 20,
+          "mean": -0.16581353779378008,
+          "sum": -3.3162707558756015
+        }
+      }
+    },
+    {
+      "profile": "INTRADAY_MARKET",
+      "style": "INTRADAY",
+      "method": "MARKET",
+      "label": "Intraday D1\u2192H4 \u2192 H1",
+      "context": "D1\u2192H4",
+      "operational_tf": "H1",
+      "exec_tf": "H1",
+      "trades": 50,
+      "win_rate_pct": 6.0,
+      "avg_rr": -0.78,
+      "profit_factor": 0.056,
+      "max_drawdown_pct": -38.36,
+      "expectancy_r": -0.78,
+      "net_pnl": -3897.54,
+      "tp1_hit_pct": 24.0,
+      "tp2_hit_pct": 14.0,
+      "tp3_hit_pct": 6.0,
+      "long_trades": 27,
+      "short_trades": 23,
+      "session_breakdown": {
+        "London": {
+          "count": 10,
+          "mean": -0.5458616765151038,
+          "sum": -5.458616765151038
+        },
+        "NY": {
+          "count": 12,
+          "mean": -0.8916666666666666,
+          "sum": -10.7
+        },
+        "Other": {
+          "count": 28,
+          "mean": -0.8148854080891138,
+          "sum": -22.816791426495186
+        }
+      }
+    }
+  ]
+}

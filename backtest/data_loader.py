@@ -77,8 +77,10 @@ def build_multitf(m1: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         "M1": m1,
         "M5": resample_ohlc(m1, "5min"),
         "M15": resample_ohlc(m1, "15min"),
+        "M45": resample_ohlc(m1, "45min"),
         "H1": resample_ohlc(m1, "1h"),
         "H4": resample_ohlc(m1, "4h"),
+        "D1": resample_ohlc(m1, "1D"),
     }
 
 

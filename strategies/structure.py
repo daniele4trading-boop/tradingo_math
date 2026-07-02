@@ -268,3 +268,119 @@ def in_session(ts: pd.Timestamp, london: Tuple[int, int], ny: Tuple[int, int], b
     minutes = local.hour * 60 + local.minute
     zones = [(9 * 60, 12 * 60), (15 * 60, 20 * 60)]
     return any(start <= minutes <= end for start, end in zones)
+
+
+def round_number_theory(price: float, step: float = 0.50) -> float:
+    """Round to psychological levels (.00 / .20 / .50 / .80) for gold-like prices."""
+    whole = int(price)
+    frac = price - whole
+    anchors = [0.0, 0.20, 0.50, 0.80, 1.0]
+    best = whole + min(anchors, key=lambda a: abs(frac - a))
+    if best >= whole + 1.0:
+        return float(whole + 1.0)
+    return float(best)
+
+
+def price_in_zone(low: float, high: float, zone: Tuple[float, float]) -> bool:
+    z_low, z_high = zone
+    return high >= z_low and low <= z_high
+
+
+def _body(row: pd.Series) -> float:
+    return abs(float(row["close"] - row["open"]))
+
+
+def _upper_wick(row: pd.Series) -> float:
+    return float(row["high"] - max(row["open"], row["close"]))
+
+
+def _lower_wick(row: pd.Series) -> float:
+    return float(min(row["open"], row["close"]) - row["low"])
+
+
+def detect_engulfing(df: pd.DataFrame, direction: str) -> bool:
+    """Engulfing on the last two closed bars."""
+    if len(df) < 2:
+        return False
+    prev, cur = df.iloc[-2], df.iloc[-1]
+    if direction == "SHORT":
+        return (
+            float(prev["close"]) > float(prev["open"])
+            and float(cur["close"]) < float(cur["open"])
+            and float(cur["open"]) >= float(prev["close"])
+            and float(cur["close"]) <= float(prev["open"])
+        )
+    return (
+        float(prev["close"]) < float(prev["open"])
+        and float(cur["close"]) > float(cur["open"])
+        and float(cur["open"]) <= float(prev["close"])
+        and float(cur["close"]) >= float(prev["open"])
+    )
+
+
+def detect_evening_star(df: pd.DataFrame) -> bool:
+    """3-candle evening star for short bias."""
+    if len(df) < 3:
+        return False
+    c0, c1, c2 = df.iloc[-3], df.iloc[-2], df.iloc[-1]
+    bull0 = float(c0["close"]) > float(c0["open"])
+    small1 = _body(c1) < _body(c0) * 0.5
+    bear2 = float(c2["close"]) < float(c2["open"])
+    mid12 = (float(c1["high"]) + float(c1["low"])) / 2.0
+    return bull0 and small1 and bear2 and float(c2["close"]) < mid12
+
+
+def detect_morning_star(df: pd.DataFrame) -> bool:
+    """3-candle morning star for long bias."""
+    if len(df) < 3:
+        return False
+    c0, c1, c2 = df.iloc[-3], df.iloc[-2], df.iloc[-1]
+    bear0 = float(c0["close"]) < float(c0["open"])
+    small1 = _body(c1) < _body(c0) * 0.5
+    bull2 = float(c2["close"]) > float(c2["open"])
+    mid12 = (float(c1["high"]) + float(c1["low"])) / 2.0
+    return bear0 and small1 and bull2 and float(c2["close"]) > mid12
+
+
+def emission_sl_from_candle(row: pd.Series, direction: str, atr: float, buffer_mult: float = 0.15) -> float:
+    """SL beyond emission candle rejection."""
+    buf = max(atr * buffer_mult, 0.10)
+    if direction == "SHORT":
+        wick = _upper_wick(row)
+        if wick > _body(row) * 0.5:
+            return float(row["high"]) + buf
+        return float(max(row["open"], row["close"])) + buf
+    wick = _lower_wick(row)
+    if wick > _body(row) * 0.5:
+        return float(row["low"]) - buf
+    return float(min(row["open"], row["close"])) - buf
+
+
+def find_emission_candle_index(df: pd.DataFrame, end_idx: int, direction: str) -> int:
+    """Index of B2S/S2B emission candle before displacement."""
+    for i in range(end_idx, max(end_idx - 30, 0) - 1, -1):
+        row = df.iloc[i]
+        if direction == "SHORT" and row["close"] > row["open"]:
+            return i
+        if direction == "LONG" and row["close"] < row["open"]:
+            return i
+    return end_idx
+
+
+def fib_extension_zone(leg_low: float, leg_high: float, direction: str) -> Tuple[float, float]:
+    """61.8%–80% extension zone of previous leg."""
+    span = leg_high - leg_low
+    if span <= 0:
+        return leg_low, leg_high
+    if direction == "SHORT":
+        z1 = leg_high + span * 0.618
+        z2 = leg_high + span * 0.80
+        return min(z1, z2), max(z1, z2)
+    z1 = leg_low - span * 0.618
+    z2 = leg_low - span * 0.80
+    return min(z1, z2), max(z1, z2)
+
+
+def price_in_fib_extension(close: float, leg_low: float, leg_high: float, direction: str) -> bool:
+    z_low, z_high = fib_extension_zone(leg_low, leg_high, direction)
+    return z_low <= close <= z_high

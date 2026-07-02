@@ -96,5 +96,25 @@
       "context_filter": false,
       "liquidity_lookback_bars": 120
     }
+  },
+  "emission_mtf": {
+    "_note": "Strategia emission B2S/S2B — profile: SCALPING_LIMIT | SCALPING_MARKET | INTRADAY_LIMIT | INTRADAY_MARKET",
+    "profile": "SCALPING_LIMIT",
+    "fractal_left": 2,
+    "fractal_right": 2,
+    "atr_period": 14,
+    "range_lookback": 50,
+    "supply_pct": 0.80,
+    "demand_pct": 0.20,
+    "min_rr": 2.0,
+    "sl_atr_buffer_mult": 0.15,
+    "spread_points": 65,
+    "point_size": 0.01,
+    "broker_utc_offset_hours": 2,
+    "session_filter": false,
+    "context_filter": true,
+    "dominance_filter": true,
+    "fib_filter": false,
+    "use_number_theory": true
   }
 }

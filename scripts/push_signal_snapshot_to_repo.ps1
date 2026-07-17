@@ -28,6 +28,16 @@ $srcCandidates = @(
 $dstDir  = Join-Path $RepoRoot "tg_tradingo\docs\fixtures"
 $dstFile = Join-Path $dstDir "signal_last_24h.txt"
 
+Write-Host "==> Aggiorna file sampler in produzione" -ForegroundColor Cyan
+$deploySampler = @("sample_last_24h.py", "bridge_core.py")
+foreach ($name in $deploySampler) {
+    $from = Join-Path $RepoRoot "tg_tradingo\$name"
+    if (Test-Path $from) {
+        Copy-Item $from (Join-Path $ProdRoot $name) -Force
+        Write-Host "OK deploy $name -> $ProdRoot"
+    }
+}
+
 Write-Host "==> Generazione snapshot (se necessario)" -ForegroundColor Cyan
 if (-not $SkipGenerate) {
     $sampler = Join-Path $ProdRoot "sample_last_24h.py"

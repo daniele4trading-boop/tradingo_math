@@ -127,6 +127,21 @@ class BridgeState:
         self.save()
 
 
+class EphemeralBridgeState(BridgeState):
+    """In-memory CH2 state for dry-run; never reads/writes disk (Windows-safe)."""
+
+    def __init__(self):
+        self.state_file = Path("_ephemeral_")
+        self.ch2_pending_dir: str | None = None
+        self.ch2_pending_open: bool = False
+
+    def load(self) -> None:
+        return
+
+    def save(self) -> None:
+        return
+
+
 class ProcessedMessageStore:
     """Persistent deduplication for Telegram events."""
 

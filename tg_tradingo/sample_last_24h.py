@@ -20,6 +20,7 @@ import asyncio
 import json
 import os
 import sys
+import traceback
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -30,6 +31,25 @@ CONFIG_FILE = os.environ.get(
     "TRADINGO_CONFIG",
     os.path.join(os.path.dirname(__file__), "tradingo_config.json"),
 )
+
+
+def configure_stdio() -> None:
+    """Avoid UnicodeEncodeError on Windows console (emoji in Telegram messages)."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
+
+def safe_print(text: str) -> None:
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        print(text.encode(enc, errors="replace").decode(enc, errors="replace"))
 
 
 def load_config() -> dict:
@@ -53,7 +73,7 @@ def channel_full_id(entity) -> int | None:
 def import_parsers():
     """Import parser functions from bridge (no Telegram client startup)."""
     sys.path.insert(0, os.path.dirname(__file__))
-    from bridge_core import BridgeState
+    from bridge_core import EphemeralBridgeState
     from tradingo_bridge import (
         parser_sala_gold,
         parser_sala_stark,
@@ -61,9 +81,10 @@ def import_parsers():
         parser_zanni_vip,
     )
 
+    dry_state = EphemeralBridgeState()
     return {
         "zanni_vip": parser_zanni_vip,
-        "sala_gold": lambda text, ch: parser_sala_gold(text, ch, BridgeState(Path(os.devnull))),
+        "sala_gold": lambda text, ch: parser_sala_gold(text, ch, dry_state),
         "sala_vip": parser_sala_vip,
         "sala_stark": parser_sala_stark,
     }
@@ -90,6 +111,15 @@ async def fetch_messages_since(client, entity, since: datetime):
     return msgs
 
 
+def write_output(path: Path, lines: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+    # Canonical name for push script / cloud agent
+    canonical = path.parent / "signal_last_24h.txt"
+    if path.name != canonical.name:
+        canonical.write_text("\n".join(lines), encoding="utf-8")
+
+
 async def run(args: argparse.Namespace) -> None:
     config = load_config()
     tg = config["telegram"]
@@ -105,91 +135,100 @@ async def run(args: argparse.Namespace) -> None:
     lines: list[str] = []
 
     def log(s: str = "") -> None:
-        print(s)
         lines.append(s)
+        safe_print(s)
 
     client = TelegramClient(tg["session_file"], tg["api_id"], tg["api_hash"])
 
-    async with client:
-        log("=" * 72)
-        log(f"TG TradinGo — ultimi {args.hours} ore")
-        log(f"Generato: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        log(f"Cutoff UTC: {since.strftime('%Y-%m-%d %H:%M:%S')}")
-        log("=" * 72)
+    try:
+        async with client:
+            log("=" * 72)
+            log(f"TG TradinGo — ultimi {args.hours} ore")
+            log(f"Generato: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            log(f"Cutoff UTC: {since.strftime('%Y-%m-%d %H:%M:%S')}")
+            log("=" * 72)
 
-        # ── Canali configurati ─────────────────────────────────────────────
-        log("\n## CANALI CONFIGURATI\n")
+            log("\n## CANALI CONFIGURATI\n")
 
-        for ch in configured:
-            cid = int(ch["telegram_id"])
-            log("-" * 72)
-            log(f"{ch['id']} | {ch.get('name', '?')} | parser={ch.get('parser')}")
-            log(f"telegram_id: {cid}")
-            log(f"signal_file: {ch.get('signal_file')} | magic_base: {ch.get('magic_base')}")
-            log("")
+            for ch in configured:
+                cid = int(ch["telegram_id"])
+                log("-" * 72)
+                log(f"{ch['id']} | {ch.get('name', '?')} | parser={ch.get('parser')}")
+                log(f"telegram_id: {cid}")
+                log(f"signal_file: {ch.get('signal_file')} | magic_base: {ch.get('magic_base')}")
+                log("")
 
-            parser_fn = parsers.get(ch.get("parser", ""))
-            try:
-                entity = await client.get_entity(cid)
-                msgs = await fetch_messages_since(client, entity, since)
-            except Exception as exc:
-                log(f"  ERRORE: {exc}\n")
-                continue
-
-            if not msgs:
-                log("  (nessun messaggio con testo nelle ultime ore)\n")
-                continue
-
-            for i, m in enumerate(msgs, 1):
-                ts = m.date.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-                log(f"[{i:02d}] {ts} | msg_id={m.id}")
-                if args.parser_dry_run and parser_fn:
-                    sig = parser_fn(m.text, ch)
-                    log(f"     -> {format_signal(sig)}")
-                for row in m.text.splitlines():
-                    log(f"     {row}")
-                log()
-
-            log(f"  Totale: {len(msgs)} messaggi\n")
-
-        # ── Canali sconosciuti con attività recente ────────────────────────
-        if args.include_unknown:
-            log("\n## ALTRI CANALI/GRUPPI CON ATTIVITÀ RECENTE (non in config)\n")
-            dialogs = await client.get_dialogs()
-
-            for d in dialogs:
-                entity = d.entity
-                if not isinstance(entity, (Channel, Chat)):
-                    continue
-                full_id = channel_full_id(entity)
-                if full_id is None or full_id in known_ids:
-                    continue
-
-                title = getattr(entity, "title", str(entity.id))
+                parser_fn = parsers.get(ch.get("parser", ""))
                 try:
+                    entity = await client.get_entity(cid)
                     msgs = await fetch_messages_since(client, entity, since)
-                except Exception:
+                except Exception as exc:
+                    log(f"  ERRORE: {exc}\n")
                     continue
 
                 if not msgs:
+                    log("  (nessun messaggio con testo nelle ultime ore)\n")
                     continue
 
-                log("-" * 72)
-                log(f"[SCONOSCIUTO] {title}")
-                log(f"telegram_id: {full_id}")
-                log(f"messaggi ultime {args.hours}h: {len(msgs)}")
-                log("Ultimi 3 messaggi:")
-                for m in msgs[-3:]:
+                for i, m in enumerate(msgs, 1):
                     ts = m.date.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-                    preview = m.text.replace("\n", " | ")[:120]
-                    log(f"  [{ts}] {preview}")
-                log("")
+                    log(f"[{i:02d}] {ts} | msg_id={m.id}")
+                    if args.parser_dry_run and parser_fn:
+                        try:
+                            sig = parser_fn(m.text, ch)
+                            log(f"     -> {format_signal(sig)}")
+                        except Exception as exc:
+                            log(f"     -> PARSER_ERROR: {exc}")
+                    for row in m.text.splitlines():
+                        log(f"     {row}")
+                    log()
 
-    out_file.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\nOutput: {out_file}")
+                log(f"  Totale: {len(msgs)} messaggi\n")
+
+            if args.include_unknown:
+                log("\n## ALTRI CANALI/GRUPPI CON ATTIVITÀ RECENTE (non in config)\n")
+                dialogs = await client.get_dialogs()
+
+                for d in dialogs:
+                    entity = d.entity
+                    if not isinstance(entity, (Channel, Chat)):
+                        continue
+                    full_id = channel_full_id(entity)
+                    if full_id is None or full_id in known_ids:
+                        continue
+
+                    title = getattr(entity, "title", str(entity.id))
+                    try:
+                        msgs = await fetch_messages_since(client, entity, since)
+                    except Exception:
+                        continue
+
+                    if not msgs:
+                        continue
+
+                    log("-" * 72)
+                    log(f"[SCONOSCIUTO] {title}")
+                    log(f"telegram_id: {full_id}")
+                    log(f"messaggi ultime {args.hours}h: {len(msgs)}")
+                    log("Ultimi 3 messaggi:")
+                    for m in msgs[-3:]:
+                        ts = m.date.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+                        preview = m.text.replace("\n", " | ")[:120]
+                        log(f"  [{ts}] {preview}")
+                    log("")
+
+    except Exception:
+        log("\n!!! ERRORE DURANTE DUMP !!!")
+        log(traceback.format_exc())
+        raise
+    finally:
+        write_output(out_file, lines)
+        safe_print(f"\nOutput: {out_file}")
+        safe_print(f"Output: {log_dir / 'signal_last_24h.txt'}")
 
 
 def main() -> None:
+    configure_stdio()
     p = argparse.ArgumentParser(description="Campiona messaggi Telegram recenti")
     p.add_argument("--hours", type=int, default=24, help="Finestra temporale (default 24)")
     p.add_argument(

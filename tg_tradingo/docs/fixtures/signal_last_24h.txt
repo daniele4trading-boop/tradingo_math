@@ -1,0 +1,377 @@
+========================================================================
+TG TradinGo — ultimi 24 ore
+Generato: 2026-07-18 10:15:44
+Cutoff UTC: 2026-07-17 08:15:44
+========================================================================
+
+## CANALI CONFIGURATI
+
+------------------------------------------------------------------------
+CH1 | Zanni VIP Signals | parser=zanni_vip
+telegram_id: -1003026686847
+signal_file: signal_ch1.json | magic_base: 11000
+
+  (nessun messaggio con testo nelle ultime ore)
+
+------------------------------------------------------------------------
+CH2 | Sala Gold VIP | parser=sala_gold
+telegram_id: -1003302540529
+signal_file: signal_ch2.json | magic_base: 12000
+
+[01] 2026-07-17 15:37:10 | msg_id=1556
+     -> OPEN_NOW | SELL | XAUUSD
+     Gold sell. Now
+
+[02] 2026-07-17 15:38:34 | msg_id=1557
+     -> UPDATE_OPEN | SELL | XAUUSD
+     Gold sell. Now 3985 - 3995
+     SL: 4008
+     Tp: 3976
+     Tp: 3950
+
+[03] 2026-07-17 15:40:52 | msg_id=1558
+     -> OPEN_NOW | SELL | XAUUSD
+     Sell ​​gold now
+
+[04] 2026-07-17 15:42:06 | msg_id=1559
+     -> UPDATE_OPEN | SELL | XAUUSD
+     Gold sell. Now 3991 - 4000
+     SL: 4006
+     Tp: 3980
+     Tp: 3950
+
+[05] 2026-07-17 15:47:23 | msg_id=1560
+     -> IGNORED
+     Partial closure break Even
+
+[06] 2026-07-17 15:57:20 | msg_id=1561
+     -> OPEN | SELL | XAUUSD
+     Gold sell. Now 3993 - 4000
+     SL: 4012
+     Tp: 3983
+     Tp: 3950
+
+[07] 2026-07-17 17:05:23 | msg_id=1562
+     -> IGNORED
+     Sl hit
+
+[08] 2026-07-17 17:05:28 | msg_id=1563
+     -> OPEN | SELL | XAUUSD
+     Sell ​​gold now 4014 - 4024
+     SL: 4029
+     Tp: 4004
+     Tp: 3985
+
+[09] 2026-07-17 17:13:50 | msg_id=1564
+     -> IGNORED
+     SELL STOP GOLD 3999
+
+[10] 2026-07-17 17:23:02 | msg_id=1565
+     -> IGNORED
+     **Oggi abbiamo preso qualche stop in più del solito. La scelta è stata quella di provare qualche operazione con un po’ più di aggressività, anche perché i profitti accumulati durante la settimana ci permettevano di prenderci questo margine.**
+     
+     **Fa parte del trading: ci sono giornate in cui si spinge un po’ di più e altre in cui si è più conservativi. Gli stop sono una componente normale del percorso e non cambiano il lavoro svolto fino a questo momento.**
+     
+     **Ora restiamo concentrati sulle prossime opportunità e continuiamo a seguire il piano con disciplina. 💪📈**
+
+[11] 2026-07-17 20:42:20 | msg_id=1566
+     -> OPEN_NOW | SELL | XAUUSD
+     Sell ​​gold now
+
+[12] 2026-07-17 20:42:40 | msg_id=1567
+     -> UPDATE_OPEN | SELL | XAUUSD
+     Sell ​​gold now 4010 - 4020
+     SL: 4025
+     Tp: 4001
+     Tp: 3985
+
+  Totale: 12 messaggi
+
+------------------------------------------------------------------------
+CH3 | Sala VIP | parser=sala_vip
+telegram_id: -1002890661441
+signal_file: signal_ch3.json | magic_base: 13000
+
+[01] 2026-07-17 17:27:20 | msg_id=1514
+     -> IGNORED
+     🛠️ NZDJPYpm Sell - Modified
+     `
+     -------{ Moved TP }--------
+     🗑️ Old TP: 94.445
+     👉 New TP: 94.629 [21.9 Pips]``
+     ---------------------------`
+     💎 Max. Profit: 2.36 € [ 0.02% ]
+
+  Totale: 1 messaggi
+
+------------------------------------------------------------------------
+CH4 | Sala Stark | parser=sala_stark
+telegram_id: -1002073368935
+signal_file: signal_ch4.json | magic_base: 14000
+
+[01] 2026-07-17 13:00:03 | msg_id=3089
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **3991**
+     SL: `3984.42`
+     TP1: `3993.62`
+
+[02] 2026-07-17 13:01:15 | msg_id=3090
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[03] 2026-07-17 14:43:07 | msg_id=3094
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **3970**
+     SL: `3974.87`
+     TP1: `3968.17`
+
+[04] 2026-07-17 14:43:07 | msg_id=3095
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[05] 2026-07-17 14:43:23 | msg_id=3096
+     -> IGNORED
+     Niente troppo veloce
+
+[06] 2026-07-17 15:40:23 | msg_id=3097
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **3989**
+     SL: `3992.76`
+     TP1: `3986.26`
+
+[07] 2026-07-17 15:42:25 | msg_id=3098
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[08] 2026-07-17 20:00:03 | msg_id=3099
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4010**
+     SL: `4003.67`
+     TP1: `4012.87`
+
+[09] 2026-07-17 20:10:28 | msg_id=3100
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[10] 2026-07-17 21:20:03 | msg_id=3101
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4006**
+     SL: `3999.80`
+     TP1: `4009.00`
+
+[11] 2026-07-17 21:43:58 | msg_id=3102
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[12] 2026-07-17 21:45:03 | msg_id=3103
+     -> IGNORED
+     Mamma mia che giornata✅
+
+  Totale: 12 messaggi
+
+
+## ALTRI CANALI/GRUPPI CON ATTIVITÀ RECENTE (non in config)
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Offerte Dal Web 💰🌐💶
+telegram_id: -1001059444423
+messaggi ultime 24h: 50
+Ultimi 3 messaggi:
+  [2026-07-18 09:57:04] **Tavola da Stand Up Paddle InnoExpo con Accessori, Tavola da Surf SUP Antiscivolo** |  | __Prezzo comprensivo di Klarna
+  [2026-07-18 10:00:27] **Intex 58894EU - Materassino Gonfiabile Mare 18 Buchi con Cuscino, 188x71 cm** |  | 💰In offerta a **7,64€** invece di 1
+  [2026-07-18 10:15:21] **Hisense 55A8DQ Smart TV OLED, 55"** |  | 💰In offerta a **572,00€** invece di 595,00€ |  | 👉 https://amzlink.to/az0DTgS
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] DreamTeamDIEI-SANDO
+telegram_id: -5390838239
+messaggi ultime 24h: 9
+Ultimi 3 messaggi:
+  [2026-07-17 18:37:49] **Nuova prenotazione Diei** | 2026-07-17 alle 19:15 | Marangoni - 2 persone | Telefono: 3402378582 | Tavoli: 3 | Pizze s
+  [2026-07-17 19:06:22] **Nuova prenotazione Diei** | 2026-07-18 alle 20:00 | Girardi - 4 persone | Telefono: 0000 | Tavoli: 6 | Pizze slot: 4
+  [2026-07-18 10:14:05] **Nuova prenotazione Diei** | 2026-07-18 alle 19:30 | stefano verdi - 2 persone | Telefono: 3346005493 | Tavoli: 8 | Piz
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] MISTER CA$H 🤑
+telegram_id: -1001174390956
+messaggi ultime 24h: 7
+Ultimi 3 messaggi:
+  [2026-07-17 22:05:39] **⚡️ 5 MINUTI CHE HANNO CAMBIATO COMPLETAMENTE LA SERATA ⚡️** |  | Il nostro amico era entrato senza fare grandi program
+  [2026-07-18 10:01:00] 💣💣💣💣💣💣💣
+  [2026-07-18 10:05:13] **💥 GIUSEPPE VOLEVA SOLO TOGLIERSI UNO SFIZIO… E SI È RITROVATO CON UN SORRISO ENORME 💥** |  | C'è una cosa che Giuseppe
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Arbitex | Trading Matematico
+telegram_id: -1002056411626
+messaggi ultime 24h: 36
+Ultimi 3 messaggi:
+  [2026-07-18 09:54:20] Augurii
+  [2026-07-18 09:56:19] Tanti auguri Fabrizio 🎂
+  [2026-07-18 10:02:47] Tanti Auguri!!!🤩
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] ALLERTA FRIGO
+telegram_id: -5207801819
+messaggi ultime 24h: 27
+Ultimi 3 messaggi:
+  [2026-07-18 06:10:01] ✅ TEMPERATURA RIENTRATA — CELLA 3 |  | 🌡️ Temperatura attuale: -16.0°C | 📏 Range: -24°C ÷ -12°C | 🕐 18/07/2026, 04:10:01
+  [2026-07-18 08:30:01] ✅ TEMPERATURA RIENTRATA — CELLA 3 |  | 🌡️ Temperatura attuale: -17.0°C | 📏 Range: -24°C ÷ -12°C | 🕐 18/07/2026, 06:30:00
+  [2026-07-18 10:00:00] 📊 RIEPILOGO TEMPERATURE 17/07/2026 |  | 🧊 CELLA 1: min -10.0°C  max -10.0°C  ✅ OK | 🧊 CELLA 2 : min -15.0°C  max -15.0°C
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Top Target chat
+telegram_id: -1001209596282
+messaggi ultime 24h: 87
+Ultimi 3 messaggi:
+  [2026-07-18 09:27:55] nice! thanks!
+  [2026-07-18 09:49:02] cant find it
+  [2026-07-18 09:51:06] https://www.mql5.com/en/market/product/178797?source=Site+Market+MT5+Search+Rating006%3acasperit+max#
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] MATTE XAU
+telegram_id: -1002176304936
+messaggi ultime 24h: 46
+Ultimi 3 messaggi:
+  [2026-07-17 18:39:22] PUNTO NUMERO 4: |  | IL CORAGGIO. |  | Avresti mai aperto uno short sui minimi dell’anno? |  | Lo abbiamo fatto solo gra
+  [2026-07-17 18:41:23] Vi ripeterò questi concetti all’infinito. |  | La via per diventare ricchi e liberi passa da cose basilari come queste m
+  [2026-07-18 09:27:22] Buongiorno ragazzi e buon weekend! |  | Ci siete?! |  | Datemi tanti pollicioniiiii 👍👍👍👍👍
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Mister Virtual
+telegram_id: -1001712657635
+messaggi ultime 24h: 10
+Ultimi 3 messaggi:
+  [2026-07-17 22:14:01] ⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️⚡️ |  | 🎉**SASI NON SI FERMA! ANCHE UN PICCOLO SUCCESSO È UN SUCCESSO! 💼**💥 |  | **LA DETERMINAZIONE È L
+  [2026-07-17 23:48:01] ⭐️🌙**PRONTI A FARE SOLDI MENTRE IL MONDO DORME? ** |  | 😏💰**SCRIVIMI ORA E INIZIAMO QUESTO VIAGGIO VERSO IL SUCCESSO INS
+  [2026-07-18 00:10:10] 🍀
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Sweet Pink 💞
+telegram_id: -1002558956134
+messaggi ultime 24h: 2
+Ultimi 3 messaggi:
+  [2026-07-17 16:02:01] Ma se togliessimo tutto invece di tenere tutto addosso?🫦 | Sono così grosse che qui non ci stanno più🥵 |  | Vieni a tent
+  [2026-07-17 23:51:01] Sei ancora in vena di fare qualcosa di davvero particolare con me? 🫦 | Ho solo voglia di farti impazzire ora come ora 🔥 
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Filippo Bernardini
+telegram_id: -1001966387295
+messaggi ultime 24h: 8
+Ultimi 3 messaggi:
+  [2026-07-17 22:08:23] Partito con 100€ ha fatto 260€ di profit questa settimana!
+  [2026-07-17 22:09:30] Tony ha iniziato con 123€ 24 ore fa e ora ha già prelevato profitti ed è ad oltre 300€! 🚀💰
+  [2026-07-17 22:09:48] Se vuoi copiare anche tu le prossime operazioni e incassare i tuoi primi profitti oggi stesso.. | Ti ricordo che solo pe
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] IN MOMO VERITAS 👓 - Community FX
+telegram_id: -1002294952828
+messaggi ultime 24h: 3
+Ultimi 3 messaggi:
+  [2026-07-17 12:14:12] **SIAMO IN LIVE: |  | ****https://vm.tiktok.com/ZN9rJhoqjHeFB-ggkqN/**
+  [2026-07-17 18:02:55] Nuovo giorno, nuova live... ma oggi lo sceriffo ha "sparato a salve" in un mercato a dir poco spietato. L'analisi si è a
+  [2026-07-17 20:04:02] **COME OGNI SETTIMANA CHIUDIAMO CON UN RIEPILOGO DAL VOSTRO SCERIFFO PREFERITO **🔥🤠 |  | **Lunedì:** | Sell +380 pips | 
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Monyshop76 💯💥
+telegram_id: -1003840917201
+messaggi ultime 24h: 8
+Ultimi 3 messaggi:
+  [2026-07-17 19:37:40] Promo 💥 Week-end 💥 | 30€
+  [2026-07-17 19:42:07] Lattafa Eclaire 50ml.
+  [2026-07-17 19:42:24] Promo 💥 Week-end 💥  | 20€
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Alessia Camionista 🥰
+telegram_id: -1003691361701
+messaggi ultime 24h: 1
+Ultimi 3 messaggi:
+  [2026-07-17 19:32:01] Rientro in città ancora una settimana😢 vabbè almeno ci siete voi che mi riempite💦💦❤️
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Ivan Trades🦈📈
+telegram_id: -1002489153466
+messaggi ultime 24h: 30
+Ultimi 3 messaggi:
+  [2026-07-17 19:09:43] **Recap** **Venerdi Sala VIP:** |  | **Xauusd Buy 🔘 +0 PIPS** | **Xauusd Buy**❌** -10 PIPS** | **Xauusd Buy****✔️**** +3
+  [2026-07-17 19:21:32] E anche oggi chiudiamo in profitto 🏌🏼‍♂️
+  [2026-07-17 19:21:32] 5 su 5🏌🏼‍♂️
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] BullsFinanceFX 🇮🇹
+telegram_id: -1003215036826
+messaggi ultime 24h: 3
+Ultimi 3 messaggi:
+  [2026-07-17 11:02:51] Buongiorno ragazzi domanda secca, rispondete al sondaggio 👇
+  [2026-07-17 11:04:14] Ve lo chiedo perché il primo giorno della diretta vi faccio vedere una cosa su come si opera DAVVERO con certe cifre… ch
+  [2026-07-17 18:52:36] 📆SAVE THE DATE: | 21-23 LUGLIO 2026 ORE 15 | LIVE TRADING SHOW | → [REGISTRATI QUI](https://bulls-finance.com/optin-webi
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] INMOMOVERITAS VIP
+telegram_id: -1003448619258
+messaggi ultime 24h: 4
+Ultimi 3 messaggi:
+  [2026-07-17 11:46:27] Sessione caldissima alle porte. I grafici stanno disegnando una dinamica molto interessante che richiede massima precisi
+  [2026-07-17 11:47:56] **Strategia Operativa: Lo Schema Buy to Sell.** |  | Per il pomeriggio, l'obiettivo è sfruttare questa transizione con u
+  [2026-07-17 18:37:49] Assurdo che lo short stia ripartendo esattamente nella mia zona dei 23.5/24.8📉. Oltre ad essere la mia zona di target lo
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Dottor Guadagno Lab 👨‍⚕️🧪
+telegram_id: -1003613560957
+messaggi ultime 24h: 12
+Ultimi 3 messaggi:
+  [2026-07-17 18:27:22] RAGAZZI IN SALA STIAMO VOLANDO!!! ANCHE OGGI TUTTE IN PROFITTO!🔥 |  | Sono un mago? NO! |  | Semplicemente sappiamo dove
+  [2026-07-17 18:27:38] Potrei avere un ultimo set up per oggi
+  [2026-07-17 18:27:56] Vediamo se chiudiamo la settimana con un ultimo segnale bomba! 💣
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Sala ORO - VIP
+telegram_id: -1003950995427
+messaggi ultime 24h: 29
+Ultimi 3 messaggi:
+  [2026-07-17 18:18:47] Non mi aveva inviato il messaggio del breik ❤️
+  [2026-07-17 18:18:53] Potrei avere un ultimo set up per oggi
+  [2026-07-17 18:19:17] Attualmente siamo 7 su 7 in profitto
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] Fabio Oreste’s Trading Room
+telegram_id: -1001869434630
+messaggi ultime 24h: 28
+Ultimi 3 messaggi:
+  [2026-07-17 16:53:23] se avesse preso un conto da 1 Milione avrebbe guadagnato 10,000 euro in 10 giorni
+  [2026-07-17 17:04:48] chiedere il conto da 1 Milione pronto per far trading | e copiare le mie operazioni  | e GUADAGNARE OGNI GIORNO
+  [2026-07-17 17:05:01] chiedi una call con uno dei nostri esperti e scrivi a  | info@quantumtradingschool.com |  | sulla email scrivi  | nome c
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] FILO PIPS TRADING 📈📊
+telegram_id: -1003514897690
+messaggi ultime 24h: 1
+Ultimi 3 messaggi:
+  [2026-07-17 10:25:02] **📲CONTATTO DIRETTO ****‼️** |  | **@filoopips**
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] ATOMIC
+telegram_id: -1003714881786
+messaggi ultime 24h: 1
+Ultimi 3 messaggi:
+  [2026-07-17 15:11:54] Stavo pubblicando queste due recensioni quando ha preso uno stop 😂 |  | Assurdo la coincidenza ma fiero di aver chiuso u
+
+------------------------------------------------------------------------
+[SCONOSCIUTO] MatteCapital // Fx e Crypto - Community 📈
+telegram_id: -1002103849818
+messaggi ultime 24h: 1
+Ultimi 3 messaggi:
+  [2026-07-17 11:29:20] **LIVE TRADING ADESSO:** https://www.tiktok.com/@mattecapital?_r=1&_t=ZN-93P2lwPwQ5u

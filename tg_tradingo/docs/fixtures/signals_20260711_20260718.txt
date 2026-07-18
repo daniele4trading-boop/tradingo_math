@@ -1,0 +1,3089 @@
+========================================================================
+TG TradinGo ΓÇö dump 2026-07-11 ΓåÆ 2026-07-18
+Generato: 2026-07-18 13:37:03
+Intervallo UTC: 2026-07-11T00:00:00+00:00 ΓåÆ 2026-07-18T23:59:59.999999+00:00
+========================================================================
+
+========================================================================
+CH1 | Zanni VIP Signals | parser=zanni_vip
+telegram_id: -1003026686847
+execution: {}
+========================================================================
+[01] 2026-07-12 10:25:41 | msg_id=5321
+     -> IGNORED
+     Altro vantaggio che abbiamo su cubomarkets rispetto ai vecchi broker che usavo.
+     
+     Swap 0 su Btc
+
+  Totale: 1 messaggi
+
+
+========================================================================
+CH2 | Sala Gold VIP | parser=sala_gold
+telegram_id: -1003302540529
+execution: {}
+========================================================================
+[01] 2026-07-11 10:10:27 | msg_id=1520
+     -> IGNORED
+     **📊 Report Settimanale Sala VIP** GOLD **
+     
+     📅 Periodo: 6 – 9 Luglio
+     
+     📈 Performance
+     
+     Pips lordi: +690
+     Pips persi: -450
+     ✅ Pips netti: +240
+     
+     📊 Statistiche
+     
+     Operazioni totali: 12
+     Operazioni vincenti: 9
+     Operazioni in perdita: 3
+     Win Rate: 75%
+     Profit Factor (in pips): 1,53
+     
+     📝 Analisi della settimana
+     
+     La settimana dal 6 al 9 luglio si è conclusa con un risultato di +240 pips netti.
+     
+     È stata una settimana particolarmente impegnativa, caratterizzata da condizioni di mercato difficili e da una volatilità superiore alla media. Nonostante alcuni stop loss significativi, la gestione operativa ha permesso di mantenere un win rate del 75% e di chiudere il periodo in profitto.
+     
+     Come sempre, il focus resta sulla costanza nel lungo periodo, mantenendo disciplina e una corretta gestione del rischio indipendentemente dall’andamento della singola giornata o della singola operazione.
+     
+     Risultato finale della settimana: +240 pips. 📈**
+
+[02] 2026-07-13 10:24:03 | msg_id=1521
+     -> OPEN_NOW | SELL | XAUUSD
+     Gold sell now
+
+[03] 2026-07-13 10:25:03 | msg_id=1522
+     -> UPDATE_OPEN | SELL | XAUUSD
+     Gold sell now 4080 - 4090
+     SL: 4095
+     Tp: 4070
+     TP: 4050
+
+[04] 2026-07-13 10:28:16 | msg_id=1523
+     -> CLOSE_HALF_BE | XAUUSD
+     +60 pips partial close break even
+
+[05] 2026-07-13 10:52:13 | msg_id=1524
+     -> IGNORED
+     Sell ​​gold now
+
+[06] 2026-07-13 10:54:29 | msg_id=1525
+     -> OPEN | SELL | XAUUSD
+     Gold sell now 4078.7 - 4090
+     SL: 4095
+     Tp: 4070.7
+     TP: 4050
+
+[07] 2026-07-13 11:18:12 | msg_id=1526
+     -> CLOSE_HALF_BE | XAUUSD
+     Partial close break Even +65 pips 💸💸💸
+
+[08] 2026-07-13 12:53:17 | msg_id=1527
+     -> IGNORED
+     **TP2 hit gold +300 pips 💸💸💸**
+
+[09] 2026-07-13 14:26:44 | msg_id=1528
+     -> OPEN_NOW | SELL | XAUUSD
+     Gold sell now
+
+[10] 2026-07-13 14:28:39 | msg_id=1529
+     -> UPDATE_OPEN | SELL | XAUUSD
+     Gold sell now 4063 - 4073
+     SL: 4080
+     Tp: 4055
+     Tp: 4046
+     Tp: 4034
+
+[11] 2026-07-13 15:33:57 | msg_id=1530
+     -> CLOSE_HALF_BE | XAUUSD
+     Partial close break Even +100 pips
+
+[12] 2026-07-13 15:40:39 | msg_id=1531
+     -> IGNORED
+     TP1 HIT + 80 PIPS 💸
+
+[13] 2026-07-13 15:54:17 | msg_id=1532
+     -> IGNORED
+     TP2 hit gold +230 pips break even 💸💸💸
+
+[14] 2026-07-13 16:27:16 | msg_id=1533
+     -> IGNORED
+     TP3 hit gold +330 pips 💸💸💸
+
+[15] 2026-07-14 15:04:56 | msg_id=1536
+     -> OPEN_NOW | BUY | XAUUSD
+     Buy gold now
+
+[16] 2026-07-14 15:05:34 | msg_id=1537
+     -> UPDATE_OPEN | BUY | XAUUSD
+     Buy gold now 4071 - 4060
+     SL: 4055
+     Tp: 4080
+     Tp: 4100
+
+[17] 2026-07-14 15:11:47 | msg_id=1538
+     -> IGNORED
+     TP1 hit gold +100 pips break even
+
+[18] 2026-07-14 15:15:54 | msg_id=1539
+     -> OPEN_NOW | BUY | XAUUSD
+     Buy gold now
+
+[19] 2026-07-14 15:15:58 | msg_id=1540
+     -> UPDATE_OPEN | BUY | XAUUSD
+     Buy gold now 4072 - 4060
+     SL: 4055
+     Tp: 4080
+     Tp: 4100
+
+[20] 2026-07-14 15:18:59 | msg_id=1541
+     -> IGNORED
+     TP1 hit gold +80 pips break even
+
+[21] 2026-07-14 15:20:27 | msg_id=1542
+     -> OPEN | BUY | XAUUSD
+     Buy gold now 4072 - 4060
+     SL: 4055
+     Tp: 4080
+     Tp: 4100
+
+[22] 2026-07-14 15:25:57 | msg_id=1543
+     -> IGNORED
+     TP1 hit gold +150 pips break even 💸💸💸
+
+[23] 2026-07-15 11:25:49 | msg_id=1544
+     -> IGNORED
+     🚨 **Questa sera LIVE DI FORMAZIONE alle ore 21:00!**
+     
+     Ricordo a tutti i membri della community di partecipare, perché sarà una formazione davvero molto importante.
+     
+     La formazione è fondamentale per comprendere al meglio la strategia, migliorare il proprio approccio al trading e acquisire una visione completa a 360°.
+     
+     📈 Come entrare nel mercato
+     📉 Come uscire correttamente
+     ⏳ L’importanza di saper aspettare
+     🧠 Mindset e gestione emotiva
+     🎯 Tutto ciò che serve per comprendere al meglio il funzionamento della strategia.
+     
+     Anche se sei un investitore passivo, conoscere questi aspetti è molto importante per capire come lavoriamo e affrontare il percorso con maggiore consapevolezza.
+     
+     **Vi aspetto tutti questa sera alle 21:00!** 💪
+
+[24] 2026-07-15 15:06:13 | msg_id=1546
+     -> OPEN_NOW | SELL | XAUUSD
+     Gold sell now
+
+[25] 2026-07-15 15:08:01 | msg_id=1547
+     -> UPDATE_OPEN | SELL | XAUUSD
+     Gold sell now 4073 - 4082
+     SL: 4090
+     Tp: 4064
+     Tp: 4050
+     Tp: 4040
+
+[26] 2026-07-15 15:12:36 | msg_id=1549
+     -> IGNORED
+     TP1 HIT GOLD +100 pips break even
+
+[27] 2026-07-15 17:27:55 | msg_id=1550
+     -> IGNORED
+     TP3 HIT + 330 PIPS 💸💸💸🔥🔥🔥🔥🔥🔥🔥
+
+[28] 2026-07-15 20:07:29 | msg_id=1551
+     -> IGNORED
+     1 ora e siamo live 🔥
+
+[29] 2026-07-17 15:37:10 | msg_id=1556
+     -> OPEN_NOW | SELL | XAUUSD
+     Gold sell. Now
+
+[30] 2026-07-17 15:38:34 | msg_id=1557
+     -> UPDATE_OPEN | SELL | XAUUSD
+     Gold sell. Now 3985 - 3995
+     SL: 4008
+     Tp: 3976
+     Tp: 3950
+
+[31] 2026-07-17 15:40:52 | msg_id=1558
+     -> IGNORED
+     Sell ​​gold now
+
+[32] 2026-07-17 15:42:06 | msg_id=1559
+     -> OPEN | SELL | XAUUSD
+     Gold sell. Now 3991 - 4000
+     SL: 4006
+     Tp: 3980
+     Tp: 3950
+
+[33] 2026-07-17 15:47:23 | msg_id=1560
+     -> IGNORED
+     Partial closure break Even
+
+[34] 2026-07-17 15:57:20 | msg_id=1561
+     -> OPEN | SELL | XAUUSD
+     Gold sell. Now 3993 - 4000
+     SL: 4012
+     Tp: 3983
+     Tp: 3950
+
+[35] 2026-07-17 17:05:23 | msg_id=1562
+     -> IGNORED
+     Sl hit
+
+[36] 2026-07-17 17:05:28 | msg_id=1563
+     -> IGNORED
+     Sell ​​gold now 4014 - 4024
+     SL: 4029
+     Tp: 4004
+     Tp: 3985
+
+[37] 2026-07-17 17:13:50 | msg_id=1564
+     -> IGNORED
+     SELL STOP GOLD 3999
+
+[38] 2026-07-17 17:23:02 | msg_id=1565
+     -> IGNORED
+     **Oggi abbiamo preso qualche stop in più del solito. La scelta è stata quella di provare qualche operazione con un po’ più di aggressività, anche perché i profitti accumulati durante la settimana ci permettevano di prenderci questo margine.**
+     
+     **Fa parte del trading: ci sono giornate in cui si spinge un po’ di più e altre in cui si è più conservativi. Gli stop sono una componente normale del percorso e non cambiano il lavoro svolto fino a questo momento.**
+     
+     **Ora restiamo concentrati sulle prossime opportunità e continuiamo a seguire il piano con disciplina. 💪📈**
+
+[39] 2026-07-17 20:42:20 | msg_id=1566
+     -> IGNORED
+     Sell ​​gold now
+
+[40] 2026-07-17 20:42:40 | msg_id=1567
+     -> IGNORED
+     Sell ​​gold now 4010 - 4020
+     SL: 4025
+     Tp: 4001
+     Tp: 3985
+
+[41] 2026-07-18 11:13:06 | msg_id=1569
+     -> IGNORED
+     **📊 REPORT SETTIMANALE – SALA VIP GOLD
+     📅 13 – 17 Luglio
+     
+     Settimana molto positiva per la Sala VIP Gold, caratterizzata da un’operatività solida e una gestione del rischio che ha permesso di chiudere con un risultato di rilievo.
+     
+     🏆 Risultato Finale: +840 Pips
+     
+     📊 Statistiche della settimana
+     
+     📌 Operazioni Totali: 9
+     ✅ Operazioni Vincenti: 6
+     ❌ Operazioni Perdenti: 3
+     🎯 Win Rate: 66,7%
+     ⚖️ Profit Factor: 2,87
+     📈 Pips Lordi: +1.290
+     📉 Pips Persi: -450
+     📊 Media per Operazione: +93,3 pips
+     
+     Nonostante tre operazioni chiuse in stop, i trade vincenti hanno più che compensato le perdite, confermando l’efficacia di un approccio basato su gestione del rischio, disciplina e selezione dei setup.
+     
+     Grazie a tutti i membri della Sala VIP Gold per la fiducia. Ci vediamo la prossima settimana per continuare il nostro percorso con la stessa costanza e professionalità. 🚀📈**
+
+  Totale: 41 messaggi
+
+
+========================================================================
+CH3 | Sala FOREX VIP | parser=sala_vip
+telegram_id: -1002890661441
+execution: {}
+========================================================================
+[01] 2026-07-11 10:11:48 | msg_id=1489
+     -> IGNORED
+     **📊 Report Settimanale – Sala VIP Forex
+     
+     📅 Periodo: 6 – 9 Luglio
+     
+     📈 Performance
+     
+     Pips lordi: +176
+     Pips persi: -36
+     ✅ Pips netti: +140
+     
+     📊 Statistiche
+     
+     Operazioni totali: 6
+     Operazioni vincenti: 5
+     Operazioni in perdita: 1
+     Win Rate: 83,3%
+     Profit Factor (in pips): 4,89
+     
+     📝 Analisi della settimana
+     
+     La settimana dal 6 al 9 luglio si è conclusa con un risultato di +140 pips netti, avendo **chiuso molte operazioni che era già state aperte nelle scorse settimane **
+     
+     L’operatività sulla sala Forex si è dimostrata solida e costante, con 5 operazioni vincenti su 6. Nonostante uno stop loss, la gestione del rischio ha consentito di mantenere un’ottima redditività, chiudendo il periodo con un win rate dell’83,3% e un Profit Factor di 4,89.
+     
+     Risultato finale della settimana: +140 pips. 📈**
+
+[02] 2026-07-13 12:33:23 | msg_id=1490
+     -> IGNORED
+     NEW ORDER - GBPCADpm Sell 📉`
+     
+     ----------{ NEW }----------
+     Entry: 1.89235 [Lots: 0.02]
+     No SL
+     No TP
+     ---------------------------`
+     💰 Balance: 10 117 €
+     
+     Questo messaggio non incita a investire, riporta i nostri trade
+
+[03] 2026-07-13 12:33:31 | msg_id=1491
+     -> IGNORED
+     🛠️ GBPCADpm Sell - Modified
+     `
+     --------{ Set TP }---------
+     🗑️ Old TP: 0.00000
+     👉 New TP: 1.88924 [31.1 Pips]``
+     ---------------------------`
+     💎 Max. Profit: 3.85 € [ 0.04% ]
+
+[04] 2026-07-13 20:04:24 | msg_id=1492
+     -> IGNORED
+     🟠 CLOSED - GBPCADpm Sell 🟠`
+     
+     --------{ CLOSED }---------
+     Entry:  1.89235
+     Exit:   1.88984
+     Profit: 2.87€
+     Profit: 0.03%
+     Pips:   25.1
+     Lots:   0.02
+     ---------------------------`
+     ⏱️ Duration: 7h 31m 1s __
+     👉 Closed Manually__
+     
+     Questo messaggio non incita a investire, riporta i nostri trade
+
+[05] 2026-07-15 11:25:23 | msg_id=1493
+     -> IGNORED
+     🚨 **Questa sera LIVE DI FORMAZIONE alle ore 21:00!**
+     
+     Ricordo a tutti i membri della community di partecipare, perché sarà una formazione davvero molto importante.
+     
+     La formazione è fondamentale per comprendere al meglio la strategia, migliorare il proprio approccio al trading e acquisire una visione completa a 360°.
+     
+     📈 Come entrare nel mercato
+     📉 Come uscire correttamente
+     ⏳ L’importanza di saper aspettare
+     🧠 Mindset e gestione emotiva
+     🎯 Tutto ciò che serve per comprendere al meglio il funzionamento della strategia.
+     
+     Anche se sei un investitore passivo, conoscere questi aspetti è molto importante per capire come lavoriamo e affrontare il percorso con maggiore consapevolezza.
+     
+     **Vi aspetto tutti questa sera alle 21:00!** 💪
+
+[06] 2026-07-15 11:52:07 | msg_id=1494
+     -> IGNORED
+     NEW ORDER - NZDJPYpm Buy 📈`
+     
+     ----------{ NEW }----------
+     Entry: 94.464 [Lots: 0.02]
+     No SL
+     No TP
+     ---------------------------`
+     💰 Balance: 10 120 €
+     
+     Questo messaggio non incita a investire, riporta i nostri trade
+
+[07] 2026-07-15 11:52:16 | msg_id=1495
+     -> IGNORED
+     🛠️ NZDJPYpm Buy - Modified
+     `
+     --------{ Set TP }---------
+     🗑️ Old TP: 0.000
+     👉 New TP: 94.723 [25.9 Pips]``
+     ---------------------------`
+     💎 Max. Profit: 2.79 € [ 0.03% ]
+
+[08] 2026-07-15 14:58:07 | msg_id=1496
+     -> IGNORED
+     🟠 CLOSED - AUDUSDpm Buy 🟠`
+     
+     --------{ CLOSED }---------
+     Entry:  0.70175
+     Exit:   0.69947
+     Profit: -5.92€
+     Profit: -0.06%
+     Pips:   -22.8
+     Lots:   0.02
+     ---------------------------`
+     ⏱️ Duration: 26 Days 4h 40m 19s __
+     ✅ Closed due to Takeprofit__
+     
+     Questo messaggio non incita a investire, riporta i nostri trade
+
+[09] 2026-07-15 14:58:15 | msg_id=1497
+     -> IGNORED
+     🟠 CLOSED - AUDUSDpm Buy 🟠`
+     
+     --------{ CLOSED }---------
+     Entry:  0.69473
+     Exit:   0.69951
+     Profit: 6.58€
+     Profit: 0.07%
+     Pips:   47.8
+     Lots:   0.02
+     ---------------------------`
+     ⏱️ Duration: 22 Days 1h 49m 43s __
+     ✅ Closed due to Takeprofit__
+     
+     Questo messaggio non incita a investire, riporta i nostri trade
+
+[10] 2026-07-15 16:47:29 | msg_id=1498
+     -> IGNORED
+     🟠 CLOSED - NZDJPYpm Buy 🟠`
+     
+     --------{ CLOSED }---------
+     Entry:  94.464
+     Exit:   94.636
+     Profit: 1.60€
+     Profit: 0.02%
+     Pips:   17.2
+     Lots:   0.02
+     ---------------------------`
+     ⏱️ Duration: 4h 55m 22s __
+     👉 Closed Manually__
+     
+     Questo messaggio non incita a investire, riporta i nostri trade
+
+[11] 2026-07-15 20:07:20 | msg_id=1499
+     -> IGNORED
+     1 ora e siamo live 🔥
+
+[12] 2026-07-15 20:42:36 | msg_id=1500
+     -> IGNORED
+     20 MINUTI All'apertura della sala ZOOM 💫
+
+[13] 2026-07-15 20:55:13 | msg_id=1501
+     -> IGNORED
+     5 MINUTI E SIAMO LIVE!!! ☄️💥
+
+[14] 2026-07-15 20:55:27 | msg_id=1502
+     -> IGNORED
+     https://us06web.zoom.us/j/82111472128?pwd=KGqHZEjFS1UN4fUumP9kmBP76tBG4s.1
+
+[15] 2026-07-15 20:55:45 | msg_id=1503
+     -> IGNORED
+     SALA APERTA 🔥🌈
+
+[16] 2026-07-15 20:58:30 | msg_id=1504
+     -> IGNORED
+     POTETE ENTARRE DA QUESTO LINK:
+     
+     https://us06web.zoom.us/j/82111472128?pwd=KGqHZEjFS1UN4fUumP9kmBP76tBG4s.1
+
+[17] 2026-07-15 21:58:14 | msg_id=1505
+     -> IGNORED
+     NEW ORDER - NZDJPYpm Sell 📉`
+     
+     ----------{ NEW }----------
+     Entry: 94.848 [Lots: 0.02]
+     No SL
+     No TP
+     ---------------------------`
+     💰 Balance: 10 122 €
+     
+     Questo messaggio non incita a investire, riporta i nostri trade
+
+[18] 2026-07-15 21:59:12 | msg_id=1506
+     -> IGNORED
+     🛠️ NZDJPYpm Sell - Modified
+     `
+     --------{ Set TP }---------
+     🗑️ Old TP: 0.000
+     👉 New TP: 94.445 [40.3 Pips]``
+     ---------------------------`
+     💎 Max. Profit: 4.33 € [ 0.04% ]
+
+[19] 2026-07-16 08:39:40 | msg_id=1508
+     -> IGNORED
+     LIVE FORMAZIONE 15/07/26
+
+[20] 2026-07-16 21:32:30 | msg_id=1512
+     -> IGNORED
+     Analisi Live del 160726
+
+[21] 2026-07-17 17:27:20 | msg_id=1514
+     -> IGNORED
+     🛠️ NZDJPYpm Sell - Modified
+     `
+     -------{ Moved TP }--------
+     🗑️ Old TP: 94.445
+     👉 New TP: 94.629 [21.9 Pips]``
+     ---------------------------`
+     💎 Max. Profit: 2.36 € [ 0.02% ]
+
+[22] 2026-07-18 11:13:51 | msg_id=1515
+     -> IGNORED
+     **📊 REPORT SETTIMANALE – SALA VIP FOREX
+     📅 13 – 17 Luglio
+     
+     Si chiude un’altra settimana positiva per la Sala VIP Forex, con un’operatività selettiva e una gestione del rischio che continua a dare risultati.
+     
+     📈 Risultato Finale: +67 Pips
+     
+     📊 Statistiche della settimana
+     • Operazioni Totali: 4
+     • Operazioni Vincenti: 3
+     • Operazioni Perdenti: 1
+     • 🎯 Win Rate: 75%
+     • ⚖️ Profit Factor: 4.05
+     • 📈 Pips Lordi: +89
+     • 📉 Pips Persi: -22
+     • 📌 Media per Operazione: +16,8 pips
+     
+     Un solo stop è stato sufficiente per mantenere comunque un Profit Factor superiore a 4, segno di un’operatività focalizzata sulla qualità dei setup piuttosto che sulla quantità delle operazioni.
+     
+     Grazie a tutti per la fiducia. Ci vediamo lunedì per una nuova settimana di trading! 🚀📊**
+
+  Totale: 22 messaggi
+
+
+========================================================================
+CH4 | Sala Stark | parser=sala_stark
+telegram_id: -1002073368935
+execution: {}
+========================================================================
+[01] 2026-07-12 12:01:53 | msg_id=3015
+     -> IGNORED
+     Mega opportunità in arrivo🚀
+
+[02] 2026-07-12 17:18:09 | msg_id=3016
+     -> IGNORED
+     **COME FARE 5000€ AL MESE DA SUBITO**
+     
+     Ragazzi, domani sera alle 9 farò una live DEVASTANTE in cui scoprirete il modo in cui decine di clienti Stark hanno cominciato a **guadagnare 5000€ al mese di media, DA SUBITO**
+     
+     Vi svelerò il metodo esatto, passo passo in cui facendo esattamente ciò che state già facendo adesso, potete moltiplicare x100 i vostri profitti 
+     
+     Domani sera alle 21 vi verrà spiegato tutto in LIVE con me e potrete anche farmi tutte le domande che volete
+     
+     Mezz’ora che potrà cambiare la vita a 10 di voi🔥
+     
+     **VI MANDERÒ IL LINK PER ACCEDERE ALLA LIVE QUI, DOMANI**
+     
+     TENETEVI LIBERI E CARICHI PER FARE SOLDI🚀
+
+[03] 2026-07-13 08:04:07 | msg_id=3018
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4051**
+     SL: `4055.75`
+     TP1: `4049.05`
+
+[04] 2026-07-13 08:04:13 | msg_id=3019
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[05] 2026-07-13 09:01:48 | msg_id=3020
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4051**
+     SL: `4055.20`
+     TP1: `4048.70`
+
+[06] 2026-07-13 09:04:20 | msg_id=3021
+     -> IGNORED
+     🛑 Stop Loss preso
+     **XAUUSD**
+
+[07] 2026-07-13 09:32:21 | msg_id=3022
+     -> IGNORED
+     Peccato ragazzi vediamo alla prossima operazione💪🏻
+
+[08] 2026-07-13 09:32:43 | msg_id=3023
+     -> IGNORED
+     RICORDATEVI STASERA ALLE 21 IN LIVE
+     
+     COME GUADAGNARE 5.000€ AL MESE DA SUBITO🚀
+
+[09] 2026-07-13 11:20:38 | msg_id=3024
+     -> IGNORED
+     Chiusa in take profit  ✅
+
+[10] 2026-07-13 14:22:06 | msg_id=3026
+     -> IGNORED
+     STASERA ALLE 21 RAGAZZI🚀🚀
+     
+     VI MANDERÒ IL LINK POCO PRIMA
+
+[11] 2026-07-13 15:51:53 | msg_id=3027
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4045**
+     SL: `4049.20`
+     TP1: `4042.50`
+
+[12] 2026-07-13 15:52:58 | msg_id=3028
+     -> IGNORED
+     🛑 Stop Loss preso
+     **XAUUSD**
+
+[13] 2026-07-13 15:59:17 | msg_id=3029
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4048**
+     SL: `4051.47`
+     TP1: `4044.97`
+
+[14] 2026-07-13 15:59:26 | msg_id=3030
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[15] 2026-07-13 16:40:18 | msg_id=3031
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4004**
+     SL: `4008.14`
+     TP1: `4001.44`
+
+[16] 2026-07-13 16:40:23 | msg_id=3032
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[17] 2026-07-13 18:05:02 | msg_id=3033
+     -> IGNORED
+     5.000€ AL MESE DA SUBITO🔥🔥🔥
+     
+     RAGAZZI FRA 3 ORE LIVE, TUTTI PRONTI PERCHÈ 10 DI VOI AVRANNO UN’OPPORTUNITÀ UNICA🚀
+
+[18] 2026-07-13 18:29:23 | msg_id=3034
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4004**
+     SL: `4008.14`
+     TP1: `4001.44`
+
+[19] 2026-07-13 18:29:28 | msg_id=3035
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[20] 2026-07-13 18:29:29 | msg_id=3036
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4002**
+     SL: `4005.40`
+     TP1: `3998.90`
+
+[21] 2026-07-13 18:33:17 | msg_id=3037
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[22] 2026-07-13 19:20:17 | msg_id=3038
+     -> IGNORED
+     Chiudo manualmente in negativo a 0.85209
+
+[23] 2026-07-13 19:56:44 | msg_id=3039
+     -> IGNORED
+     Pronti fra un’ora ragazzi🚀🚀
+
+[24] 2026-07-13 20:03:18 | msg_id=3040
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **3992**
+     SL: `3996.15`
+     TP1: `3989.45`
+
+[25] 2026-07-13 20:18:39 | msg_id=3041
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[26] 2026-07-13 20:19:09 | msg_id=3042
+     -> IGNORED
+     E via un bel take profit pre Live🚀🚀
+
+[27] 2026-07-13 20:19:14 | msg_id=3043
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **3988**
+     SL: `3991.41`
+     TP1: `3984.91`
+
+[28] 2026-07-13 20:23:11 | msg_id=3044
+     -> IGNORED
+     🛑 Stop Loss preso
+     **XAUUSD**
+
+[29] 2026-07-13 20:56:39 | msg_id=3045
+     -> IGNORED
+     FRA 4 MINUTI LIVE RAGAZZI🔥
+     
+     Link in arrivo
+
+[30] 2026-07-13 21:59:48 | msg_id=3048
+     -> IGNORED
+     Link per prenotare chiamata: 
+     
+     👉🏻 https://manager.alestark.biz
+
+[31] 2026-07-14 10:00:03 | msg_id=3049
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4021**
+     SL: `4014.46`
+     TP1: `4023.66`
+
+[32] 2026-07-14 10:30:59 | msg_id=3050
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[33] 2026-07-14 11:00:03 | msg_id=3051
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4016**
+     SL: `4009.51`
+     TP1: `4018.71`
+
+[34] 2026-07-14 11:04:46 | msg_id=3052
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[35] 2026-07-14 11:06:56 | msg_id=3053
+     -> IGNORED
+     Come sta andando giornata ragazzi?🚀🚀
+
+[36] 2026-07-14 11:07:13 | msg_id=3054
+     -> IGNORED
+     Fatemi vedere un po’🔥
+     
+     👉🏻 @pro_alestark
+
+[37] 2026-07-14 11:40:03 | msg_id=3055
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4016**
+     SL: `4009.48`
+     TP1: `4018.68`
+
+[38] 2026-07-14 11:46:20 | msg_id=3056
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[39] 2026-07-14 11:59:46 | msg_id=3058
+     -> IGNORED
+     Che belle le giornate così, operazioni che ci danno il tempo di essere copiate. E dopo 10/20 minuti vanno in take profit✅
+
+[40] 2026-07-14 12:16:20 | msg_id=3059
+     -> OPEN | SELL | EURUSD
+     SELL   EURUSD 1.13961
+     
+     SL    1.16000
+     
+     TP    1.13700
+
+[41] 2026-07-14 18:00:03 | msg_id=3060
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4066**
+     SL: `4059.69`
+     TP1: `4068.89`
+
+[42] 2026-07-14 18:05:26 | msg_id=3061
+     -> IGNORED
+     🛑 Stop Loss preso
+     **XAUUSD**
+
+[43] 2026-07-14 18:10:03 | msg_id=3062
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4061**
+     SL: `4053.88`
+     TP1: `4063.48`
+
+[44] 2026-07-14 18:12:04 | msg_id=3063
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[45] 2026-07-14 19:20:03 | msg_id=3064
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4057**
+     SL: `4050.24`
+     TP1: `4059.44`
+
+[46] 2026-07-14 19:23:10 | msg_id=3065
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[47] 2026-07-14 20:40:03 | msg_id=3066
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4053**
+     SL: `4046.57`
+     TP1: `4055.77`
+
+[48] 2026-07-14 20:41:35 | msg_id=3067
+     -> IGNORED
+     🛑 Stop Loss preso
+     **XAUUSD**
+
+[49] 2026-07-14 20:45:03 | msg_id=3068
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4047**
+     SL: `4039.93`
+     TP1: `4049.53`
+
+[50] 2026-07-14 20:48:19 | msg_id=3069
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[51] 2026-07-15 13:48:49 | msg_id=3070
+     -> OPEN | SELL | EURGBP
+     SELL     EURGBP   0.85142
+     
+     SL    0.86000
+     
+     TP    0.85090
+
+[52] 2026-07-15 16:07:24 | msg_id=3071
+     -> IGNORED
+     Chiusa in take profit  ✅
+
+[53] 2026-07-15 17:00:03 | msg_id=3072
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4061**
+     SL: `4054.03`
+     TP1: `4063.23`
+
+[54] 2026-07-15 17:10:02 | msg_id=3073
+     -> IGNORED
+     🛑 Stop Loss preso
+     **XAUUSD**
+
+[55] 2026-07-15 21:20:03 | msg_id=3074
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4057**
+     SL: `4050.27`
+     TP1: `4059.47`
+
+[56] 2026-07-15 21:34:24 | msg_id=3075
+     -> IGNORED
+     🛑 Stop Loss preso
+     **XAUUSD**
+
+[57] 2026-07-15 21:42:02 | msg_id=3076
+     -> IGNORED
+     Giornataccia oggi sull’oro
+
+[58] 2026-07-15 21:42:07 | msg_id=3077
+     -> IGNORED
+     Ci riprendiamo domani ragazzi💪🏻
+
+[59] 2026-07-16 08:35:07 | msg_id=3078
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4026**
+     SL: `4030.65`
+     TP1: `4023.95`
+
+[60] 2026-07-16 11:18:22 | msg_id=3079
+     -> OPEN | BUY | EURCHF
+     BUY     EURCHF   0.92536
+     
+     SL    0.91500
+     
+     TP    0.92620
+
+[61] 2026-07-16 13:25:44 | msg_id=3080
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4024**
+     SL: `4028.40`
+     TP1: `4021.70`
+
+[62] 2026-07-16 13:25:46 | msg_id=3081
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[63] 2026-07-16 14:16:11 | msg_id=3082
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4022**
+     SL: `4026.76`
+     TP1: `4020.06`
+
+[64] 2026-07-16 14:16:12 | msg_id=3083
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[65] 2026-07-16 14:23:05 | msg_id=3084
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4022**
+     SL: `4026.76`
+     TP1: `4020.06`
+
+[66] 2026-07-16 14:25:11 | msg_id=3085
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[67] 2026-07-16 14:40:10 | msg_id=3086
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **4014**
+     SL: `4018.21`
+     TP1: `4011.51`
+
+[68] 2026-07-16 14:40:51 | msg_id=3087
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[69] 2026-07-16 15:02:41 | msg_id=3088
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **3988**
+     SL: `3991.71`
+     TP1: `3985.01`
+
+[70] 2026-07-17 13:00:03 | msg_id=3089
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **3991**
+     SL: `3984.42`
+     TP1: `3993.62`
+
+[71] 2026-07-17 13:01:15 | msg_id=3090
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[72] 2026-07-17 14:43:07 | msg_id=3094
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **3970**
+     SL: `3974.87`
+     TP1: `3968.17`
+
+[73] 2026-07-17 14:43:07 | msg_id=3095
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[74] 2026-07-17 14:43:23 | msg_id=3096
+     -> IGNORED
+     Niente troppo veloce
+
+[75] 2026-07-17 15:40:23 | msg_id=3097
+     -> OPEN | SELL | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **SELL**
+     Entry: **3989**
+     SL: `3992.76`
+     TP1: `3986.26`
+
+[76] 2026-07-17 15:42:25 | msg_id=3098
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[77] 2026-07-17 20:00:03 | msg_id=3099
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4010**
+     SL: `4003.67`
+     TP1: `4012.87`
+
+[78] 2026-07-17 20:10:28 | msg_id=3100
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[79] 2026-07-17 21:20:03 | msg_id=3101
+     -> OPEN | BUY | XAUUSD
+     Apro una nuova operazione 🚀
+     **XAUUSD** **BUY**
+     Entry: **4006**
+     SL: `3999.80`
+     TP1: `4009.00`
+
+[80] 2026-07-17 21:43:58 | msg_id=3102
+     -> IGNORED
+     ✅ Take Profit preso
+     **XAUUSD**
+
+[81] 2026-07-17 21:45:03 | msg_id=3103
+     -> IGNORED
+     Mamma mia che giornata✅
+
+  Totale: 81 messaggi
+
+
+========================================================================
+CH5 | INMOMOVERITAS VIP | parser=placeholder
+telegram_id: -1003448619258
+execution: {}
+========================================================================
+[01] 2026-07-12 00:18:21 | msg_id=1072
+     -> IGNORED
+     Prime segnalazioni che l'Iran ha sparato contro una nave nello Stretto di Hormuz.
+     
+     Questo avviene in risposta all'ultimatum degli Stati Uniti, che chiedeva all'Iran di annunciare che lo Stretto è aperto a tutto il traffico.
+
+[02] 2026-07-12 00:18:40 | msg_id=1073
+     -> IGNORED
+     L'Iran annuncia la chiusura dello Stretto di Hormuz, in risposta al mancato rispetto da parte degli Stati Uniti del memorandum d'intesa di Islamabad.
+
+[03] 2026-07-12 00:19:47 | msg_id=1074
+     -> IGNORED
+     **OH PORCA PALETTA👀, DOMANI MI TOCCHERÀ PREPARARE DELLE MEGA ANALISI😭. E ANCHE QUESTA VOLTA LO ABBIAMO PREVISTO, VI HO DETTO CHE SAREBBE ARRIVATA QUESTA NEWS NEL WEEKEND**
+
+[04] 2026-07-12 00:23:06 | msg_id=1075
+     -> IGNORED
+     **Dichiarazione della Marina della Guardia Rivoluzionaria Islamica (IRGC):**
+     
+     "In un precedente annuncio, abbiamo dichiarato che qualsiasi interferenza straniera e la designazione illegale di una rotta marittima nello Stretto di Hormuz, vicino all'Oman, avrebbero suscitato una risposta ferma da parte nostra e avrebbero impedito qualsiasi aumento del traffico attraverso lo stretto.
+     
+     Ore fa, questi avvertimenti sono stati nuovamente ignorati. Su istigazione di potenze straniere, diverse imbarcazioni hanno tentato di discostarsi dalla rotta designata dall'Iran, ignorando i nostri ripetuti avvertimenti e segnalazioni per correggere la loro rotta e rimanere all'interno della rotta marittima approvata.
+     
+     Di conseguenza, una di queste imbarcazioni, che aveva disattivato i suoi trasmettitori, mettendo così a rischio la sicurezza marittima, è stata colpita e fermata dalla Marina della Guardia Rivoluzionaria Islamica
+     
+     A seguito di questo incidente, in primo luogo, a causa di questa violazione della sicurezza derivante da interferenze straniere illegali, **lo Stretto di Hormuz sarà temporaneamente chiuso fino a nuove disposizioni e fino a quando gli Stati Uniti cesseranno le loro interferenze in questa regione.** Nessuna imbarcazione sarà autorizzata a transitare.
+     
+     In secondo luogo, qualora l'aggressore, sfruttando questo incidente (che esso stesso ha causato), commetta ulteriori violazioni nei nostri confronti, risponderemo con forza, **e ulteriori basi nemiche nella regione saranno prese di mira.**
+     
+     Le conseguenze di tali interventi ricadranno sul nemico americano-sionista e sui paesi che hanno messo i loro territori a disposizione delle basi nemiche per questi atti."
+
+[05] 2026-07-12 00:23:51 | msg_id=1076
+     -> IGNORED
+     **Questo è lo statement per chi lo volesse:**
+
+[06] 2026-07-12 01:17:15 | msg_id=1077
+     -> IGNORED
+     Intensa attività dell'aviazione americana nella zona, con il decollo di aerei cisterna e di allarme rapido.
+
+[07] 2026-07-12 01:22:26 | msg_id=1078
+     -> IGNORED
+     Esplosioni udite ad Asaluyeh e Bushehr.
+
+[08] 2026-07-12 01:23:02 | msg_id=1079
+     -> IGNORED
+     Iniziano gli attacchi Americani? Attendiamo conferma dell’Us Central Command.
+
+[09] 2026-07-12 01:27:58 | msg_id=1080
+     -> IGNORED
+     Lanciato dal Bahrain, non dagli Americani, (al momento)
+
+[10] 2026-07-12 01:37:36 | msg_id=1081
+     -> IGNORED
+     Esplosioni udite ad Ahvaz e Bandar Abbas.
+
+[11] 2026-07-12 01:37:52 | msg_id=1082
+     -> IGNORED
+     Attacco americano ufficiale.
+     
+     Un funzionario americano ha dichiarato:
+     
+     L'esercito americano sta lanciando attacchi contro obiettivi iraniani.
+
+[12] 2026-07-12 01:38:46 | msg_id=1083
+     -> IGNORED
+     Ecco appunto, come stavo dicendo…
+
+[13] 2026-07-12 02:11:31 | msg_id=1084
+     -> IGNORED
+     La televisione iraniana conferma l'aggressione americana contro il sito nucleare iraniano.
+
+[14] 2026-07-12 02:11:42 | msg_id=1085
+     -> IGNORED
+     E stanno continuando gli attacchi americani su altri siti
+
+[15] 2026-07-12 02:41:01 | msg_id=1086
+     -> IGNORED
+     Un nuovo boato è stato udito nel porto di Mahshahr, in Iran. Insieme ad altri nuovi attacchi.
+
+[16] 2026-07-12 04:26:37 | msg_id=1087
+     -> IGNORED
+     Gli attacchi continuano da entrambe le parti✍🏻
+
+[17] 2026-07-12 04:29:08 | msg_id=1088
+     -> IGNORED
+     Con anche altri paesi coinvolti sempre in medioriente.
+
+[18] 2026-07-12 15:59:20 | msg_id=1089
+     -> IGNORED
+     Buongiorno, vi ricordo che oggi è Domenica e ci sono le analisi serali pre-apertura dei mercati. Dalle 4:30 ad ora sono arrivati tante news e attacchi geopolitici. Vi dico solo che questi sono stati gli attacchi più ampi compiuti dall'Iran e USA da quando è entrata in vigore la tregua dell'8 aprile.
+
+[19] 2026-07-12 15:59:35 | msg_id=1090
+     -> IGNORED
+     Ho un sacco di cose da dire e analizzare✍🏻
+
+[20] 2026-07-12 21:36:16 | msg_id=1091
+     -> IGNORED
+     Ora partiamo con le analisi🔥, come ogni domenica strutturiamo le analisi in 3 parti! 
+     1’ parte: analisi degli eventi macroeconomici che sono in arrivo questa settimana.
+     2’ parte: riassunto degli ultimi eventi geopolitici.
+     3’ parte: analisi a grafico e bias riapertura.
+
+[21] 2026-07-12 21:41:36 | msg_id=1093
+     -> IGNORED
+     **Martedì 14 Luglio: Il Blocco dell'Inflazione (IPC)
+     **
+     I riflettori sugli Stati Uniti si accendono subito nel primo pomeriggio con i dati macroeconomici più pesanti in assoluto per il sentiment del mercato:
+     
+      **Ore 14:30 – IPC (Mensile) (Giu):** Il dato principale sull'inflazione al consumo su base mensile. Il consensus degli analisti lo attende in territorio negativo a **-0,1%**, mostrando un netto rallentamento rispetto al **0,5%** del mese precedente.
+      **Ore 14:30 – Indice principali prezzi al consumo (Mensile) (Giu):** Il cuore dell'inflazione (__Core CPI__), depurato dalle componenti più volatili. È previsto in leggero aumento al **0,3%** rispetto al **0,2%** precedente.
+      **Ore 14:30 – IPC (Annuale) (Giu):** Il dato inflazionistico su base annua. Gli istituzionali monitoreranno questo rilascio per capire la traiettoria di medio termine dei prezzi, partendo dal dato precedente fissato al **4,2%**.
+     
+     **Mercoledì 15 Luglio: Inflazione alla Produzione (IPP)**
+     
+     La giornata centrale della settimana mantiene alta l'attenzione sul fronte dei prezzi, spostandosi sul lato manifatturiero:
+     
+      **Ore 14:30 – IPP (Mensile) (Giu):** L'indice dei prezzi alla produzione, un leading indicator fondamentale per l'inflazione futura al consumo. Le stime prevedono un dato piatto allo **0,0%**, segnando un forte freno rispetto all'**1,1%** stampato nel report precedente.
+     
+     **Giovedì 16 Luglio: Consumi e Mercato del Lavoro
+     **
+     L'ultimo pomeriggio operativo dal punto di vista macroeconomico prima del rallentamento del weekend si preannuncia molto denso di rilasci in contemporanea:
+     
+      **Ore 14:30 – Vendite al dettaglio (Mensile) (Giu):** Il termometro principale per saggiare lo stato di salute dei consumi americani. È attesa una frenata al **0,3%** rispetto al solido **0,9%** del mese scorso.
+      **Ore 14:30 – Vendite al dettaglio beni essenziali (Mensile) (Giu):** Il dato __Core__ delle vendite. Il consensus si aspetta una contrazione in territorio negativo a **-0,1%** rispetto allo **0,8%** precedente.
+      **Ore 14:30 – Indice di produzione della Fed di Filadelfia (Lug):** Un focus importante sull'attività manifatturiera regionale. Le stime indicano una crescita a **12,1** rispetto al **10,3** precedente.
+      **Ore 14:30 – Richieste iniziali di sussidi di disoccupazione:** Il classico report settimanale per monitorare la tenuta del mercato del lavoro dopo i dati macro della scorsa settimana. Il consensus lo attende perfettamente stabile a **215K**, in linea con il dato precedente.
+
+[22] 2026-07-12 21:57:59 | msg_id=1094
+     -> IGNORED
+     Quello che si è consumato nel corso dell'ultima settimana, e che è letteralmente esploso in un **inferno di fuoco nel weekend**, rappresenta uno dei più grandi shock geopolitici degli ultimi anni.
+     Le informazioni e le conferme arrivate dal canale VIP tracciano un quadro di scontro diretto non più per procura, ma che vede coinvolti in prima linea gli **Stati Uniti, l'Iran e l'intero blocco dei Paesi del Golfo.
+     **
+     Ecco il riassunto cronologico e strategico dettagliato di quello che è successo:
+     
+     **1. La Dinamica Settimanale: L'Innesco del Conflitto.
+     **
+     Tutto ha inizio nei giorni scorsi nello **Stretto di Ormuz** (Hormuz), l'arteria energetica più cruciale del pianeta:
+      **Il Primo Attacco:** L'Iran rompe gli equilibri attaccando una nave commerciale all'interno dello Stretto.
+      **La Risposta USA:** La reazione delle forze armate statunitensi è massiccia e immediata. Nel corso della settimana si susseguono ondate di raid e bombardamenti americani volti a colpire postazioni radar e piattaforme di lancio in Iran e in vari Paesi del Medio Oriente.
+      **Le Prime Esplosioni:** Vengono confermate e rilevate deflagrazioni a catena in Kuwait, in diverse province iraniane e nella Giordania orientale.
+     
+     **2. Il Sabato di Fuoco: Ultimatum, Statements e la Chiusura dello Stretto
+     **
+     La giornata di sabato segna il punto di non ritorno, muovendosi su due binari: quello delle dichiarazioni politiche e quello delle armi.
+      **La Linea di Trump e del Tesoro:** Nella prima mattinata di sabato, Donald Trump rilascia pesantissimi statements confermando l'intenzione di colpire duramente l'Iran. Poche ore dopo, il Tesoro degli Stati Uniti blinda la situazione finanziaria dichiarando che **nessun fondo iraniano congelato verrà sbloccato**.
+      **Il Re-Sequestro a Hormuz:** La vera escalation scatta nella notte tra sabato e domenica. L'Iran lancia un attacco e colpisce una seconda nave nello Stretto di Ormuz.
+      **Le Motivazioni dell'IRGC:** Il corpo delle Guardie della Rivoluzione Islamica (IRGC) rivendica l'azione affermando che si tratta della risposta diretta all'ultimatum degli Stati Uniti (che pretendevano l'apertura incondizionata dello Stretto). L'IRGC dichiara che l'imbarcazione aveva disattivato i trasmettitori mettendo a rischio la sicurezza marittima, e che qualsiasi interferenza straniera o "desertificazione legale" delle rotte avrebbe visto l'Iran **impedire il traffico e chiudere lo Stretto**.
+     
+     **3. La Notte dell'Inferno: Le Due Ondate di Missili e i Target nel Golfo
+     **
+     Tra le 21:00 di sabato e l'alba di domenica si scatena l'attacco missilistico totale. Gli Stati Uniti (tramite il Comando Centrale CENTCOM) ufficializzano l'offensiva contro Teheran. Il Segretario della Difesa USA dichiara: __"L'Iran ha fatto la scelta sbagliata, ora ne pagherà le conseguenze"__.
+
+[23] 2026-07-12 21:58:40 | msg_id=1095
+     -> IGNORED
+     **La Prima Ondata e i Raid aerei.
+     **
+     Vengono lanciati missili balistici e sistemi d'artiglieria HIMARS da diverse basi (tra cui l'aeroporto di Bagram, il Kuwait e il Bahrein) diretti verso la provincia iraniana del Khuzestan. Caccia militari (presumibilmente americani e israeliani) violano lo spazio aereo iraniano, mentre jet di Teheran decollano per difendere la capitale. Prime pesantissime esplosioni colpiscono le città di **Kashmar, Chabahar e Bandar Abbas**.
+     
+     **La Seconda Ondata delle 03:55.
+     **
+     Mentre a mezzanotte i flussi sembravano rallentare, alle 03:55 di notte scatta una seconda devastante ondata di almeno 12 missili balistici. L'Iran risponde al fuoco non solo difendendosi, ma **colpendo direttamente le infrastrutture militari degli Stati Uniti e dei Paesi alleati nel Golfo**:
+      **Qatar:** Impatto diretto confermato sulla base statunitense a **Doha**. L'IRGC dichiara di aver centrato con missili balistici il centro di manutenzione e riparazione degli aerei. Forti esplosioni avvertite in tutta la capitale.
+      **Kuwait e Bahrein:** Forti esplosioni registrate in Kuwait (con l'attivazione dei sistemi d'allarme per la prima vez nella notte) e a Bahran.
+      **Giordania:** Almeno tre missili iraniani colpiscono direttamente la base aerea del Principe Hassan, confermati successivamente dalle forze armate giordane.
+      **Emirati Arabi Uniti e Oman:** Esplosioni udite ad Abu Dhabi (con un impatto vicino alla base e allarmi precauzionali confermati dal governo) e attacchi mirati contro una base USA in Oman. L'Oman risponderà nel pomeriggio convocando l'ambasciatore iraniano per una nota di protesta ufficiale.
+
+[24] 2026-07-12 21:59:22 | msg_id=1096
+     -> IGNORED
+     **4. La Domenica: La Fine dell'Era degli Accordi.
+     **
+     Il pomeriggio di domenica cristallizza la situazione geopolitica in un clima di aperta rottura diplomatica.
+      **La Dichiarazione del Parlamento Iraniano:** Il Presidente del Parlamento, Mohammad Bagher Ghalibaf, rilascia una dichiarazione tombale: __"L'era degli accordi commerciali è finita. Ve lo avevamo detto. Mantenete le promesse o pagherete il prezzo. La realtà sta bussando alla porta"__.
+      **La Guerra di Parole Trump-Iran:** Nel pomeriggio di domenica, mentre si registrano nuove esplosioni a Bandar Abbas, Donald Trump attacca duramente la leadership di Teheran definendoli __"malvagi, perfidi e malati"__. Racconta che l'Iran aveva inizialmente accettato un accordo perfetto sul nucleare, ma che meno di un'ora dopo aver lasciato la stanza avevano lanciato un drone contro un avamposto. Trump ribadisce con forza: __"Lo Stretto di Ormuz è aperto"__.
+     
+     **5. Il Grande Punto Interrogativo Attuale: Lo Stretto è Aperto o Chiuso?
+     **
+     Il weekend si chiude con una **guerra di narrativa istituzionale** e un enorme blocco operativo sul corridoio marittimo più importante del mondo:
+     1. **La Versione USA (CENTCOM):** Gli Stati Uniti e il Comando Centrale continuano ad affermare che lo Stretto di Ormuz **è aperto**, che il traffico marittimo è regolare e che l'Iran non ha mai avuto il reale controllo della zona.
+     2. **La Realtà dei Fatti e l'Iran:** Di fatto, la Marina dell'IRGC ha preso il controllo amministrativo e militare. Attualmente **il transito commerciale attraverso lo Stretto di Ormuz non è possibile**. L'Iran ha decretato che l'unica autorità legale per concedere permessi di navigazione e accettare le rotte marittime è la **PGSA** (The Persian Gulf Strait Authority). Chiunque proverà a forzare lo Stretto senza l'approvazione della PGSA verrà considerato un bersaglio ostile.
+     
+     La diplomazia è azzerata, gli accordi commerciali sono carta straccia e lo Stretto è sigillato sotto il controllo missilistico di Teheran.
+
+[25] 2026-07-12 22:00:48 | msg_id=1097
+     -> IGNORED
+     **So che tutto questo pippone non interesserà a molti, ma sono frutto di 4 ore di lavoro in questa domenica. Ricerca e raccolta di news veritiere e verificate✅. Poi un riassunto che possa essere capito da tutti quanti, e non troppo lungo perché questo è il massimo che sono riuscito a fare, meno di così non aveva senso**
+
+[26] 2026-07-12 22:07:05 | msg_id=1098
+     -> IGNORED
+     **E ORA ARRIVO CON GRAFICI E BIAS RIAPERTURA, CHE HO GIÀ UNA IDEA MOLTO SUCCULENTA😋.**
+
+[27] 2026-07-12 22:11:13 | msg_id=1099
+     -> IGNORED
+     https://www.tradingview.com/x/uu50N2oX/
+     https://www.tradingview.com/x/lHIlIkRP/
+
+[28] 2026-07-12 22:33:31 | msg_id=1101
+     -> IGNORED
+     **1. Il Recap Tecnico: Dall'Ampio Ranging alla Fiammata di Venerdì.
+     **
+     Andiamo a leggere la struttura per capire come si sono posizionati i grandi istituzionali:
+      **Giovedì (Il Grande Recupero):** Come avevamo previsto e notato alla stragrande, giovedì ha registrato un massiccio recupero a rialzo, una correzione tecnica fisiologica dopo il crollo impulsivo dei giorni precedenti guidato dalle prime news geopolitiche.
+      **Venerdì Notte/Londra (Il Ranging e la Discesa):** Da giovedì sera a venerdì notte il prezzo si è incastrato in un ranging ampissimo. Nella sessione asiatica di venerdì avevamo capito che il mercato avrebbe cercato un leggero test a rialzo prima di scendere, e così è stato: da metà notte l'Oro è colato a picco per tutta Londra e per la prima parte di New York.
+      **Lo Shock in Live (I 400 Pips):** Verso metà sessione di New York, mentre eravamo operativi, l'uscita di una news geopolitica improvvisa ha scatenato il panico: **un crollo istantaneo di 400 pips** con un recupero a rialzo altrettanto violento. Una pulizia di liquidità spaventosa.
+     
+     **2. La Psicologia Istituzionale e il Nodo di Ormuz.
+     **
+     Nonostante venerdì volessimo pulire la liquidità alta per poi andare a prenderci i target bassi a favore del peggioramento geopolitico, il mercato non ha concluso moltissimo, chiudendo in rialzo.
+     **La mia lettura è chiara:** I grandi operatori istituzionali, muovendosi con informazioni anticipate, hanno voluto pompare l'Oro a rialzo proprio per posizionarsi al meglio in vista di questa riapertura. Con il weekend di guerra totale appena vissuto, la teoria macro dice: **Petrolio alle stelle, Dollaro (USD) fortissimo e Oro a ribasso (liquidazione forzata).**
+
+[29] 2026-07-12 22:35:51 | msg_id=1103
+     -> IGNORED
+     **Il Grande Dubbio: Lo Stretto di Ormuz è Aperto o Chiuso?**
+     
+      **Se lo Stretto è Aperto:** La salita del petrolio sarà controllata e i mercati respireranno.
+      **Se lo Stretto è Chiuso:** La fiammata dell'oro nero sarà incontrollabile e il gap down dell'Oro sarà enorme.
+      **La Strategia della Narrativa:** Gli Stati Uniti continuano a ripetere che lo Stretto è aperto, mentre sul campo l'Iran controlla i transiti. È molto probabile che gli americani stiano forzando questa informazione per mantenere le reazioni di mezzanotte più controllate, evitando il panico sistemico sui mercati finanziari.
+     
+     A me lo stretto sembra **assolutamente CHIUSO**. Ecco perché:
+     
+      **Il Vuoto Totale nel Canale:** Se guardi il corridoio d'ingresso dello Stretto di Ormuz (tra la costa dell'Oman e le isole iraniane di Qeshm e Lavan), c'è il **deserto assoluto**. Non c'è una singola nave in transito commerciale all'interno del canale principale.
+      **La Coda Fuori dal Golfo:** Osserva la parte in basso a destra (fuori dallo stretto, nel Golfo di Oman): c'è un ammasso gigantesco di puntini arancioni. Le navi cargo e le petroliere sono tutte **congelate e ammassate in rada**, ferme in attesa, senza alcuna intenzione di rischiare l'ingresso.
+      **Le Poche Navi Dentro:** Quelle pochissime imbarcazioni che vedi all'interno del Golfo Persico (in basso a sinistra) sono raggruppate vicino alle coste degli Emirati (Dubai/Abu Dhabi) o bloccate nei porti iraniani (Bandar Abbas). Nessuno si sta muovendo verso l'uscita.
+
+[30] 2026-07-12 22:39:04 | msg_id=1104
+     -> IGNORED
+     **1. I Gap Attesi (Lo Scenario Standard)**
+     
+     Alla riapertura di mezzanotte, la logica intermarket legata al blocco totale dello Stretto di Ormuz e all'escalation militare ci impone di aspettarci:
+     
+      **XAU/USD (Oro) **➡️** Riapertura in NETTO RIBASSO (Gap Down):** Quando scoppia uno shock geopolitico di questa portata che minaccia le forniture globali, scatta la liquidazione forzata degli asset per reperire liquidità immediata.
+     
+      **DXY (Dollaro) **➡️** Riapertura in NETTO RIALZO (Gap Up):** Il biglietto verde viene acquistato in massa dagli istituzionali come bene rifugio primario per eccellenza in caso di guerra aperta.
+     
+      **WTI/BRENT (Petrolio) **➡️** Riapertura in NETTO RIALZO (Gap Up):** Con lo Stretto di Ormuz materialmente sigillato e le petroliere ferme in rada, il prezzo del greggio è destinato a subire una fiammata immediata per il rischio reale di blocco delle forniture.
+     
+     **🔮 2. I Due Scenari Operativi in M1**
+     
+     **Scenario Alternativo: La Fiammata a Rialzo (L'occasione d'oro).
+     **
+     È un'ipotesi più difficile che accada, ma dobbiamo assolutamente mapparla: se il mercato dovesse manipolare l'apertura e l'Oro dovesse riaprire inizialmente **a rialzo (Gap Up)** — sfruttando i posizionamenti lunghi di venerdì sera — noi non compreremo.
+     Al contrario, utilizzeremo questa fiammata improvvisa come un'incredibile **occasione per andare a ribasso**: aspetteremo che il prezzo impatti contro le nostre zone short superiori in M1 per piazzare un **SELL istantaneo**, sfruttando i prezzi più alti possibili prima del crollo. La bias, infatti, rimane assolutamente ed esclusivamente ribassista.
+     
+     **Scenario Standard: Apertura a Ribasso**
+     Se, come da manuale, il mercato aprirà direttamente in **Gap Down (a ribasso)**, ci comporteremo rigorosamente sulla via del ribasso. Non rincorreremo il prezzo sui minimi della notte: aspetteremo la formazione di un range pulito in M1, cercheremo il primo test/ritracciamento strutturale verso l'alto e colpiremo in **Sell di continuazione** verso i nostri target profondi.
+
+[31] 2026-07-12 23:21:34 | msg_id=1106
+     -> IGNORED
+     Oggi alle 17:00 ET, le forze del Comando Centrale degli Stati Uniti hanno iniziato a lanciare ulteriori attacchi contro l'Iran per continuare a indebolire la loro capacità di attaccare i marittimi civili e le navi commerciali che transitano liberamente nello Stretto di Hormuz. Il Comandante in Capo ha ordinato gli attacchi per ritenere le forze iraniane responsabili delle loro azioni.
+
+[32] 2026-07-12 23:22:15 | msg_id=1107
+     -> IGNORED
+     **Ore 23:08** – Viene segnalato il lancio di missili diretti verso lo Stretto di Hormuz, partiti da una località situata nei pressi di Sirik, nella provincia iraniana di Hormozgan.
+      **Ore 23:12** – Si registrano le prime conseguenze sul territorio con la segnalazione di 10 esplosioni a Bandar Abbas.
+      **Ore 23:13** – La situazione si estende alle aree insulari: vengono segnalate 5 esplosioni sull'isola di Qeshsm.
+      **Ore 23:15** – Viene avvertita un'ulteriore esplosione a Bandar Kangan, in Iran.
+      **Ore 23:20** – Gli aggiornamenti più recenti riportano la segnalazione di altre 3 esplosioni a Jask, sempre in territorio iraniano.
+
+[33] 2026-07-12 23:23:13 | msg_id=1108
+     -> IGNORED
+     Ripartiti nuovi attacchi poco fa✍🏻, io pensavo che già i mercati sarebbero impazziti. Ma nuovo attacchi all’apertura dei mercati o direttamente dopo la riapertura non aiuteranno alla riduzione della enorme volatilità che ci sarà😅
+
+[34] 2026-07-12 23:23:29 | msg_id=1109
+     -> IGNORED
+     E nel mentre che vi scrivo continuano✍🏻
+
+[35] 2026-07-13 04:54:32 | msg_id=1111
+     -> IGNORED
+     E sono continuati per quasi tutta la notte✍🏻
+
+[36] 2026-07-13 11:57:17 | msg_id=1112
+     -> IGNORED
+     https://www.tradingview.com/x/bZfvw9V3/
+     https://www.tradingview.com/x/t9zcqtlY/
+
+[37] 2026-07-13 12:00:15 | msg_id=1114
+     -> IGNORED
+     **Il Recap della Notte: Un Gap Previsto alla Perfezione.**
+     
+     La riapertura della scorsa notte è stata la dimostrazione di forza della nostra analisi:
+      **Il Verdetto del Gap:** Siamo riusciti a prevedere con assoluta esattezza quello che è stato l'impatto iniziale. A grafico si nota un **grosso, grosso gap a ribasso** impresso dagli algoritmi a causa dello shock geopolitico del weekend. Un vuoto volumetrico importante che finora non è stato praticamente ancora toccato.
+      **La Continuazione e il Respiro:** Durante la notte il prezzo ha continuato la sua discesa ordinata. Tuttavia, nell'ultima parte della notte e soprattutto **nel corso della mattinata**, siamo riusciti a registrare un leggero e fisiologico recupero a rialzo, utile per andare a cacciare la liquidità interna.
+     
+     **2. Struttura Attuale (M1): Ranging e Test Short**
+     Guardando il dettaglio a un minuto sul grafico , la situazione attuale mostra il prezzo incastrato in una fase di **ranging**:
+      **La Mini-Struttura:** Nonostante il movimento laterale, nelle ultime due ore l'Oro sta disegnando una mini-struttura chiaramente ribassista, continuando a effettuare **tanti, tanti test short** a ridosso delle aree di supply locale.
+      **L'Intenzione degli Algoritmi:** Al momento l'idea dominante è quella di spingere ancora verso il basso per andare a totalizzare nuovi livelli short importanti, puntando alla creazione di nuovi minimi di giornata. L'obiettivo immediato è blindare e accordare le posizioni short che abbiamo già a mercato, cercando al contempo i trigger ideali per inserirne di nuove.
+
+[38] 2026-07-13 12:01:38 | msg_id=1115
+     -> IGNORED
+     **3. Mappa Operativa per il Pomeriggio: I Due Scenari di Crollo.**
+     
+     La direzione macro non si discute, ma dobbiamo gestire lo spazio di manovra che il grafico ci concede per la sessione di New York:
+     
+     ** Scenario A: L'Inflessione Buy to Sell (Il Piano Ideale).**
+     
+     Secondo la mia lettura, l'Oro ha ancora **spazio tecnico per ritracciare** temporaneamente verso l'alto prima di mollare del tutto i supporti. Cercheremo di intercettare questa inflessione rialzista locale: lasciamo che il prezzo salga a pulire le nuove zone di ribasso superiori lasciate scoperte stamattina e, non appena i volumi long si esauriscono, entriamo in **Sell pesante** per far scendere il prezzo bene, bene, bene.
+     
+     **Scenario B: Il Crollo Diretto (Sell to Sell).
+     **
+     Se la pressione dei venditori istituzionali dovesse farsi schiacciante già nel primo pomeriggio, l'Oro invaliderà i test di recupero attuali in M1 e **crollera direttamente** rompendo i minimi della mattinata. In questo caso accompagneremo il flusso short senza esitazione a ridosso delle rotture strutturali.
+     
+     Massima concentrazione sui livelli in M1, ragazzi. Lasciamo che il ranging attuale definisca gli ultimi ordini e colpiamo con la solita precisione.
+
+[39] 2026-07-13 12:04:27 | msg_id=1116
+     -> IGNORED
+     E a proposito di buy, in questo momento abbiamo toccato una buy zone piccina e stiamo facendo test successivo. Non so se ve la sentite perché è un orario difficile questo, ma io provo una operazione **buy** in scalping.
+
+[40] 2026-07-13 12:05:24 | msg_id=1117
+     -> IGNORED
+     Potrebbe essere anticipata viste la tantissime zone che abbiamo sotto di noi✍🏻. Quindi con cervello si prova e con il primo impulso si mette a Be. Poi tra poco sono in live che parta questa o meno, ne troverò altre.
+
+[41] 2026-07-13 12:17:09 | msg_id=1118
+     -> IGNORED
+     Allora siamo scesi pochino pochino, secondo me ora che siamo nella seconda buy zone si può sempre provare con una re-entry✍🏻. Se non è zuppa è pan bagnato.
+
+[42] 2026-07-13 12:18:18 | msg_id=1119
+     -> IGNORED
+     https://www.tradingview.com/x/UTLgiYc7/
+
+[43] 2026-07-13 12:18:35 | msg_id=1120
+     -> IGNORED
+     Ricordatevi, siamo in buy📈 to sell📉.
+
+[44] 2026-07-13 16:17:33 | msg_id=1121
+     -> IGNORED
+     Allora ragazzi abbiamo ora raggiunto una zona di inversione long. Vi mando subito il grafico✍🏻.
+
+[45] 2026-07-13 16:19:25 | msg_id=1122
+     -> IGNORED
+     https://www.tradingview.com/x/e2II9MKk/
+
+[46] 2026-07-13 16:19:53 | msg_id=1123
+     -> IGNORED
+     Mamma mia che reazione, alla velocità della luce. È proprio una zona long prima della ri-rottura dei 4000$✅.
+
+[47] 2026-07-13 16:20:13 | msg_id=1124
+     -> IGNORED
+     Ora vi sistemo il grafico e vi dico anche dove c’è forse una bella re-entry✍🏻
+
+[48] 2026-07-13 16:22:43 | msg_id=1125
+     -> IGNORED
+     La riprendo proprio in questo momento✍🏻.
+
+[49] 2026-07-13 16:23:20 | msg_id=1127
+     -> IGNORED
+     Il presidente Trump annuncia che il blocco navale statunitense contro l'Iran sarà ripristinato.
+
+[50] 2026-07-13 16:25:51 | msg_id=1128
+     -> IGNORED
+     https://www.tradingview.com/x/zCeywZzt/
+
+[51] 2026-07-13 16:28:23 | msg_id=1130
+     -> IGNORED
+     https://www.tradingview.com/x/eS6vWw7B/
+
+[52] 2026-07-13 16:28:40 | msg_id=1131
+     -> IGNORED
+     E questa è l’unica zona di re-entry  buy📈
+
+[53] 2026-07-13 16:32:30 | msg_id=1132
+     -> IGNORED
+     https://www.tradingview.com/x/Z5LlKRh4/
+
+[54] 2026-07-13 16:34:34 | msg_id=1133
+     -> IGNORED
+     Piccola reazione in zona di re-entry e ora siamo di nuovo in corsa short📉. Volatilità estremamente alta, dopo un pomeriggio fiacco totalmente. Ci ri aggiorniamo sta sera per vedere come è cambiata la situazione, io rimango dell’idea che più short di così non ha senso che ci vada con tutte le zone che abbiamo sopra…
+
+[55] 2026-07-13 21:08:40 | msg_id=1134
+     -> IGNORED
+     In questo momento stanno arrivando nuovi attacchi Americani verso l’Iran. Dopo vi riassumo tutto quanto✍🏻
+
+[56] 2026-07-13 22:17:20 | msg_id=1135
+     -> IGNORED
+     Trump ha dichiarato che l'Iran sarà colpito "duramente" questa notte e domani, affermando che l'accordo di massima era un test che l'Iran non ha superato.
+
+[57] 2026-07-13 22:18:06 | msg_id=1136
+     -> IGNORED
+     Tra non molto arrivo con le analisiii❤️
+
+[58] 2026-07-13 22:18:22 | msg_id=1137
+     -> IGNORED
+     Che ho voglia di sceriffare tutto quantoo🤠
+
+[59] 2026-07-13 22:33:06 | msg_id=1138
+     -> IGNORED
+     La tensione tra Stati Uniti, Iran e i rispettivi alleati è tornata ai massimi storici, stravolgendo i movimenti dell'oro.
+     
+     **Escalation Militare e Pioggia di Missili.**
+     
+      **La notte e la mattinata:** Fuoco incrociato continuo. Abbiamo assistito ad attacchi aerei e droni da parte dell'Iran, risposte degli Stati Uniti e delle forze alleate.
+      **Il fronte Yemen-Arabia:** Nuovi lanci di missili e droni partiti dallo Yemen (Houthi) hanno colpito obiettivi sensibili in Arabia Saudita, allargando ulteriormente il raggio del conflitto.
+     
+     **La Bomba di Trump: Reintegrato il Blocco e Tariffe al 20%.**
+     
+     La vera notizia che ha scosso le fondamenta dei mercati è arrivata direttamente dalla Casa Bianca. Donald Trump ha dichiarato che **lo Stretto di Hormuz è aperto e rimarrà aperto**, ma alle sue condizioni:
+     1. **Reintegrato il Blocco Navale sull'Iran:** Le navi da guerra statunitensi bloccheranno completamente i porti iraniani e impediranno il transito a qualsiasi nave di bandiera o cliente di Teheran.
+     2. **Il "Pedaggio" del 20%:** Trump ha autoproclamato gli USA come __"The Guardian of the Hormuz Strait"__. Per coprire i costi di sicurezza, verrà applicata **una tariffa (dazio) del 20% su tutte le merci e i carichi** in transito nello Stretto (per le navi non iraniane).
+      **L'orario del Blocco:** Il blocco navale entrerà ufficialmente in vigore **domani (martedì) alle ore 22:00 italiane** (le 20:00 GMT).
+     
+     **La Risposta dell'Iran: "Usciamo dall'Intesa"**
+     
+     La reazione di Teheran non si è fatta attendere e ha gettato benzina sul fuoco:
+      L'Iran ha annunciato che, a causa delle continue violazioni e interferenze americane, **si ritirerà ufficialmente dal memorandum d'intesa** (l'accordo siglato di recente).
+      **Una provocazione diplomatica:** Il portavoce iraniano ha risposto a Trump in modo quasi sarcastico: __"Trump ha assolutamente ragione, chi garantisce la sicurezza a Hormuz va pagato. L'Iran è sempre stato il guardiano dello Stretto e lo sarà per sempre... certo, il 20% è un furto, ma noi saremo giusti"__. Una palese presa in giro geopolitica mentre la tensione tocca il punto di rottura.
+     
+     **I Prossimi Step: Speech alla Nazione e Guerra Prolungata.**
+     
+     Il quadro si fa ancora più cupo per le prossime settimane:
+      **Il discorso alla Nazione:** È stato confermato che il Presidente Trump terrà un importantissimo discorso alla nazione **questo giovedì alle ore 03:00 del mattino italiane** (le 9:00 PM EST di mercoledì/giovedì a seconda dei fusi ufficiali, un appuntamento cruciale che monitoreremo).
+      **Guerra a lungo termine:** Trump ha dichiarato senza mezzi termini che **la guerra contro l'Iran è ripresa** e si stima che le operazioni militari dureranno **almeno altre 2 o 3 settimane**.
+
+[60] 2026-07-13 22:33:21 | msg_id=1139
+     -> IGNORED
+     Riassunto geopolitico da aggiungere a quello di ieri✍🏻
+
+[61] 2026-07-13 22:44:24 | msg_id=1140
+     -> IGNORED
+     https://www.tradingview.com/x/EArEN5gH/
+     https://www.tradingview.com/x/5pbF8QOX/
+     https://www.tradingview.com/x/Zi09kpX7/
+
+[62] 2026-07-13 22:51:07 | msg_id=1143
+     -> IGNORED
+     **Visione Macro (M15): Trend a Ribasso e Anomalie Volumetrici.**
+     
+     Partendo dall'orizzonte temporale più ampio, la mappa strutturale ci dà riscontri molto chiari:
+      **Inversione Confermata:** Come avevamo già individuato la scorsa settimana, il trend di fondo ha ufficialmente switchato a ribasso. Attualmente, non siamo affatto lontani dal minimo di riferimento strutturale creato nelle scorse settimane.
+      **Le Zone da Colmare:** L'algoritmo sta recuperando con precisione tutte le vecchie zone lasciate aperte.
+      **Anomalia Geopolitica:** Siamo in una fase di altissima volatilità dettata dalle news sul blocco di Hormuz e l'escalation militare. Lo si nota chiaramente dall'enorme quantità di zone da recuperare lasciate sopra il prezzo attuale. Questa scarsa pulizia strutturale ci indica che **il mercato non è sano**: non sta tornando a testare e mitigare i livelli in modo ordinato e, addirittura, ha lasciato il vistoso gap di stanotte ancora completamente aperto e da colmare.
+     
+     **Analisi Intermedia (M5): Il Tweet di Trump e la Reazione sul 75%.**
+     
+     Scendendo sul grafico a 5 minuti, ripercorriamo l'azione del prezzo di questo pomeriggio:
+      **Il Crollo Impulsivo:** Nel pomeriggio, la notizia del tweet di Trump riguardante le sue condizioni sullo Stretto di Hormuz ha innescato un pesante e istantaneo crollo ribassista.
+      **Il Ritracciamento:** Questo crollo è stato parzialmente recuperato con un impulso verso l'alto che è andato a stampare un test preciso sul livello **75% di Fibonacci**.
+      **La Nuova Rotazione:** Da quel test sul 75%, gli istituzionali hanno ricominciato a vendere (shortare), spingendo nuovamente il prezzo verso il basso.
+
+[63] 2026-07-13 22:51:55 | msg_id=1144
+     -> IGNORED
+     **Micro-Struttura (M1) e Strategia Operativa: Caccia all'Area 47 - 49.**
+     
+     Nel brevissimo periodo, osservando ⁠il grafico , l'Oro si trova congelato all'interno di una fase di **ranging** laterale. La nostra visione dominante rimane **short (sell to sell)**, in linea con quanto accaduto nel pomeriggio.
+     Tuttavia, prima di assistere all'estensione ribassista finale, la struttura beneficerebbe di una boccata d'ossigeno a rialzo. Ecco i nostri scenari per le prossime ore:
+     
+     **Scenario A: Il Rintracciamento Ideale (Buy to Sell su Area 47-49).**
+     
+      **La Dinamica:** Se il mercato decidesse di rompere temporaneamente la parte alta del ranging in M1 per andare a pulire i volumi residui, cercheremo l'approdo nella **zona 47 - 49**.
+      **L'Operazione:** Se il prezzo ci concederà di salire fino a quella fascia (47-49), saremo felici di cercare il nostro trigger **SELL** strutturale per cavalcare la discesa violenta, puntando direttamente alla rottura del minimo di riferimento per stamparne uno nuovo.
+     
+     **Scenario B: Sell to Sell Diretto.**
+     
+      **La Dinamica:** Se i venditori istituzionali decidono di non concedere alcun recupero a causa dell'alta pressione geopolitica, il ranging attuale in M1 verrà rotto direttamente al ribasso.
+      **L'Operazione:** In questo caso, accantoneremo l'idea del ritracciamento e accompagneremo la rottura dei minimi locali per prenderci la continuazione short diretta.
+
+[64] 2026-07-13 23:46:30 | msg_id=1145
+     -> IGNORED
+     Attacco aereo statunitense su Bandar Abbas.
+
+[65] 2026-07-13 23:46:44 | msg_id=1146
+     -> IGNORED
+     5 attacchi statunitensi contro Bushehr.
+
+[66] 2026-07-14 00:41:57 | msg_id=1147
+     -> IGNORED
+     L'intero convoglio, composto da navi commerciali scortate da unità statunitensi, è diventato un obiettivo.
+
+[67] 2026-07-14 00:42:24 | msg_id=1148
+     -> IGNORED
+     Missili antinave iraniani diretti verso navi al largo della costa di Abu Dhabi.
+
+[68] 2026-07-14 01:01:50 | msg_id=1149
+     -> IGNORED
+     https://it.tradingview.com/chart/QzeJXWtM/?symbol=OANDA%3AXAUUSD
+     
+     **TUTTO A TEMPO REALE ****📈**
+
+[69] 2026-07-14 03:03:20 | msg_id=1150
+     -> IGNORED
+     Buy pazzo delle 3 di notte? Vamoos!
+
+[70] 2026-07-14 03:03:35 | msg_id=1151
+     -> IGNORED
+     Vi mando subito la foto del grafico✍🏻.
+
+[71] 2026-07-14 03:06:27 | msg_id=1152
+     -> IGNORED
+     https://www.tradingview.com/x/JvCFxEdm/
+
+[72] 2026-07-14 03:06:44 | msg_id=1153
+     -> IGNORED
+     C’è una instabilità nel mercato unica nel suo genere🤷‍♂️
+
+[73] 2026-07-14 03:08:35 | msg_id=1154
+     -> IGNORED
+     Escono news ogni secondo, abbiamo impulsi positivi e riassorbimenti istantanei. Ma secondo me portare questa operazione almeno a 4001/4002 è il minimo.
+
+[74] 2026-07-14 03:12:15 | msg_id=1155
+     -> IGNORED
+     https://www.tradingview.com/x/lk1z0X9X/
+
+[75] 2026-07-14 03:13:23 | msg_id=1156
+     -> IGNORED
+     Ovviamente dobbiamo tentennare sul prezzo di ingresso🙄. Facciamo davvero molta attenzione. Dopo i 30 pipsettini metterò a BreakEven, se parte bene sennò amen.
+
+[76] 2026-07-14 03:16:57 | msg_id=1157
+     -> IGNORED
+     https://www.tradingview.com/x/o3i7l7YH/
+
+[77] 2026-07-14 03:17:15 | msg_id=1158
+     -> IGNORED
+     Eddai che ci siamo, +60 pipsettini di impulso📈
+
+[78] 2026-07-14 03:19:39 | msg_id=1159
+     -> IGNORED
+     https://www.tradingview.com/x/JtFyamPe/
+
+[79] 2026-07-14 03:19:54 | msg_id=1160
+     -> IGNORED
+     E VAMOOOOOS, +110 PIPSETTINI DI TARGET✅📈
+
+[80] 2026-07-14 03:20:52 | msg_id=1161
+     -> IGNORED
+     L’ho messo poco più sopra ai +90 pipsettini perché la vera zona di short è esattamente questa qui di target. Quindi così siamo tranquilli e chiudiamo qualcosina di più✍🏻
+
+[81] 2026-07-14 03:22:42 | msg_id=1162
+     -> IGNORED
+     Se dio vuole sarà l’operazione che porteremo in alto senza che torni indietro a Be. Ma vedendo l’andazzo sarà difficile perché a me questo sembra proprio un ranging notturno brutto…
+
+[82] 2026-07-14 04:12:54 | msg_id=1163
+     -> IGNORED
+     https://www.tradingview.com/x/SwMGzdFH/
+
+[83] 2026-07-14 04:13:14 | msg_id=1164
+     -> IGNORED
+     Per chi è ancora dentro sta partendo molto bene📈
+
+[84] 2026-07-14 04:13:43 | msg_id=1165
+     -> IGNORED
+     L’ideale rimane sempre i 47/49 da raggiungere✍🏻
+
+[85] 2026-07-14 11:42:22 | msg_id=1167
+     -> IGNORED
+     L'Indice dei Prezzi al Consumo (IPC) misura le variazioni del prezzo di beni e servizi, cibo ed energia esclusi. L'IPC misura il cambiamento del prezzo dal punto di vista del consumatore. Si tratta di uno strumento chiave per misurare in cambiamenti nelle tendenze di acquisto e l'inflazione negli Stati Uniti. Un dato più elevato del previsto deve essere interpretato come un segnale positivo/rialzista per il dollaro USA (USD) (in quanto lo strumento più comune per combattere l'inflazione è l'aumento dei tassi, che può attrarre investimenti stranieri), mentre un dato inferiore al previsto deve essere interpretato come un segnale negativo/ribassista per l'USD.
+
+[86] 2026-07-14 11:43:40 | msg_id=1168
+     -> IGNORED
+     **FOCUS INFLAZIONE USA (CPI): Rallentamento in Vista, ma l'Oro Resta Cauto.**
+     
+     L'Ufficio di Statistica del Lavoro USA (BLS) pubblicherà oggi i dati sull'Indice dei Prezzi al Consumo (CPI) di giugno. Il mercato si aspetta un raffreddamento generale dell'inflazione, trainato dal crollo del petrolio dopo il recente accordo di cessate il fuoco tra Stati Uniti e Iran.
+      **Le Stime di Consenso:** Il CPI mensile è atteso in calo dello **-0,1%** (dopo il +0,5% di maggio), mentre il dato annuale dovrebbe scendere al **3,8%** (rispetto al picco del 4,2% di maggio).
+      **La Tenuta del CPI Core:** L'inflazione di fondo (senza cibo ed energia) dovrebbe mostrare un aumento dello **0,2% mensile** e stabilizzarsi al **2,9% su base annua**.
+      **L'Impatto del Greggio:** Dopo aver perso quasi il 17% a maggio, i prezzi del petrolio sono crollati di oltre il 20% a giugno, tornando ai livelli pre-conflitto grazie all'ottimismo sui negoziati diplomatici.
+     
+     **Cosa Aspettarsi Davvero? I Rischi "Invisibili" dell'Inflazione.**
+     
+     Nonostante il calo di giugno, gli investitori potrebbero peccare di eccessivo ottimismo per due motivi strutturali:
+     1. **Il Ritorno delle Tensioni:** Da inizio luglio i prezzi del greggio hanno ripreso a correre a causa di nuovi attacchi tra USA e Iran, mettendo a rischio il fragile cessate il fuoco e la discesa dell'inflazione.
+     2. **L'Effetto AI (Intelligenza Artificiale):** Il boom degli investimenti in infrastrutture tecnologiche sta gonfiando i costi dell'energia e dell'hardware. Un recente studio della Fed ha rivelato che la voce PCE "Software e accessori per computer" (storicamente in calo del 5,3% annuo) è schizzata al tasso record del **73% annuo** tra novembre 2025 e marzo 2026.
+     **Il Sentiment della Fed:** Questo scenario suggerisce che, anche con un dato CPI debole a giugno, la Fed potrebbe non abbandonare l'idea di un ultimo inasprimento monetario entro fine anno. Attualmente, i mercati stimano al 30% la possibilità di un rialzo dei tassi a luglio e al 77% almeno un ritocco entro dicembre.
+     
+     **L'Impatto sull'Oro (XAU/USD)**
+     L'oro si trova su livelli di supporto importanti, ma manca ancora di una chiara spinta rialzista.
+     
+      **Scenario Bearish (CPI forte):** Se l'inflazione mensile dovesse sorprendere al rialzo (sopra lo 0,0%), gli operatori scommetteranno su un rialzo dei tassi a luglio, spingendo il Dollaro e affossando l'Oro sotto i minimi.
+     
+      **Scenario Bullish (CPI debole):** Un calo marcato dell'IPC (pari o inferiore a -0,2%) darebbe una fiammata rialzista temporanea all'Oro. Tuttavia, con il petrolio di nuovo in rialzo a luglio e lo spettro inflazionistico dell'AI, difficilmente gli istituzionali si fideranno di un singolo dato isolato.
+
+[87] 2026-07-14 11:51:17 | msg_id=1169
+     -> IGNORED
+     https://www.tradingview.com/x/X1e0ruqK/
+     https://www.tradingview.com/x/u0Gj4D4X/
+
+[88] 2026-07-14 11:56:49 | msg_id=1171
+     -> IGNORED
+     **1. Il Recap della Notte: Analisi del Recupero Centrata.**
+     
+     La nostra lettura notturna è stata di una precisione chirurgica:  
+     **La** **Risalita:** Avevamo previsto il tentativo di recupero tecnico. Come si vede chiaramente sul grafico, l'Oro ha effettivamente registrato un recupero parziale verso l'alto.  
+      **La Caccia all'Area 47-49:** Al momento non siamo ancora arrivati al nostro target ideale dei **47 - 49**, ma la spinta rialzista della mattinata si sta avvicinando lentamente ai nostri livelli d'interesse.
+     
+     **2. La Domanda Chiave: Il Ritracciamento Notturno è Abbastanza per il Crollo?
+     **
+     Mettiamo sul tavolo la domanda che tutti vi state facendo in room: __il recupero di stanotte basta già a posizionare gli istituzionali per un crollo post-CPI, o serve più spazio in alto?
+     __
+      **Scenario A (Il ritracciamento è già sufficiente):** I grandi fondi si sono già posizionati durante il recupero notturno. Se l'IPC dovesse uscire **positivo per il Dollaro** (mostrando un'inflazione core o mensile superiore alle attese, ad esempio con un core mensile fermo o in risalita), l'Oro non avrà bisogno di andare a prendere i 47-49. Gli algoritmi attiveranno le vendite istantanee abbattendo i supporti per stampare nuovi minimi macro.  
+     
+      **Scenario B (Serve più spazio / IPC negativo per il Dollaro):** Se il ritracciamento notturno non è considerato sufficiente dagli algoritmi, o se il dato IPC uscirà molto debole (mostrando un netto calo anche sul core), assisteremo a una violenta fiammata rialzista temporanea. L'Oro andrà a rompere la struttura locale per catapultarsi oltre i 47-49, cacciando le zone short superiori prima di trovare un reale punto di inversione.  
+     
+     **Il contesto del mese:** Veniamo da un mese in cui, grazie al cessate il fuoco temporaneo di giugno, l'inflazione potrebbe essersi leggermente "sistemata" e calmierata per via del crollo temporaneo del petrolio. Tuttavia, il mercato sa benissimo che da luglio la guerra è ripresa forte, quindi un dato CPI debole oggi potrebbe essere letteralmente ignorato o "snobbato" dal Dollaro nel medio periodo. 
+
+[89] 2026-07-14 11:57:47 | msg_id=1172
+     -> IGNORED
+     **Mappa Operativa in London e inizio NewYork Session.**
+     
+     Al momento, durante la sessione di Londra, il mercato si trova in un **semi-ranging** ordinato. Abbiamo zone short ben visibili sopra di noi e zone long da colmare sotto. La nostra strategia è protetta e flessibile:
+     
+     1. **La Gestione del Long:** Siamo dentro in **Long da stanotte** a favore del ritracciamento. Se il prezzo ci mostrerà forza nel raggiungere l'area **47 - 49**, valuteremo di aggiungere una nuova posizione a rialzo per massimizzare la salita.
+     
+     2. **Il Posizionamento Short (Hedge/Reversal):** Non appena il prezzo toccherà l'area di supply tra 47-49, o in caso di rilascio del dato CPI fortemente favorevole al Dollaro, ci posizioneremo in **Short**. Questo ci permetterà di cavalcare l'eventuale sorpresa positiva del USD, puntando al crollo macro e alla nascita di nuovi minimi storici intraday. 
+
+[90] 2026-07-14 11:58:58 | msg_id=1173
+     -> IGNORED
+     Sapete come funziona in queste giornate, in base e come si comporta e si evolve la situazione si prendono le operazioni che regala✍🏻. Non bisogna partire con un idea si buy o sell completamente fissa, i dati possono essere sempre un sorpresa.
+
+[91] 2026-07-14 15:00:42 | msg_id=1176
+     -> IGNORED
+     🎁 **LIVE BONUS — SOLO PER IL VIP**
+     Questa non era in programma.
+     __La faccio perché voi ci siete, mi avete supportato e certi gesti non passano inosservati. __❤️__
+     __
+     **LIVE PRIVATA QUI SU TELEGRAM**🤑__Trading in diretta e due parole sui progetti futuri. ____👀____
+     __
+     Stasera alle 23:30 🤠
+
+[92] 2026-07-14 17:25:21 | msg_id=1177
+     -> IGNORED
+     Trump afferma di aver rinunciato all'idea di un risarcimento del 20% per il passaggio delle navi attraverso lo Stretto di Hormuz, preferendo accordi commerciali e di investimento con i vari Paesi del Golfo
+
+[93] 2026-07-14 23:21:36 | msg_id=1179
+     -> IGNORED
+     https://www.tradingview.com/x/UGmSKn4U/
+     https://www.tradingview.com/x/GnAEp2gO/
+
+[94] 2026-07-14 23:24:11 | msg_id=1181
+     -> IGNORED
+     **La Salita del CPI e il Recupero Strutturale.**
+     
+     Il dato IPC è uscito fortemente negativo per il Dollaro, innescando una reazione a catena immediata:
+      **La Fiammata Long:** L'Oro ha reagito con una salita violentissima, una vera e propria esplosione rialzista che è andata a fare un **recupero strutturale imponente**.
+      **La Pulizia delle Zone Aperte:** Questo movimento speculativo era necessario. La pesante situazione geopolitica dei giorni scorsi aveva spinto il mercato verso il basso in modo fin troppo impulsivo, lasciando dietro di sé una quantità enorme di inefficienze e zone non colmate. Con lo spike di oggi pomeriggio, gli algoritmi hanno ripulito gran parte di quel disordine grafico.
+     
+     **Il Rifiuto dei Massimi e il Colmamento della Salita.**
+     
+     Tuttavia, la spinta dei compratori si è esaurita rapidamente, confermando che la struttura di fondo rimane fortemente ancorata al trend primario:
+      **Niente Nuovi Massimi:** Come si vede chiaramente in M5, il prezzo non ha avuto la forza di andare a stampare nuovi massimi strutturali stabili. Subito dopo aver toccato il picco, gli istituzionali hanno iniziato a liquidare le posizioni long.
+      **Il Crollo di Rientro:** Siamo tornati rapidamente a ribasso, andando a rimangiarci e colmare quasi interamente la salita del pomeriggio. Attualmente, l'Oro ha già **ritracciato e assorbito più del 75%** di tutto l'impulso rialzista generato dal CPI.
+
+[95] 2026-07-14 23:24:58 | msg_id=1182
+     -> IGNORED
+     **Mappa Operativa per la Notte: La Caccia al Resell in M1**
+     
+     In questa tarda serata il mercato si sta avviando verso la chiusura all'interno di un **ranging** piuttosto piatto. La mia visione per le prossime ore e per la riapertura di stanotte è indiscutibilmente **short**, strutturata su due scenari principali:
+     
+     **Scenario A: Buy to Sell (Il Piano Ideale)**
+     
+     Il recupero a rialzo di oggi è stato eccellente perché ha ripulito i grafici e ci permette ora di posizionarci a ribasso da quote molto più alte e favorevoli.
+      **L'Operazione:** Io sono già posizionato short da molto in alto, precisamente dal massimo assoluto di oggi. Tuttavia, per chi vuole incrementare o cercare nuovi ingressi, terremo d'occhio i ritracciamenti rialzisti verso le **zone di sell segnate in M1**. Non appena il prezzo farà un test di finta su quei livelli, cercheremo nuovi trigger **SELL** per accompagnare l'Oro verso nuovi minimi macro.
+     
+     **Scenario B: Sell to Sell (La Continuazione Diretta)**
+     
+      **L'Operazione:** Se alla riapertura notturna l'algoritmo non dovesse concedere nemmeno un piccolo ritracciamento tecnico all'interno del range di stasera, accompagneremo direttamente la rottura dei minimi locali in M1, entrando in continuazione short per andare a target.
+
+[96] 2026-07-14 23:37:42 | msg_id=1183
+     -> IGNORED
+     Arrivo tra pochissimo in live privata, sto aggiustando le ultime cose potrei tardare qualche minuto❤️.
+
+[97] 2026-07-14 23:55:28 | msg_id=1191
+     -> IGNORED
+     https://t.me/+Egbd-fYoeANjZTU0
+
+[98] 2026-07-14 23:57:40 | msg_id=1192
+     -> IGNORED
+     PER PARLARE NELLA CHAT IN LIVE✍🏻
+
+[99] 2026-07-15 00:49:10 | msg_id=1193
+     -> IGNORED
+     **SIAMO IN LIVE PER ACCEDERE CLICCARE QUI SU UNISCITI IN ALTO NELLO SCHERMO**
+
+[100] 2026-07-15 01:06:31 | msg_id=1194
+     -> IGNORED
+     SE SI BLOCCA USCITE E RIENTRATE VELOCEMENTE
+
+[101] 2026-07-15 03:09:52 | msg_id=1196
+     -> IGNORED
+     https://www.tradingview.com/x/HGP2ghtB/
+
+[102] 2026-07-15 03:10:34 | msg_id=1197
+     -> IGNORED
+     Vi è piaciuto come esperimento? Io direi non male come prestazione notturna sull’oro✍🏻. Dopo se il grafico sale sopra di tanto ci raggiorniamo!
+
+[103] 2026-07-15 03:49:24 | msg_id=1198
+     -> IGNORED
+     https://www.tradingview.com/x/Wjf4XTZD/
+
+[104] 2026-07-15 03:49:57 | msg_id=1199
+     -> IGNORED
+     Alla fine è bastata la prima zona short a portarlo giù📉
+
+[105] 2026-07-15 03:50:11 | msg_id=1200
+     -> IGNORED
+     Anche oggi bias estremamente azzeccata✍🏻
+
+[106] 2026-07-15 11:54:32 | msg_id=1201
+     -> IGNORED
+     https://www.tradingview.com/x/R7VcIDEe/
+     https://www.tradingview.com/x/nqqqrjqT/
+
+[107] 2026-07-15 11:59:32 | msg_id=1203
+     -> IGNORED
+     **Il Recap della Notte: Bias Azzeccata e Salita Azzerata.**
+     
+     La price action della notte ha confermato lo strapotere dei venditori:
+      **Il Crollo Totale:** L'Oro ha spinto con decisione verso il basso durante tutta la sessione asiatica, andando a **ricoprire interamente la violentissima salita del CPI** di ieri pomeriggio.
+      **Oltre il Minimo:** Non solo abbiamo rimangiato tutto l'impulso rialzista, ma siamo andati anche a superare leggermente il minimo di partenza pre-news. Chi è rimasto posizionato short da ieri sera si trova ora in un profitto colossale.
+     
+     **La Visione Macro: Nessun Supporto, la Direzione è una Sola.**
+     
+     Guardando la struttura macro in M5:
+     
+      **Nessun Segnale di Inversione:** Nonostante la profondità della discesa, non abbiamo ancora toccato livelli volumetrici o supporti istituzionali di rilievo tali da giustificare un'inversione di tendenza (e, in ogni caso, non abbiamo alcuna intenzione di cercare un'inversione).
+      **Target Inferiori:** La struttura è pesantemente short. L'obiettivo degli algoritmi è continuare a scendere per andare a stanare e stampare nuovi minimi storici intraday sotto i livelli attuali.
+
+[108] 2026-07-15 12:00:36 | msg_id=1204
+     -> IGNORED
+     **Mappa Operativa: Lo Schema Buy to Sell.**
+     
+     Anche se la direzione finale è il ribasso, non vogliamo rincorrere il prezzo sui minimi attuali. Per la sessione di questo pomeriggio in M1, vogliamo che il mercato respiri prima di affondare il colpo.
+     Utilizzeremo due varianti dello stesso piano per riposizionarci:
+     
+     **Scenario A: Buy to Sell (Il Piano Principale)**
+      **La Dinamica:** Lasciamo che l'Oro utilizzi la fase di ranging attuale per costruire una base e rimbalzare temporaneamente verso l'alto (**Buy**).
+      **Il Trigger:** Aspettiamo il test sulle zone di supply minori lasciate aperte durante la discesa notturna. Non appena il prezzo toccherà queste resistenze in M1, entreremo in **SELL** a favore di trend per cavalcare il crollo e prenderci i nuovi minimi.
+     
+     **Scenario B: Sell to Buy to Sell (La Presa di Liquidità)**
+     
+      **La Dinamica:** Se il prezzo decide di essere più sporco, effettuerà prima una finta ribassista rapida per andare a cacciare i minimi del range di stamattina (**Sell**).
+      **Il Trigger:** Da quella caccia scatterà un ritracciamento veloce a rialzo (**Buy**) che sfrutteremo per posizionarci ancora più in alto sul successivo e definitivo impulso short (**Sell**).
+
+[109] 2026-07-15 12:10:14 | msg_id=1205
+     -> IGNORED
+     Stavo pensando ad un setup in buy proprio ora pre-live📈. Ora vi mando il grafico con il setup da prendere ora.
+
+[110] 2026-07-15 12:13:06 | msg_id=1206
+     -> IGNORED
+     https://www.tradingview.com/x/OnNHmhcG/
+
+[111] 2026-07-15 12:13:35 | msg_id=1207
+     -> IGNORED
+     Attenzione solo a questa mini zona sell📉…
+
+[112] 2026-07-15 12:13:58 | msg_id=1208
+     -> IGNORED
+     https://www.tradingview.com/x/Bql8RgBo/
+
+[113] 2026-07-15 12:14:08 | msg_id=1209
+     -> IGNORED
+     Scusatemi il problema non si pone più😂
+
+[114] 2026-07-15 12:14:19 | msg_id=1210
+     -> IGNORED
+     Che sparata mamma miaaa📈, godiamo!
+
+[115] 2026-07-15 12:15:02 | msg_id=1211
+     -> IGNORED
+     https://www.tradingview.com/x/o5ym8bpw/
+
+[116] 2026-07-15 12:15:28 | msg_id=1212
+     -> IGNORED
+     +70 pipsettini niente male eh🤷‍♂️, bello bello!
+
+[117] 2026-07-15 12:34:44 | msg_id=1213
+     -> IGNORED
+     IL CENTCOM AMERICANO ANNUNCIA UNA NUOVA ONDATA DI ATTACCHI AEREI CONTRO L'IRAN.
+     Alle 6:00 ora dell'Est (Stati Uniti) di oggi, le forze del Comando Centrale americano hanno iniziato una serie di attacchi contro l'Iran. Questi attacchi sono progettati per indebolire ulteriormente le capacità militari che le forze iraniane hanno utilizzato per attaccare le navi mercantili nello Stretto di Hormuz.
+
+[118] 2026-07-15 21:32:59 | msg_id=1214
+     -> IGNORED
+     https://www.tradingview.com/x/1UExfj4R/
+     https://www.tradingview.com/x/dpvw3wxW/
+
+[119] 2026-07-15 21:39:50 | msg_id=1216
+     -> IGNORED
+     **Il Quadro di Ieri vs. Oggi: Fotocopie Algoritmiche**
+     
+     Nelle ultime 48 ore gli istituzionali hanno ripetuto quasi lo stesso identico spartito, ma con una variazione serale importantissima:
+      **Ieri (Il post-CPI):** Abbiamo assistito alla mega salita guidata dai dati IPC negativi per il dollaro, seguita da un totale azzeramento notturno in cui il mercato si è letteralmente rimangiato tutta la salita.
+      **Oggi (Il post-IPP):** Storia analoga nel pomeriggio. Il dato IPP è uscito negativo per il dollaro, l'Oro è schizzato a rialzo recuperando diverse zone e, puntualmente, si è rimangiato l'intera salita tornando giù.
+      **La Variazione di Stasera:** A differenza di ieri, nel corso della serata il prezzo ha invertito nuovamente con forza a rialzo. Ha annullato la discesa pomeridiana ed è andato a prendersi la nuova zona short che monitoravamo insieme: **l'area degli 80**. Da quota 80 è scattato un nuovo, violentissimo impulso short con una volatilità incredibile.
+     
+     **Instabilità Assurda: Cosa sta aspettando il grafico?**
+     
+     In questo momento il mercato mostra una stabilità pari a zero. Ci sono spike continui e si fa un'enorme fatica a trovare un flusso pulito e lineare.
+     Questo comportamento schizofrenico indica che gli algoritmi stanno accumulando ordini in vista di un movimento molto più ampio, probabilmente in attesa del discorso di Trump di questo giovedì. La struttura long di breve termine potrebbe sembrare apparentemente solida a un occhio retail, ma sotto la superficie la situazione è ben diversa.
+
+[120] 2026-07-15 21:39:59 | msg_id=1217
+     -> IGNORED
+     **Proiezione per la Notte e Domani: Il Dump Silenzioso.**
+     
+     La mia visione rimane **assolutamente ribassista**. Nonostante i tentativi di recupero, i motivi per un violento affondo sono evidenti:
+      **Le Zone Scoperte:** Sotto di noi c'è un tappeto di inefficienze e vuoti volumetrici enormi che l'Oro deve necessariamente andare a colmare.
+      **La Liquidità della London:** Sia ieri durante l'IPC, sia oggi durante l'IPP, il mercato ha lasciato accumuli di liquidità vergine __pre-fondamentali__ durante le sessioni di Londra. Queste sacche liquide sono magneti naturali per il prezzo.
+
+[121] 2026-07-15 21:40:19 | msg_id=1218
+     -> IGNORED
+     Ora vi faccio un audio vi sto che poi sta sera non sono in live e ora sto facendo le analisi presto❤️.
+
+[122] 2026-07-15 23:26:47 | msg_id=1221
+     -> IGNORED
+     https://www.tradingview.com/x/vLsLZM5x/
+
+[123] 2026-07-15 23:27:17 | msg_id=1222
+     -> IGNORED
+     Vi ho segnato delle nuove zone❤️. L’idea rimane la stessa di prima, anzi ora è ancora più confermata✍🏻.
+
+[124] 2026-07-16 01:02:50 | msg_id=1223
+     -> IGNORED
+     https://www.tradingview.com/x/hTO2Z8jF/
+
+[125] 2026-07-16 01:03:24 | msg_id=1224
+     -> IGNORED
+     Bellina questa reazioncina buy che vi ho segnato a grafico📈👀. Sempre con la stessa idea di buy to sell eh.
+
+[126] 2026-07-16 01:47:27 | msg_id=1225
+     -> IGNORED
+     Allora secondo me adesso un setup in buy si sta proprio concretizzando, vi mando il grafico con la possibile proiezione✅📈.
+
+[127] 2026-07-16 01:50:32 | msg_id=1226
+     -> IGNORED
+     https://www.tradingview.com/x/G3slgDj2/
+
+[128] 2026-07-16 01:51:38 | msg_id=1227
+     -> IGNORED
+     Ricordatevi, l’idea rimane sempre la stessa. Dobbiamo salire📈 ancora un po’ per poi ipoteticamente scendere📉. Ora la schematica di buy si è concretizzata con impulso, test dove si poteva mettere anche il fibo e ripartenza✍🏻
+
+[129] 2026-07-16 02:03:17 | msg_id=1228
+     -> IGNORED
+     https://www.tradingview.com/x/r1sWOfaz/
+
+[130] 2026-07-16 02:04:38 | msg_id=1229
+     -> IGNORED
+     Bellissimo impulso e come sempre vediamo un ranging fisso nonostante siamo le 02:03 di notte. C’è da fare molta attenzione perché l’idea convince ma questo ranging è fastidioso infatti io me ne uscirò poi a BreakEven una volta che ci torno.
+
+[131] 2026-07-16 02:26:13 | msg_id=1230
+     -> IGNORED
+     https://www.tradingview.com/x/sAwOZ3Tx/
+
+[132] 2026-07-16 02:26:43 | msg_id=1231
+     -> IGNORED
+     Toccata la zona più giù ed è ripartito✅📈
+
+[133] 2026-07-16 02:57:34 | msg_id=1232
+     -> IGNORED
+     https://www.tradingview.com/x/vy28GiqE/
+
+[134] 2026-07-16 02:57:56 | msg_id=1233
+     -> IGNORED
+     Ed ecco il dumping short📉 dopo 3 ore di ranging📊
+
+[135] 2026-07-16 02:59:07 | msg_id=1234
+     -> IGNORED
+     E stanno arrivando ora una quantità di attacchi enormi tra tutti i paesi citati negli scorsi✍🏻
+
+[136] 2026-07-16 03:03:13 | msg_id=1235
+     -> IGNORED
+     https://www.tradingview.com/x/QQ8mnG6L/
+
+[137] 2026-07-16 03:04:06 | msg_id=1236
+     -> IGNORED
+     Sisiisi era proprio quello che volevo😋. Peccato non essere saliti un pelo di più prima, trovavamo sicuramente posizionamento short📉.
+
+[138] 2026-07-16 11:43:26 | msg_id=1237
+     -> IGNORED
+     https://www.tradingview.com/x/IpNwnFS0/
+     https://www.tradingview.com/x/2PtCseI6/
+
+[139] 2026-07-16 11:47:19 | msg_id=1239
+     -> IGNORED
+     Come promesso ieri notte, il **dump** che abbiamo chiamato insieme è arrivato puntualissimo, regalandoci uno scarico pulito. Ora però i grafici stanno costruendo qualcosa di molto più subdolo. Mettiamo a confronto l'M5 e il dettaglio operativo in M1 per pianificare la prossima mossa.
+     
+     **L'Inganno Strutturale in M5: La Finta Forza dei Compratori.**
+     
+     Se osserviamo attentamente l'M5, notiamo una ripetizione dello schema IPC e IPP che merita un'analisi approfondita:
+      **La Salita e la Discesa:** Entrambi i dati fondamentali hanno innescato la classica fiammata rialzista seguita da una discesa altrettanto violenta.
+      **Il Mistero della Tenuta Long:** Apparentemente, sembra che stia reggendo una struttura rialzista di medio termine. Se guardiamo il minimo di giornata del CPI (IPC), poi il massimo, la discesa successiva e poi il movimento dell'PPI (IPP), notiamo che l'Oro è salito senza fare un nuovo massimo strutturale, ma quando è sceso __non ha rotto il minimo precedente__.
+      **La Realtà Volumetrica:** Questa finta "struttura rialzista" è in realtà una massiccia **compressione finalizzata all'accumulo di liquidità**. Sotto i minimi attuali c'è un quantitativo spaventoso di stop loss pronti a essere attivati. Non c'è un reale interesse buy a lungo termine; gli algoritmi stanno solo costruendo il carburante per il prossimo crollo. Dobbiamo scendere, e scenderemo pesantemente.
+
+[140] 2026-07-16 11:48:17 | msg_id=1240
+     -> IGNORED
+     **Mappa Operativa: Caccia alle Zone Alte e i Due Piani d'Attacco**
+     
+     Per questo pomeriggio, prima del dump definitivo verso i minimi di giornata, mi aspetto che il prezzo vada a respirare verso l'alto per raccogliere l'ultimissima liquidità residua.
+     In M1 monitoriamo queste due opzioni tattiche:
+     
+     **Scenario A: Lo Schema Sell to Buy to Sell (La Caccia Interna)**
+     
+      **La Dinamica:** È lo scenario ideale per chi vuole un ingresso pulito. Il prezzo effettua prima una leggera spinta a ribasso (**Sell**) per andare a testare e mitigare una delle zone interne tracciate in M1.
+      **Il Trigger:** Da quel test, scatta una reazione rialzista (**Buy**) che spingerà l'Oro fino alle zone superiori lasciate scoperte durante la sessione asiatica e la serata di ieri. Lì, a ridosso dei massimi locali, cercheremo il nostro trigger **SELL** definitivo per prenderci il dump macro.
+     
+     **Scenario B: Lo Schema Buy to Sell (La Salita Diretta)**
+     
+      **La Dinamica:** I compratori non concedono spazio verso il basso e il prezzo parte direttamente a rialzo (**Buy**) dal ranging attuale in M1.
+      **Il Trigger:** Lasciamo che l'Oro salga dritto a colmare i vuoti volumetrici dell'asiatico. Non appena il prezzo impatta contro le zone di supply della sera precedente, piazzeremo il nostro posizionamento **SELL** di continuazione.
+
+[141] 2026-07-16 21:20:14 | msg_id=1241
+     -> IGNORED
+     Le forze statunitensi hanno colpito diverse aree nei pressi della città di Ahvaz pochi minuti fa, ha dichiarato il vice del governatore della provincia di Khuzestan responsabile per la sicurezza e l'applicazione della legge, secondo quanto riporta l'agenzia Mehr News.
+
+[142] 2026-07-16 23:07:02 | msg_id=1242
+     -> IGNORED
+     https://www.tradingview.com/x/nAe7R3vU/
+     https://www.tradingview.com/x/Jyaph6CX/
+     https://www.tradingview.com/x/fdBXDbfh/
+
+[143] 2026-07-16 23:10:43 | msg_id=1245
+     -> IGNORED
+     Chapeau a chi ha mantenuto la calma in questi giorni di pura follia geopolitica ed escursioni folli. Il **dump silenzioso** che abbiamo previsto, pazientemente inquadrato e anticipato durante tutta la settimana, è finalmente e violentemente arrivato sui nostri schermi.
+     
+     **Analisi Macro (M15 & M5): Liquidazione Completata e i Livelli Chiave**
+     
+      **La Rottura Strutturale:** Il crollo di oggi ha letteralmente polverizzato i supporti locali. Siamo scesi con decisione sotto la quota psicologica dei **4000** e, come da nostra analisi di medio termine, siamo ora diretti senza filtri verso l'area target dei **3880**.
+     
+      **Presa la Liquidità Settimanale:** Tutta quell'enorme quantità di ordini e stop loss accumulati e compressi di cui abbiamo parlato nei giorni scorsi è stata finalmente ripulita con la discesa massiccia di oggi.
+     
+      **I Test della Giornata:** Sul grafico in M5 potete notare come la discesa sia stata intervallata da test volumetrici precisi, in particolare quello eseguito magistralmente nella **zona dei 12** prima dell'accelerazione successiva. Abbiamo lasciato indietro altre zone scoperte sopra di noi che gli algoritmi potrebbero voler mitigare in futuro, ma la bias dominante rimane saldamente orientata a ribasso.
+
+[144] 2026-07-16 23:11:58 | msg_id=1246
+     -> IGNORED
+     **Mappa Operativa Notturna: Buy to Sell o Sell to Sell?**
+     
+     La direzione non si discute: dobbiamo continuare la nostra discesa verso il target a 3880. Sulla riapertura e per la sessione asiatica di stanotte, andiamo a rispondere alla domanda chiave analizzando l'M1 sul grafico⁠:
+     
+     **Scenario A: Lo Schema Buy to Sell (Il Test Alto).**
+     
+      **La Dinamica:** È lo scenario più pulito dal punto di vista volumetrico. Visto che la discesa di oggi è stata molto verticale, il prezzo potrebbe decidere di non crollare subito a vuoto, risalendo leggermente all'interno del range di stasera per andare a testare e mitigare le primissime zone di sell lasciate scoperte in M1.
+      **Il Trigger:** Aspetteremo che questo micro-ritracciamento a rialzo (**Buy**) si esaurisca contro le inefficienze superiori in M1. Non appena l'algoritmo mostrerà rifiuto dei massimi locali, entreremo in **SELL** per prenderci la nuova ondata di vendite verso 3880.
+     
+     **Scenario B: Lo Schema Sell to Sell (Il Crollo Diretto).**
+     
+      **La Dinamica:** La pressione ribassista istituzionale e la tensione geopolitica di fondo non lasciano scampo, spingendo gli operatori a non concedere alcun respiro o ritracciamento.
+      **Il Trigger:** Monitoriamo i minimi segnati nell'M1 di stasera. Se il prezzo rompe direttamente i minimi locali senza rintracciare, accompagneremo la rottura entrando in **Sell di continuazione** immediata.
+
+[145] 2026-07-16 23:12:34 | msg_id=1247
+     -> IGNORED
+     Ma domanda😂? C’è stato un giorno di questa settimana dove non abbiamo chiamato un buy to sell? Perché sto ripetendo tutti i giorni la stessa schematica ahahahah.
+
+[146] 2026-07-16 23:13:47 | msg_id=1248
+     -> IGNORED
+     Indipendentemente dalle varie esecuzioni, l’analisi settimanale ragazzi/e è stata davvero eccelsa. La discesa anzi il **CROLLO **di oggi è stata la ciliegina sulla torta.
+
+[147] 2026-07-17 03:33:30 | msg_id=1250
+     -> IGNORED
+     L’AMERICANO MEDIO DOPO LO SPEECH.
+
+[148] 2026-07-17 11:42:36 | msg_id=1251
+     -> IGNORED
+     https://www.tradingview.com/x/iYRGxTR5/
+     https://www.tradingview.com/x/lkAbhwUr/
+
+[149] 2026-07-17 11:46:27 | msg_id=1253
+     -> IGNORED
+     Sessione caldissima alle porte. I grafici stanno disegnando una dinamica molto interessante che richiede massima precisione nell'individuare le inefficienze e i flussi di liquidità.
+     
+     **Il Punto sulla Notte: Si Costruisce la Struttura Rialzista**
+     
+     La price action delle ultime ore ci mostra un cambio di comportamento rispetto ai giorni scorsi:
+      **Il Recupero Centrato:** Durante la notte abbiamo assistito all'effettivo recupero a rialzo che avevamo previsto.
+      **Minimi Protetti:** Questa risalita è stata caratterizzata da ritracciamenti ribassisti piuttosto profondi. La cosa fondamentale, però, è che l'Oro ha respinto le vendite **senza rompere i minimi precedenti**. Questo comportamento di minimi crescenti (__Higher Lows__) ci dice chiaramente che si sta buildando una struttura rialzista di breve/medio termine.
+     
+     **Focus London Session (M1)**
+     
+     Spostandoci sul minuto, il comportamento intraday si fa molto interessante:
+      **Niente True Range:** Invece di un classico ranging laterale e piatto, anche in London session sembra che il prezzo stia progressivamente strutturando una base rialzista.
+      **La mappa delle zone:** Abbiamo riferimenti chiarissimi su entrambi i lati. Sotto ci sono inefficienze interne da mitigare prima di poter salire con forza; sopra ci attendono aree di sell vergini dove poter cercare l'inversione short.
+
+[150] 2026-07-17 11:47:56 | msg_id=1254
+     -> IGNORED
+     **Strategia Operativa: Lo Schema Buy to Sell.**
+     
+     Per il pomeriggio, l'obiettivo è sfruttare questa transizione con uno schema **Buy to Sell**:
+     
+     **Fase 1: Il Ritracciamento e il Buy.**
+     
+     Non compriamo sui massimi locali. Aspettiamo che il prezzo scenda a ripulire e prendere le **zone interne inferiori in M1**. Da quel test, se l'algoritmo mostra accettazione, cercheremo il trigger **BUY** per accompagnare la spinta verso l'alto.
+     
+     **Fase 2: I Target Superiori e il Sell**
+     
+     Una volta partiti a rialzo, monitoriamo i due livelli chiave per girarci in **SELL**:
+     1. **Area 10 - 11:** Posizionata appena sopra il massimo asiatico. Potrebbe bastare questo sweep per esaurire i volumi buyer.
+     2. **Area 24:** Il target più profondo ed estremamente interessante. Se l'Oro spinge forte, l'area dei 24 sarà la nostra zona primaria per cercare un re-entry short pesante e cavalcare una nuova discesa macro.
+     
+     **Avviso di Protezione (L'Alternativa Bullish).**
+     
+     Dobbiamo rimanere scettici e flessibili: se la pressione geopolitica o i flussi monetari del pomeriggio dovessero spingere con troppa forza, c'è il rischio concreto che il mercato stia **rebuildando una grande struttura rialzista di inversione**. In questo scenario, l'Oro continuerà a pompare verso l'alto senza concedere reazioni short. Se notiamo forza assoluta sopra i 24, assecondiamo il flusso e non mettiamoci contro il treno long.
+
+[151] 2026-07-17 18:37:49 | msg_id=1255
+     -> IGNORED
+     Assurdo che lo short stia ripartendo esattamente nella mia zona dei 23.5/24.8📉. Oltre ad essere la mia zona di target long, era esattamente la zona da dove volevo shortare📉.
+
+  Totale: 151 messaggi
+
+
+========================================================================
+CH6 | Sala ORO - VIP | parser=placeholder
+telegram_id: -1003950995427
+execution: {}
+========================================================================
+[01] 2026-07-13 00:04:25 | msg_id=4448
+     -> IGNORED
+     XAUUSD BUY 4088 
+     
+     TP 4098 
+     
+     SL 4083
+
+[02] 2026-07-13 00:04:28 | msg_id=4449
+     -> IGNORED
+     Sl 4083
+
+[03] 2026-07-13 00:05:12 | msg_id=4450
+     -> IGNORED
+     Tp 4098
+
+[04] 2026-07-13 00:05:46 | msg_id=4451
+     -> IGNORED
+     80 PIPS ✅
+
+[05] 2026-07-13 00:07:39 | msg_id=4452
+     -> IGNORED
+     XAUUSD BUY 4088-4087 
+     
+     TP 4086
+     
+     SL 4083
+
+[06] 2026-07-13 00:10:51 | msg_id=4453
+     -> IGNORED
+     Booomm
+
+[07] 2026-07-13 00:11:15 | msg_id=4454
+     -> IGNORED
+     60 PIPS ✅
+
+[08] 2026-07-13 00:11:59 | msg_id=4455
+     -> IGNORED
+     XAUUSD BUY 4084-4082 
+     
+     TP 4092 
+     
+     SL 4079
+
+[09] 2026-07-13 00:12:02 | msg_id=4456
+     -> IGNORED
+     Sl 4079
+
+[10] 2026-07-13 00:12:04 | msg_id=4457
+     -> IGNORED
+     Tp 4092
+
+[11] 2026-07-13 00:14:26 | msg_id=4458
+     -> IGNORED
+     Potrebbe prendere i 72-60 per poi tirare un bel long
+
+[12] 2026-07-13 00:19:52 | msg_id=4460
+     -> IGNORED
+     60 PIPS ✅
+
+[13] 2026-07-13 00:49:35 | msg_id=4461
+     -> IGNORED
+     Ragazzi gli ha presi ma è andato a palla
+
+[14] 2026-07-13 00:50:07 | msg_id=4462
+     -> IGNORED
+     Dovrebbe ritestare tutto e poi partire long ok ? Attendiamo
+
+[15] 2026-07-13 01:00:39 | msg_id=4465
+     -> IGNORED
+     XAUUSD BUY 4073-4071 
+     
+     TP 4094 
+     TP 4120 
+     
+     SL 4068
+
+[16] 2026-07-13 01:00:41 | msg_id=4466
+     -> IGNORED
+     CHIUSA A BE OR PROFIT 📈✅
+
+[17] 2026-07-13 01:04:53 | msg_id=4467
+     -> IGNORED
+     Buy 4068
+
+[18] 2026-07-13 01:05:40 | msg_id=4468
+     -> IGNORED
+     XAUUSD BUY 4069-4067 
+     
+     TP 4094 
+     TP 4120 
+     
+     SL 4063
+
+[19] 2026-07-13 01:07:27 | msg_id=4469
+     -> IGNORED
+     Chiudere il primo in profit e lasciare il secondo signal
+
+[20] 2026-07-13 01:25:06 | msg_id=4470
+     -> IGNORED
+     Abbiamo fatto l’entrata sniper entry ?
+
+[21] 2026-07-13 01:30:32 | msg_id=4471
+     -> IGNORED
+     📈
+
+[22] 2026-07-13 01:32:08 | msg_id=4473
+     -> IGNORED
+     210  PIPS BE OR CLOSE TOTAL PROFIT 📈✅
+
+[23] 2026-07-13 09:32:50 | msg_id=4474
+     -> IGNORED
+     Buongiorno a tutti
+
+[24] 2026-07-13 09:36:32 | msg_id=4476
+     -> IGNORED
+     XAUUSD BUY 4059-4057 
+     
+     TP 4068 
+     TP 4091 
+     
+     SL 4049
+
+[25] 2026-07-13 09:36:47 | msg_id=4477
+     -> IGNORED
+     Sl 4049 
+     Tp 4091
+
+[26] 2026-07-13 10:06:24 | msg_id=4478
+     -> IGNORED
+     BOOMMMMMM
+
+[27] 2026-07-13 10:07:02 | msg_id=4479
+     -> IGNORED
+     TAKE PROFIT PRESO +110  PIPS ✅
+
+[28] 2026-07-13 10:23:00 | msg_id=4480
+     -> IGNORED
+     XAUUSD SELL 4080-4083 
+     
+     TP 4074
+     
+     SL 4085
+
+[29] 2026-07-13 10:26:51 | msg_id=4481
+     -> IGNORED
+     Sl 4085
+
+[30] 2026-07-13 10:27:26 | msg_id=4482
+     -> IGNORED
+     .
+
+[31] 2026-07-13 10:31:52 | msg_id=4483
+     -> IGNORED
+     TAKE PROFIT PRESO +70   PIPS ✅
+
+[32] 2026-07-13 10:35:23 | msg_id=4484
+     -> IGNORED
+     Buy 4072
+
+[33] 2026-07-13 10:36:13 | msg_id=4485
+     -> IGNORED
+     XAUUSD BUY 4072 
+     
+     TP 4078
+     TP 4091
+     
+     SL 4069
+
+[34] 2026-07-13 10:54:09 | msg_id=4486
+     -> IGNORED
+     TAKE PROFIT PRESO +60 PIPS ✅
+
+[35] 2026-07-13 11:39:51 | msg_id=4487
+     -> IGNORED
+     XAUUSD BUY 4070-4068 
+     
+     TP 4075 
+     
+     SL 4066
+
+[36] 2026-07-13 11:40:30 | msg_id=4488
+     -> IGNORED
+     Sl 4066
+
+[37] 2026-07-13 11:40:50 | msg_id=4489
+     -> IGNORED
+     Tp 4075
+
+[38] 2026-07-13 11:51:48 | msg_id=4490
+     -> IGNORED
+     40 PIPS ✅
+     Se dovesse tornare a be andremo ad aspettare zone 4062-4059 
+     And zona 4055-4053
+
+[39] 2026-07-13 11:56:48 | msg_id=4491
+     -> IGNORED
+     Buy now 40568
+
+[40] 2026-07-13 11:58:13 | msg_id=4492
+     -> IGNORED
+     XAUUSD BUY 4069-4067
+     
+     TP 4075 
+     
+     SL 4065
+
+[41] 2026-07-13 12:02:24 | msg_id=4493
+     -> IGNORED
+     CHIUDERE A BE OR PROFIT, ASPETTO UN ENTRATA PIÙ PULITA 📈
+
+[42] 2026-07-13 12:52:17 | msg_id=4494
+     -> IGNORED
+     XAUUSD SELL 4058-4060
+     
+     TP 4050 
+     
+     SL 4062
+
+[43] 2026-07-13 12:52:30 | msg_id=4495
+     -> IGNORED
+     Tp 4050 
+     Sl 4062
+
+[44] 2026-07-13 13:00:23 | msg_id=4496
+     -> IGNORED
+     Primo stop della giornata -40 pips ❌
+
+[45] 2026-07-13 13:00:43 | msg_id=4497
+     -> IGNORED
+     10 segnali in profit 
+     1 in stop loss 
+     Calcolate voi il win rate  . 
+     Non entriamo a caso a mercato
+
+[46] 2026-07-13 14:15:56 | msg_id=4498
+     -> IGNORED
+     XAUUSD ZONA SELL 4061-4064 
+     
+     TP 4050 
+     TP 4010 
+     
+     Sl 4066
+
+[47] 2026-07-13 14:19:59 | msg_id=4499
+     -> IGNORED
+     Sl 4066
+
+[48] 2026-07-13 14:21:10 | msg_id=4500
+     -> IGNORED
+     Tp 4050 
+     Tp 4010
+
+[49] 2026-07-13 14:22:15 | msg_id=4501
+     -> IGNORED
+     60 PIPS CLOSE OR BREKIVEN ✅
+
+[50] 2026-07-13 14:27:28 | msg_id=4502
+     -> IGNORED
+     Sell 4063
+
+[51] 2026-07-13 14:28:05 | msg_id=4503
+     -> IGNORED
+     XAUUSD SELL 4062-4063 
+     
+     TP 4055
+     TP 4010 
+     
+     SL 4066
+
+[52] 2026-07-13 14:32:27 | msg_id=4504
+     -> IGNORED
+     40 PIPS , CLOSE OR BREKIVEN ✅
+
+[53] 2026-07-13 15:53:34 | msg_id=4505
+     -> IGNORED
+     XAUUSD BUY 4048 
+     
+     TP 4054 
+     
+     SL 4043
+
+[54] 2026-07-13 15:54:03 | msg_id=4506
+     -> IGNORED
+     Sl 4043
+
+[55] 2026-07-13 15:54:33 | msg_id=4507
+     -> IGNORED
+     Tp 4054
+
+[56] 2026-07-13 15:57:47 | msg_id=4508
+     -> IGNORED
+     50 PIPS , CLOSE OR BREKIVEN ✅
+
+[57] 2026-07-13 16:07:56 | msg_id=4509
+     -> IGNORED
+     XAUUSD BUY 4030-4031
+     
+     TP 4036
+     
+     SL 4026
+
+[58] 2026-07-13 16:07:59 | msg_id=4510
+     -> IGNORED
+     Sl 4025
+
+[59] 2026-07-13 16:08:48 | msg_id=4511
+     -> IGNORED
+     .
+
+[60] 2026-07-13 16:09:59 | msg_id=4512
+     -> IGNORED
+     TAKE PROFIT PRESO +50 PIPS ✅
+
+[61] 2026-07-13 16:17:21 | msg_id=4513
+     -> IGNORED
+     E allora cosa vi avevo detto che andava sell o no ?
+
+[62] 2026-07-13 16:18:37 | msg_id=4514
+     -> IGNORED
+     Tp preso del segnale di prima in sell +530 pips📈✅
+
+[63] 2026-07-13 16:20:20 | msg_id=4515
+     -> IGNORED
+     4010 come vedete avevo il tp perché poi da lì sono andato in buy ma è letteralmente oscillato tantissimo e ovviante non avevo senso mandarvi il segnale con tutta questa volatilità
+
+[64] 2026-07-13 20:13:04 | msg_id=4517
+     -> IGNORED
+     14 segnali 
+     1 stop loss 
+     13 profit 
+     Buonaserata a tutti state tutti connessi a mezzanotte 💰📈
+
+[65] 2026-07-14 09:14:17 | msg_id=4518
+     -> IGNORED
+     Buongiorno a tutti , il mercato era completamente sotto shock dopo che trump fa soli casini, oggi ci sono pure news molto importanti , la pazienza ripaga nel trading .
+
+[66] 2026-07-14 09:19:46 | msg_id=4519
+     -> IGNORED
+     XAUUSD SELL 4029-4030 
+     
+     TP 4020 
+     TP 4000 
+     
+     SL 4034
+
+[67] 2026-07-14 09:20:04 | msg_id=4520
+     -> IGNORED
+     Sl 4034 
+     Tp 4020 
+     Tp 4000
+
+[68] 2026-07-14 09:37:47 | msg_id=4521
+     -> IGNORED
+     Take profit preso +100 pips ✅
+
+[69] 2026-07-14 11:25:15 | msg_id=4522
+     -> IGNORED
+     Tutte notizie di oggi … 
+     Ora sicuramente fino le 14:30 iniziata a fare consolidamento
+
+[70] 2026-07-14 13:31:03 | msg_id=4523
+     -> IGNORED
+     State tutti connessi
+
+[71] 2026-07-14 13:55:41 | msg_id=4524
+     -> IGNORED
+     Sell 4030-4032
+
+[72] 2026-07-14 13:56:25 | msg_id=4525
+     -> IGNORED
+     XAUUSD SELL 4030-4032
+     
+     TP 4022
+     
+     SL 4034
+
+[73] 2026-07-14 14:07:26 | msg_id=4526
+     -> IGNORED
+     Preso stop poi crollato ❌
+
+[74] 2026-07-14 14:51:56 | msg_id=4527
+     -> IGNORED
+     XAUUSD BUY 4077 
+     
+     TP 4100 
+     
+     SL 4073
+
+[75] 2026-07-14 14:54:26 | msg_id=4528
+     -> IGNORED
+     40 PIPS ✅
+
+[76] 2026-07-14 14:54:48 | msg_id=4529
+     -> IGNORED
+     Aspetto entry più pulite, oggi news and mattina stato immobile
+
+[77] 2026-07-14 15:07:45 | msg_id=4530
+     -> IGNORED
+     XAUUSD BUY 4075
+     
+     TP 4085 
+     
+     SL 4070
+
+[78] 2026-07-14 15:07:48 | msg_id=4531
+     -> IGNORED
+     Sl 4070
+
+[79] 2026-07-14 15:07:51 | msg_id=4532
+     -> IGNORED
+     Tp 4085
+
+[80] 2026-07-14 15:13:27 | msg_id=4533
+     -> IGNORED
+     50 PIPS CLOSE OR BE ✅
+
+[81] 2026-07-14 15:13:34 | msg_id=4534
+     -> IGNORED
+     XAUUSD BUY 4073 
+     
+     TP 4083 
+     
+     SL 4069
+
+[82] 2026-07-14 15:13:37 | msg_id=4535
+     -> IGNORED
+     Sl 4069
+
+[83] 2026-07-14 15:18:57 | msg_id=4536
+     -> IGNORED
+     .
+
+[84] 2026-07-14 15:19:10 | msg_id=4537
+     -> IGNORED
+     TAKE PROFIT PRESO +100 PIPS ✅
+
+[85] 2026-07-14 17:55:47 | msg_id=4538
+     -> IGNORED
+     XAUUSD BUY 4066-4064 
+     
+     TP 4072 
+     
+     SL 4060
+
+[86] 2026-07-14 17:56:44 | msg_id=4539
+     -> IGNORED
+     .
+
+[87] 2026-07-14 17:57:06 | msg_id=4540
+     -> IGNORED
+     STOP PRESO -50 PIPS ❌
+
+[88] 2026-07-14 18:09:09 | msg_id=4541
+     -> IGNORED
+     .
+
+[89] 2026-07-14 18:09:54 | msg_id=4542
+     -> IGNORED
+     Per oggi basta così. Ci vediamo direttamente domani  ( 00:00 italiane )se ci sono altri set up oggi ve li mando
+
+[90] 2026-07-14 18:16:44 | msg_id=4543
+     -> IGNORED
+     Buy 4062-4060
+
+[91] 2026-07-14 18:17:19 | msg_id=4544
+     -> IGNORED
+     XAUUSD BUY 4060-4062 
+     
+     TP 4070 
+     TP 4100 
+     
+     SL 4056
+
+[92] 2026-07-14 18:23:21 | msg_id=4545
+     -> IGNORED
+     50 PIPS ✅
+
+[93] 2026-07-14 18:31:13 | msg_id=4546
+     -> IGNORED
+     Buy 4060-4058
+
+[94] 2026-07-14 18:33:08 | msg_id=4547
+     -> IGNORED
+     XAUUSD BUY 4059-4058
+     
+     TP 4070 
+     
+     SL 4053
+
+[95] 2026-07-14 18:46:13 | msg_id=4548
+     -> IGNORED
+     50 PIPS ✅
+
+[96] 2026-07-14 19:18:36 | msg_id=4549
+     -> IGNORED
+     4055 buy
+
+[97] 2026-07-14 19:18:51 | msg_id=4550
+     -> IGNORED
+     XAUUSD BUY 4055 
+     
+     TP 4062
+     
+     SL 4051
+
+[98] 2026-07-14 19:27:54 | msg_id=4551
+     -> IGNORED
+     TAKE PROFIT PRESO +70 PIPS ✅
+
+[99] 2026-07-15 00:00:57 | msg_id=4552
+     -> IGNORED
+     SIETE PRONTI ?
+
+[100] 2026-07-15 00:14:40 | msg_id=4553
+     -> IGNORED
+     Buy 4050
+
+[101] 2026-07-15 00:15:36 | msg_id=4554
+     -> IGNORED
+     XAUUSD BUY 4050-4048 
+     
+     TP 4055 
+     
+     SL 4046
+
+[102] 2026-07-15 00:38:46 | msg_id=4555
+     -> IGNORED
+     TAKE PROFIT PRESO +70 PIPS ✅
+
+[103] 2026-07-15 00:38:58 | msg_id=4556
+     -> IGNORED
+     Mercato totalmente immobile ancora
+
+[104] 2026-07-15 08:32:09 | msg_id=4557
+     -> IGNORED
+     Buongiorno a tutti 📈
+
+[105] 2026-07-15 08:35:10 | msg_id=4558
+     -> IGNORED
+     4026 buy sl 4021 
+     Trade risck
+
+[106] 2026-07-15 08:35:50 | msg_id=4559
+     -> IGNORED
+     XAUUSD BUY 4027-4024 
+     
+     TP 4033
+     TP 4041 
+     
+     SL 4021
+
+[107] 2026-07-15 08:52:21 | msg_id=4560
+     -> IGNORED
+     TAKE PROFIT PRESO +70 PIPS ✅
+
+[108] 2026-07-15 09:19:35 | msg_id=4562
+     -> IGNORED
+     XAUUSD BUY 4024-4025
+     
+     TP 4041
+     TP 4061
+     
+     SL 4021
+
+[109] 2026-07-15 09:31:10 | msg_id=4563
+     -> IGNORED
+     Stop preso -30 pips ❌
+
+[110] 2026-07-15 09:31:18 | msg_id=4564
+     -> IGNORED
+     XAUUSD BUY 4024-4021
+     
+     TP 4041 
+     
+     SL 4019
+
+[111] 2026-07-15 09:36:29 | msg_id=4565
+     -> IGNORED
+     60 PIPS CLOSE OR BREKIVEN ✅
+
+[112] 2026-07-15 09:41:02 | msg_id=4566
+     -> IGNORED
+     Se il prezzo arriverà a 4012-4006 cercheremo oppurtunita per buy
+
+[113] 2026-07-15 13:27:00 | msg_id=4567
+     -> IGNORED
+     10 candele h1 così . Da 10 ore in ranging consolidamento 🤦🏻‍♂️. Attendiamo movimenti chiave
+
+[114] 2026-07-15 13:43:16 | msg_id=4568
+     -> IGNORED
+     Zona sell 4042-4048
+     ANDIAMO GIÙ OGGI CE NEWS AT 14:30 orario italiano attenti !!!!
+
+[115] 2026-07-15 14:04:08 | msg_id=4569
+     -> IGNORED
+     XAUUSD SELL 4042-4045
+     
+     TP 4034
+     TP 4000 
+     
+     SL 4049
+
+[116] 2026-07-15 14:06:28 | msg_id=4570
+     -> IGNORED
+     .
+
+[117] 2026-07-15 14:07:16 | msg_id=4571
+     -> IGNORED
+     50 PIPS CLOSE OR BREIKIVEN ✅
+
+[118] 2026-07-15 14:28:00 | msg_id=4572
+     -> IGNORED
+     -3 minuti news ..
+
+[119] 2026-07-15 14:32:52 | msg_id=4573
+     -> IGNORED
+     Sell 4054 sl 4059
+
+[120] 2026-07-15 14:33:56 | msg_id=4574
+     -> IGNORED
+     XAUUSD SELL 4054-4055
+     
+     TP 4047
+     
+     SL 4049
+
+[121] 2026-07-15 14:35:18 | msg_id=4575
+     -> IGNORED
+     40 PIPS ✅
+
+[122] 2026-07-15 14:35:21 | msg_id=4576
+     -> IGNORED
+     Sell 4058-4060
+
+[123] 2026-07-15 14:35:46 | msg_id=4577
+     -> IGNORED
+     XAUUSD SELL 4058
+     
+     TP 4050 
+     
+     SL 4062
+
+[124] 2026-07-15 14:39:46 | msg_id=4578
+     -> IGNORED
+     Set up fail , 
+     stop preso -40 PIPS ❌
+
+[125] 2026-07-15 14:55:59 | msg_id=4579
+     -> IGNORED
+     Sell 4064
+
+[126] 2026-07-15 14:56:34 | msg_id=4580
+     -> IGNORED
+     XAUUSD SELL 4064-4066
+     
+     TP 4054
+     
+     SL 4069
+
+[127] 2026-07-15 14:59:17 | msg_id=4581
+     -> IGNORED
+     Ci ha dato 35 pips + BREKIVEN o stop loss per chi non ha messo BREKIVEN in questo trade .
+
+[128] 2026-07-15 14:59:36 | msg_id=4582
+     -> IGNORED
+     XAUUSD SELL 4071 
+     
+     TP 4058 
+     
+     SL 4076
+
+[129] 2026-07-15 15:02:58 | msg_id=4583
+     -> IGNORED
+     TAKE PROFIT PRESO +130 PIPS ✅
+
+[130] 2026-07-15 18:21:27 | msg_id=4584
+     -> IGNORED
+     Ovviamente sangue freddo e no ludopatia , se non ci sono entrate non si entra , ieri c’è stata news importante e ha sbilanciato tutto .
+
+[131] 2026-07-15 18:22:32 | msg_id=4585
+     -> IGNORED
+     Zona buy 4034-4028
+
+[132] 2026-07-15 18:27:06 | msg_id=4586
+     -> IGNORED
+     XAUUSD BUY 4033-4031 
+     
+     TP 4039
+     
+     SL 4026
+
+[133] 2026-07-15 18:34:09 | msg_id=4587
+     -> IGNORED
+     TAKE PROFIT PRESO +80 PIPS ✅
+
+[134] 2026-07-15 19:07:27 | msg_id=4588
+     -> IGNORED
+     Zona sell 4040-4045
+
+[135] 2026-07-15 19:37:03 | msg_id=4589
+     -> IGNORED
+     Ovviamente attendete sempre mio signal . Qualsiasi zona che mando è per farmi sapere che probabilmente arriverà un set up in questo caso non c’è stato
+
+[136] 2026-07-15 20:53:44 | msg_id=4590
+     -> IGNORED
+     430 pips nella giornata di oggi 
+     Gli altri giorni abbiamo fatto molto meglio ma come sempre non ci lamentiamo pure oggi abbiamo portato con noi un bel profitto . Restate connessi per domani 00:00 italiane , ovviamente oggi c’erano bei movimenti ma ho preferito far calmare le acque dopo le due big news questa settimana che ci sono state. 🧘🏻📈
+
+[137] 2026-07-15 23:33:50 | msg_id=4591
+     -> IGNORED
+     PRONTI A MEZZANOTTE 🕛
+
+[138] 2026-07-16 00:56:03 | msg_id=4592
+     -> IGNORED
+     Lentissimo come ogni sera . Sì sono abbassati i volumi .inutile stare appresso , si sblocca solo alle 2-3 di notte poi si rimbocca poi si sblocca pomeriggio 2 ore poi sta fermo ancora . Quando è così c’è poco da fare
+
+[139] 2026-07-16 00:56:08 | msg_id=4593
+     -> IGNORED
+     Buy now 4058
+
+[140] 2026-07-16 00:56:27 | msg_id=4594
+     -> IGNORED
+     XAUUSD BUY 4059-4057 
+     
+     TP 4068 
+     
+     SL 4053
+
+[141] 2026-07-16 01:38:57 | msg_id=4595
+     -> IGNORED
+     40 PIPS CLOSE OR BREIVEN ✅
+
+[142] 2026-07-16 10:57:13 | msg_id=4596
+     -> IGNORED
+     BUONGIORNO SIETE PRONTI ?
+
+[143] 2026-07-16 11:29:00 | msg_id=4597
+     -> IGNORED
+     BUY NOW 4030
+
+[144] 2026-07-16 11:30:00 | msg_id=4598
+     -> IGNORED
+     XAUUSD BUY 4031-4029
+     
+     TP 4039
+     
+     SL 4026
+
+[145] 2026-07-16 11:39:39 | msg_id=4599
+     -> IGNORED
+     40 PIPS CLOSE OR BREIKIVEN ✅
+
+[146] 2026-07-16 14:26:21 | msg_id=4600
+     -> IGNORED
+     Buy 4019
+
+[147] 2026-07-16 14:27:04 | msg_id=4601
+     -> IGNORED
+     XAUUSD BUY 4019-4017 
+     
+     TP 4025 
+     TP 4040 
+     
+     SL 4014
+
+[148] 2026-07-16 14:30:07 | msg_id=4602
+     -> IGNORED
+     TAKE PROFIT PRESO +60 PIPS ✅
+
+[149] 2026-07-16 14:36:36 | msg_id=4603
+     -> IGNORED
+     Quando entrate a mercato calma e sangue freddo non entrate a caso , si sono abbassati pure i volumi sul gold e inoltre stiamo avendo una operativà molto molto costante e profittevole.
+
+[150] 2026-07-16 14:46:54 | msg_id=4604
+     -> IGNORED
+     Connessi ?
+
+[151] 2026-07-16 15:02:48 | msg_id=4605
+     -> IGNORED
+     Volevo prendere il sell ma non mi ha dato la zona che volevo prima  , comunque può scendere fino 3887
+
+[152] 2026-07-16 16:22:31 | msg_id=4606
+     -> IGNORED
+     Buy 3992-3990
+
+[153] 2026-07-16 16:23:44 | msg_id=4607
+     -> IGNORED
+     XAUUSD BUY 3992-3990 
+     
+     TP 4000 
+     
+     SL 3987
+
+[154] 2026-07-16 16:26:02 | msg_id=4608
+     -> IGNORED
+     Booommm
+
+[155] 2026-07-16 16:48:47 | msg_id=4609
+     -> IGNORED
+     TAKE PROFIT PRESO +100 PIPS ✅
+
+[156] 2026-07-16 16:49:37 | msg_id=4610
+     -> IGNORED
+     4022-4026 possibile zona sell
+
+[157] 2026-07-16 17:31:29 | msg_id=4611
+     -> IGNORED
+     4005-4000 possibile zona buy 
+     Vediamo quale prende prima
+
+[158] 2026-07-16 18:00:41 | msg_id=4612
+     -> IGNORED
+     Entriamo
+
+[159] 2026-07-16 18:01:45 | msg_id=4613
+     -> IGNORED
+     XAUUSD BUY 4004-4002
+     
+     TP 4013
+     
+     SL 3999
+
+[160] 2026-07-16 18:04:39 | msg_id=4614
+     -> IGNORED
+     STOP PRESO -40 PIPS ❌
+
+[161] 2026-07-16 18:06:44 | msg_id=4615
+     -> IGNORED
+     XAUUSD BUY 3998-3996 
+     
+     TP 4013 
+     
+     SL 3993
+
+[162] 2026-07-16 18:14:04 | msg_id=4616
+     -> IGNORED
+     STOP PRESO -40 PIPS ❌
+
+[163] 2026-07-16 18:18:30 | msg_id=4617
+     -> IGNORED
+     Da domani o direttamente lunedì per fortuna tornerà tutto ok il mercato con traiettorie pulite e zone pulite , date le varie news anche per quanto riguarda geopolitica stanno un po incasinati . 
+     PERÒ SEMPRE IN PROFIT . Sempre trasparente davanti a tutto . Mi aspettavo una giornata molto migliore
+
+[164] 2026-07-16 18:33:38 | msg_id=4618
+     -> IGNORED
+     Sell now 3990
+
+[165] 2026-07-16 18:36:39 | msg_id=4619
+     -> IGNORED
+     XAUUSD SELL 3990-3992 
+     
+     TP 3963 
+     TP 3943
+     
+     SL 3996
+
+[166] 2026-07-16 18:45:43 | msg_id=4620
+     -> IGNORED
+     40 PIPS CLOSE ORE BREKIVEN ✅
+
+[167] 2026-07-17 00:04:29 | msg_id=4621
+     -> IGNORED
+     Sell 3981
+
+[168] 2026-07-17 00:05:15 | msg_id=4622
+     -> IGNORED
+     XAUUSD SELL 3980-3982 
+     
+     TP 3973
+     
+     SL 3984
+
+[169] 2026-07-17 00:23:43 | msg_id=4623
+     -> IGNORED
+     50 PIPS CLOSE ORE BREKIVEN ✅
+
+[170] 2026-07-17 11:08:00 | msg_id=4624
+     -> IGNORED
+     GODD MORNING
+
+[171] 2026-07-17 11:08:09 | msg_id=4625
+     -> IGNORED
+     SEMBREREGBE TUTTO OK XAUU
+
+[172] 2026-07-17 11:09:21 | msg_id=4626
+     -> IGNORED
+     Sell 3997
+
+[173] 2026-07-17 11:10:12 | msg_id=4627
+     -> IGNORED
+     XAUUSD SELL 3997-3999 
+     
+     TP 3990
+     
+     SL 4002
+
+[174] 2026-07-17 11:25:52 | msg_id=4628
+     -> IGNORED
+     Analisi for today , concludiamo la giornata andando a prendere i minimo in d1 oppure li prenderanno lunedì o martedì della prossima settimana ?
+
+[175] 2026-07-17 11:54:32 | msg_id=4629
+     -> IGNORED
+     Ci aveva dato 30-40 pips poi andato stop . Oggi ci saranno belle entrate state connessi
+
+[176] 2026-07-17 14:46:26 | msg_id=4630
+     -> IGNORED
+     XAUUSD BUY 3968-3966 
+     
+     TP 3975 
+     TP 3987 
+     
+     SL 3963
+
+[177] 2026-07-17 14:46:30 | msg_id=4631
+     -> IGNORED
+     Sl 3963
+
+[178] 2026-07-17 14:47:45 | msg_id=4632
+     -> IGNORED
+     .
+
+[179] 2026-07-17 14:48:44 | msg_id=4633
+     -> IGNORED
+     50 PIPS CLOSE OR BREKIVEN ✅
+
+[180] 2026-07-17 14:53:36 | msg_id=4634
+     -> IGNORED
+     XAUUSD BUY 3966-3968
+     
+     TP 3975 
+     TP 3987 
+     
+     SL 3963
+
+[181] 2026-07-17 14:57:56 | msg_id=4635
+     -> IGNORED
+     50 PIPS CLOSE OR BREKIVEN ✅
+
+[182] 2026-07-17 15:38:42 | msg_id=4636
+     -> IGNORED
+     E sia l’analisi di oggi che vi ho mandato e sia quella buy sono state giuste ✅
+
+[183] 2026-07-17 15:43:21 | msg_id=4637
+     -> IGNORED
+     3983 buy
+
+[184] 2026-07-17 15:44:08 | msg_id=4638
+     -> IGNORED
+     XAUUSD BUY 3983-3981 
+     
+     TP 3989 
+     
+     SL 3978
+
+[185] 2026-07-17 15:46:26 | msg_id=4639
+     -> IGNORED
+     TAKE PROFIT PRESO +80 PIPS ✅
+
+[186] 2026-07-17 17:09:47 | msg_id=4640
+     -> IGNORED
+     CONNESSI HO UN SET UP
+
+[187] 2026-07-17 17:31:16 | msg_id=4641
+     -> IGNORED
+     XAUUSD BUY 4015-4018 
+     
+     TP 4010 
+     
+     SL 4023
+
+[188] 2026-07-17 17:31:33 | msg_id=4642
+     -> IGNORED
+     Sl 4023
+
+[189] 2026-07-17 17:32:21 | msg_id=4643
+     -> IGNORED
+     Tp 4010 
+     Tp 4000
+
+[190] 2026-07-17 17:36:56 | msg_id=4644
+     -> IGNORED
+     TAKE PROFIT PRESO +60 PIPS ✅
+
+[191] 2026-07-17 17:47:24 | msg_id=4645
+     -> IGNORED
+     CONNESSI HO UN SET UP
+
+[192] 2026-07-17 17:47:32 | msg_id=4646
+     -> IGNORED
+     4017 sell
+
+[193] 2026-07-17 17:48:52 | msg_id=4647
+     -> IGNORED
+     XAUUSD SELL 4019 
+     
+     TP 4010 
+     
+     SL 4023
+
+[194] 2026-07-17 18:00:47 | msg_id=4649
+     -> IGNORED
+     Tenete 4019
+
+[195] 2026-07-17 18:18:26 | msg_id=4650
+     -> IGNORED
+     70 PIPS CLOSE ORE BREKIVEN ✅
+
+[196] 2026-07-17 18:18:47 | msg_id=4651
+     -> IGNORED
+     Non mi aveva inviato il messaggio del breik ❤️
+
+[197] 2026-07-17 18:18:53 | msg_id=4652
+     -> IGNORED
+     Potrei avere un ultimo set up per oggi
+
+[198] 2026-07-17 18:19:17 | msg_id=4653
+     -> IGNORED
+     Attualmente siamo 7 su 7 in profitto
+
+  Totale: 198 messaggi

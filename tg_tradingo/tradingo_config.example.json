@@ -22,52 +22,131 @@
 
   "channels": [
     {
-      "id": "CH1",
-      "enabled": true,
-      "telegram_id": -1003026686847,
-      "name": "Zanni VIP Signals",
-      "parser": "zanni_vip",
-      "signal_file": "signal_ch1.json",
-      "magic_base": 11000,
-      "risk_percent": 0.5,
-      "splits": [0.4, 0.4, 0.2],
-      "notes": "3 trade 40/40/20%. BE auto su TP1."
-    },
-    {
-      "id": "CH2",
+      "id": "CH_GOLD",
       "enabled": true,
       "telegram_id": -1003302540529,
-      "name": "Sala Gold VIP",
+      "name": "Sala GOLD VIP",
       "parser": "sala_gold",
-      "signal_file": "signal_ch2.json",
+      "signal_file": "signal_ch_gold.json",
       "magic_base": 12000,
       "risk_percent": 0.5,
       "splits": [0.6, 0.4],
-      "notes": "Naked msg -> OPEN_NOW, poi UPDATE_OPEN con SL/TP."
+      "execution": {
+        "mode": "risk_percent",
+        "risk_percent": 0.5,
+        "symbol_default": "XAUUSD",
+        "trades": 2,
+        "splits": [0.6, 0.4],
+        "be_enabled": true,
+        "be_trigger": "TP1",
+        "be_level": "entry",
+        "notes": "Naked OPEN_NOW poi UPDATE_OPEN. 2 TP, BE auto su TP1."
+      }
     },
     {
-      "id": "CH3",
+      "id": "CH_FOREX",
       "enabled": true,
       "telegram_id": -1002890661441,
-      "name": "Sala VIP",
+      "name": "Sala FOREX VIP",
       "parser": "sala_vip",
-      "signal_file": "signal_ch3.json",
+      "signal_file": "signal_ch_forex.json",
       "magic_base": 13000,
       "fixed_lot_xauusd": 0.05,
       "fixed_lot_forex": 0.20,
-      "notes": "Lotto fisso. Apre senza SL/TP, aggiorna su messaggi successivi."
+      "execution": {
+        "mode": "fixed_lot",
+        "fixed_lot_xauusd": 0.05,
+        "fixed_lot_forex": 0.20,
+        "trades": 1,
+        "splits": [1.0],
+        "be_enabled": false,
+        "notes": "Apre senza SL/TP, aggiorna su Modified. VERIFICARE telegram_id con resolve_channels.py"
+      }
     },
     {
-      "id": "CH4",
+      "id": "CH_ORO",
+      "enabled": true,
+      "telegram_id": -1003950995427,
+      "name": "Sala ORO VIP",
+      "parser": "placeholder",
+      "signal_file": "signal_ch_oro.json",
+      "magic_base": 14100,
+      "risk_percent": 0.5,
+      "splits": [0.6, 0.4],
+      "execution": {
+        "mode": "risk_percent",
+        "risk_percent": 0.5,
+        "symbol_default": "XAUUSD",
+        "trades": 2,
+        "splits": [0.6, 0.4],
+        "be_enabled": true,
+        "be_trigger": "TP1",
+        "be_level": "entry",
+        "notes": "Parser da definire dopo dump 13-17 lug. Probabile simile a GOLD."
+      }
+    },
+    {
+      "id": "CH_STARK",
       "enabled": true,
       "telegram_id": -1002073368935,
       "name": "Sala Stark",
       "parser": "sala_stark",
-      "signal_file": "signal_ch4.json",
+      "signal_file": "signal_ch_stark.json",
       "magic_base": 14000,
       "risk_percent": 0.5,
       "splits": [0.5, 0.4, 0.1],
-      "notes": "Aggiungo=lotto dimezzato. BE auto TP1."
+      "execution": {
+        "mode": "risk_percent",
+        "risk_percent": 0.5,
+        "trades": 3,
+        "splits": [0.5, 0.4, 0.1],
+        "be_enabled": true,
+        "be_trigger": "TP1",
+        "be_level": "entry",
+        "add_lot_factor": 0.5,
+        "notes": "Aggiungo operazione = lotto dimezzato. Spesso solo TP1 nel messaggio."
+      }
+    },
+    {
+      "id": "CH_MOMO",
+      "enabled": true,
+      "telegram_id": -1003448619258,
+      "name": "In momo Veritas VIP",
+      "parser": "placeholder",
+      "signal_file": "signal_ch_momo.json",
+      "magic_base": 16000,
+      "risk_percent": 0.5,
+      "splits": [1.0],
+      "execution": {
+        "mode": "risk_percent",
+        "risk_percent": 0.5,
+        "trades": 1,
+        "splits": [1.0],
+        "be_enabled": true,
+        "be_trigger": "TP1",
+        "be_level": "entry",
+        "notes": "Mix analisi + segnali. Parser dedicato momo_veritas da costruire."
+      }
+    },
+    {
+      "id": "CH_IVAN",
+      "enabled": false,
+      "telegram_id": -1002489153466,
+      "name": "Ivan Trades",
+      "parser": "placeholder",
+      "signal_file": "signal_ch_ivan.json",
+      "magic_base": 17000,
+      "fixed_lot_xauusd": 0.05,
+      "fixed_lot_forex": 0.20,
+      "execution": {
+        "mode": "fixed_lot",
+        "fixed_lot_xauusd": 0.05,
+        "fixed_lot_forex": 0.20,
+        "trades": 1,
+        "splits": [1.0],
+        "be_enabled": false,
+        "notes": "Canale non ancora attivo. Abilitare quando si ottiene accesso VIP."
+      }
     }
   ]
 }

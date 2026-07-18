@@ -1,0 +1,83 @@
+========================================================================
+TG TradinGo — dump 2026-07-13 → 2026-07-17
+Generato: 2026-07-18 12:45:54
+Intervallo UTC: 2026-07-13T00:00:00+00:00 → 2026-07-17T23:59:59.999999+00:00
+========================================================================
+
+========================================================================
+CH1 | Zanni VIP Signals | parser=zanni_vip
+telegram_id: -1003026686847
+execution: {}
+========================================================================
+  (nessun messaggio nel periodo)
+
+
+========================================================================
+CH2 | Sala Gold VIP | parser=sala_gold
+telegram_id: -1003302540529
+execution: {}
+========================================================================
+[01] 2026-07-18 11:13:06 | msg_id=1569
+     -> IGNORED
+     **📊 REPORT SETTIMANALE – SALA VIP GOLD
+     📅 13 – 17 Luglio
+     
+     Settimana molto positiva per la Sala VIP Gold, caratterizzata da un’operatività solida e una gestione del rischio che ha permesso di chiudere con un risultato di rilievo.
+     
+     🏆 Risultato Finale: +840 Pips
+     
+     📊 Statistiche della settimana
+     
+     📌 Operazioni Totali: 9
+     ✅ Operazioni Vincenti: 6
+     ❌ Operazioni Perdenti: 3
+     🎯 Win Rate: 66,7%
+     ⚖️ Profit Factor: 2,87
+     📈 Pips Lordi: +1.290
+     📉 Pips Persi: -450
+     📊 Media per Operazione: +93,3 pips
+     
+     Nonostante tre operazioni chiuse in stop, i trade vincenti hanno più che compensato le perdite, confermando l’efficacia di un approccio basato su gestione del rischio, disciplina e selezione dei setup.
+     
+     Grazie a tutti i membri della Sala VIP Gold per la fiducia. Ci vediamo la prossima settimana per continuare il nostro percorso con la stessa costanza e professionalità. 🚀📈**
+
+  Totale: 1 messaggi
+
+
+========================================================================
+CH3 | Sala VIP | parser=sala_vip
+telegram_id: -1002890661441
+execution: {}
+========================================================================
+[01] 2026-07-18 11:13:51 | msg_id=1515
+     -> IGNORED
+     **📊 REPORT SETTIMANALE – SALA VIP FOREX
+     📅 13 – 17 Luglio
+     
+     Si chiude un’altra settimana positiva per la Sala VIP Forex, con un’operatività selettiva e una gestione del rischio che continua a dare risultati.
+     
+     📈 Risultato Finale: +67 Pips
+     
+     📊 Statistiche della settimana
+     • Operazioni Totali: 4
+     • Operazioni Vincenti: 3
+     • Operazioni Perdenti: 1
+     • 🎯 Win Rate: 75%
+     • ⚖️ Profit Factor: 4.05
+     • 📈 Pips Lordi: +89
+     • 📉 Pips Persi: -22
+     • 📌 Media per Operazione: +16,8 pips
+     
+     Un solo stop è stato sufficiente per mantenere comunque un Profit Factor superiore a 4, segno di un’operatività focalizzata sulla qualità dei setup piuttosto che sulla quantità delle operazioni.
+     
+     Grazie a tutti per la fiducia. Ci vediamo lunedì per una nuova settimana di trading! 🚀📊**
+
+  Totale: 1 messaggi
+
+
+========================================================================
+CH4 | Sala Stark | parser=sala_stark
+telegram_id: -1002073368935
+execution: {}
+========================================================================
+  (nessun messaggio nel periodo)

@@ -127,6 +127,7 @@ class TestCH2SalaGold:
         assert sig["action"] == "OPEN"
         assert sig["direction"] == "SELL"
         assert sig["entry_range"] == [4796.0, 4800.0]
+        assert sig["entry"] is None
 
     def test_break_even_price(self, bridge_state: BridgeState):
         sig = parser_sala_gold("4789 gold break even", CH2, bridge_state)
@@ -228,6 +229,8 @@ class TestCHORO:
         assert sig["direction"] == "BUY"
         assert len(sig["tp_levels"]) == 2
         assert sig["sl"] == 4068.0
+        assert sig["entry_range"] == [4071.0, 4073.0]
+        assert sig["entry"] is None
 
     def test_open_single_tp(self):
         text = "XAUUSD BUY 4088\nTP 4098\nSL 4083"

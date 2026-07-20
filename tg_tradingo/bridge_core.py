@@ -205,6 +205,19 @@ def _sl_coherent(direction: str, entry: float | None, sl: float) -> bool:
     return False
 
 
+def _sl_coherent_with_range(direction: str, entry_range: list[float] | None, sl: float) -> bool:
+    if sl <= 0:
+        return False
+    if not entry_range or len(entry_range) != 2:
+        return True
+    lo, hi = min(entry_range), max(entry_range)
+    if direction == "BUY":
+        return sl < lo
+    if direction == "SELL":
+        return sl > hi
+    return False
+
+
 def _tp_coherent(direction: str, entry: float | None, tps: list[float]) -> bool:
     if not tps:
         return True
@@ -216,6 +229,22 @@ def _tp_coherent(direction: str, entry: float | None, tps: list[float]) -> bool:
         if direction == "BUY" and tp <= entry:
             return False
         if direction == "SELL" and tp >= entry:
+            return False
+    return True
+
+
+def _tp_coherent_with_range(direction: str, entry_range: list[float] | None, tps: list[float]) -> bool:
+    if not tps:
+        return True
+    if not entry_range or len(entry_range) != 2:
+        return _tp_coherent(direction, None, tps)
+    lo, hi = min(entry_range), max(entry_range)
+    for tp in tps:
+        if tp <= 0:
+            return False
+        if direction == "BUY" and tp <= hi:
+            return False
+        if direction == "SELL" and tp >= lo:
             return False
     return True
 
@@ -282,11 +311,17 @@ def validate_signal(signal: dict) -> tuple[bool, str]:
             return False, "entry_range is not plausible"
 
         if sl is not None and direction in ("BUY", "SELL"):
-            if not _sl_coherent(direction, entry, sl):
+            if entry_range is not None:
+                if not _sl_coherent_with_range(direction, entry_range, sl):
+                    return False, f"SL {sl} incoherent with {direction} range {entry_range}"
+            elif not _sl_coherent(direction, entry, sl):
                 return False, f"SL {sl} incoherent with {direction} entry {entry}"
 
         if tps and direction in ("BUY", "SELL"):
-            if not _tp_coherent(direction, entry, tps):
+            if entry_range is not None:
+                if not _tp_coherent_with_range(direction, entry_range, tps):
+                    return False, f"TP levels {tps} incoherent with {direction} range {entry_range}"
+            elif not _tp_coherent(direction, entry, tps):
                 return False, f"TP levels {tps} incoherent with {direction} entry {entry}"
 
     if action == "OPEN_NOW":

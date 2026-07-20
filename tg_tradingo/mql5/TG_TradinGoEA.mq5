@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.01"
+#property version   "2.02"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -23,7 +23,8 @@ input double InpLotMultiplier      = 1.0;
 input double InpAddLotFactor       = 0.5;
 input int    InpMaxSlippagePoints  = 50;
 input int    InpPollMs             = 500;
-input int    InpEntryRangeTimeoutSec = 3600;
+input int    InpRangeTolerancePoints = 150;
+input bool   InpLogCancelledSignals  = true;
 input bool   InpAutoBreakEvenOnTp1 = true;
 input ulong  InpMagicOffset        = 0;
 
@@ -39,25 +40,12 @@ string g_channelFile[MAX_CHANNELS];
 string g_lastTimestamp[MAX_CHANNELS];
 int    g_channelCount = 0;
 
-//--- pending entry range wait
-struct PendingRange
+enum EntryRangeDecision
   {
-   bool     active;
-   string   channelFile;
-   string   timestamp;
-   string   direction;
-   string   symbol;
-   double   rangeLo;
-   double   rangeHi;
-   double   sl;
-   double   tpLevels[];
-   int      trades;
-   double   fixedLot;
-   int      magicBase;
-   datetime started;
+   ENTRY_EXECUTE_IN_RANGE = 0,
+   ENTRY_EXECUTE_TOLERANCE = 1,
+   ENTRY_CANCELLED = 2
   };
-
-PendingRange g_pending;
 
 //+------------------------------------------------------------------+
 string Trim(const string s)
@@ -362,37 +350,102 @@ bool PriceInRange(const string symbol, const string direction, const double lo, 
   }
 
 //+------------------------------------------------------------------+
-void ClearPendingRange()
+EntryRangeDecision EvaluateEntryRange(const string symbol, const string direction,
+                                      const double lo, const double hi,
+                                      double &outPrice, double &outDistancePoints)
   {
-   g_pending.active = false;
-   g_pending.timestamp = "";
-   ArrayResize(g_pending.tpLevels, 0);
+   g_sym.Name(symbol);
+   g_sym.RefreshRates();
+   outPrice = (direction == "BUY") ? g_sym.Ask() : g_sym.Bid();
+   if(outPrice >= lo && outPrice <= hi)
+     {
+      outDistancePoints = 0.0;
+      return ENTRY_EXECUTE_IN_RANGE;
+     }
+   double distPrice = (outPrice < lo) ? (lo - outPrice) : (outPrice - hi);
+   double point = g_sym.Point();
+   if(point <= 0.0)
+      point = _Point;
+   outDistancePoints = distPrice / point;
+   if(outDistancePoints <= (double)InpRangeTolerancePoints)
+      return ENTRY_EXECUTE_TOLERANCE;
+   return ENTRY_CANCELLED;
   }
 
 //+------------------------------------------------------------------+
-void SetPendingRange(const string channelFile, const string json,
-                     const string direction, const string symbol,
-                     const double lo, const double hi, const double sl,
-                     const double &tps[], const int trades, const double fixedLot,
-                     const int magicBase)
+void LogCancelledSignal(const string channelFile, const string json,
+                        const string symbol, const string direction,
+                        const double lo, const double hi,
+                        const double price, const double distancePoints)
   {
-   g_pending.active = true;
-   g_pending.channelFile = channelFile;
-   g_pending.timestamp = JsonGetString(json, "timestamp");
-   g_pending.direction = direction;
-   g_pending.symbol = symbol;
-   g_pending.rangeLo = lo;
-   g_pending.rangeHi = hi;
-   g_pending.sl = sl;
-   ArrayResize(g_pending.tpLevels, ArraySize(tps));
-   ArrayCopy(g_pending.tpLevels, tps);
-   g_pending.trades = trades;
-   g_pending.fixedLot = fixedLot;
-   g_pending.magicBase = magicBase;
-   g_pending.started = TimeCurrent();
-   Print("[TradinGo] Waiting entry range ", symbol, " ", direction,
-         " [", DoubleToString(lo, (int)g_sym.Digits()), ",",
-         DoubleToString(hi, (int)g_sym.Digits()), "]");
+   string ts = JsonGetString(json, "timestamp");
+   string ch = JsonGetString(json, "channel_id");
+   Print("[TradinGo] SIGNAL_CANCELLED ", ch, " ", symbol, " ", direction,
+         " range=[", DoubleToString(lo, (int)g_sym.Digits()), ",",
+         DoubleToString(hi, (int)g_sym.Digits()), "]",
+         " price=", DoubleToString(price, (int)g_sym.Digits()),
+         " distance_points=", DoubleToString(distancePoints, 1),
+         " max_tolerance=", InpRangeTolerancePoints,
+         " ts=", ts);
+
+   if(!InpLogCancelledSignals)
+      return;
+
+   string line = StringFormat(
+      "%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.1f,CANCELLED_RANGE\n",
+      TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS),
+      ch,
+      channelFile,
+      symbol,
+      direction,
+      lo,
+      hi,
+      price,
+      distancePoints
+   );
+   int h = FileOpen("tradingo_signal_stats.csv",
+                    FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE)
+     {
+      h = FileOpen("tradingo_signal_stats.csv",
+                   FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_WRITE);
+      if(h != INVALID_HANDLE)
+         FileWriteString(h, "time,channel_id,file,symbol,direction,range_lo,range_hi,price,distance_points,status\n");
+     }
+   if(h != INVALID_HANDLE)
+     {
+      FileSeek(h, 0, SEEK_END);
+      FileWriteString(h, line);
+      FileClose(h);
+     }
+  }
+
+//+------------------------------------------------------------------+
+bool TryExecuteWithEntryRange(const string channelFile, const string json,
+                              const string symbol, const string direction,
+                              const double lo, const double hi)
+  {
+   double price = 0.0;
+   double distPoints = 0.0;
+   EntryRangeDecision decision = EvaluateEntryRange(symbol, direction, lo, hi, price, distPoints);
+   if(decision == ENTRY_EXECUTE_IN_RANGE)
+     {
+      Print("[TradinGo] ENTRY_IN_RANGE ", symbol, " ", direction,
+            " price=", DoubleToString(price, (int)g_sym.Digits()),
+            " range=[", DoubleToString(lo, (int)g_sym.Digits()), ",",
+            DoubleToString(hi, (int)g_sym.Digits()), "]");
+      return true;
+     }
+   if(decision == ENTRY_EXECUTE_TOLERANCE)
+     {
+      Print("[TradinGo] ENTRY_TOLERANCE ", symbol, " ", direction,
+            " price=", DoubleToString(price, (int)g_sym.Digits()),
+            " distance_points=", DoubleToString(distPoints, 1),
+            " max=", InpRangeTolerancePoints);
+      return true;
+     }
+   LogCancelledSignal(channelFile, json, symbol, direction, lo, hi, price, distPoints);
+   return false;
   }
 
 //+------------------------------------------------------------------+
@@ -466,12 +519,8 @@ bool HandleOpen(const string channelFile, const string json)
 
    if(rangeHi > rangeLo)
      {
-      if(!PriceInRange(symbol, direction, rangeLo, rangeHi))
-        {
-         SetPendingRange(channelFile, json, direction, symbol, rangeLo, rangeHi,
-                         sl, tps, trades, fixedLot, magicBase);
+      if(!TryExecuteWithEntryRange(channelFile, json, symbol, direction, rangeLo, rangeHi))
          return true;
-        }
      }
 
    if(action == "OPEN_NOW")
@@ -502,6 +551,14 @@ bool HandleUpdateOpen(const string json)
    int openCnt = CountOurPositions(symbol, magicBase, 5);
    if(openCnt == 0)
      {
+      double entryRange[];
+      if(JsonGetNumberArray(json, "entry_range", entryRange) && ArraySize(entryRange) >= 2)
+        {
+         double lo = MathMin(entryRange[0], entryRange[1]);
+         double hi = MathMax(entryRange[0], entryRange[1]);
+         if(!TryExecuteWithEntryRange("", json, symbol, direction, lo, hi))
+            return true;
+        }
       Print("[TradinGo] UPDATE_OPEN but no positions — opening fresh");
       return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase);
      }
@@ -754,28 +811,6 @@ void PollChannel(const int index)
   }
 
 //+------------------------------------------------------------------+
-void PollPendingRange()
-  {
-   if(!g_pending.active)
-      return;
-   if(InpEntryRangeTimeoutSec > 0 &&
-      (TimeCurrent() - g_pending.started) > InpEntryRangeTimeoutSec)
-     {
-      Print("[TradinGo] Entry range timeout ", g_pending.symbol);
-      ClearPendingRange();
-      return;
-     }
-   if(!PriceInRange(g_pending.symbol, g_pending.direction,
-                    g_pending.rangeLo, g_pending.rangeHi))
-      return;
-
-   double lot = NormalizeLot(g_pending.symbol, g_pending.fixedLot);
-   OpenSplitTrades(g_pending.symbol, g_pending.direction, lot,
-                   g_pending.sl, g_pending.tpLevels, g_pending.magicBase);
-   ClearPendingRange();
-  }
-
-//+------------------------------------------------------------------+
 void ParseChannels()
   {
    g_channelCount = 0;
@@ -797,12 +832,12 @@ void ParseChannels()
 int OnInit()
   {
    ParseChannels();
-   ClearPendingRange();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.01 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.02 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
-         " abs=", InpUseAbsolutePath);
+         " abs=", InpUseAbsolutePath,
+         " range_tolerance_pts=", InpRangeTolerancePoints);
    for(int i = 0; i < g_channelCount; i++)
       Print("[TradinGo]  watch ", g_channelFile[i]);
    return INIT_SUCCEEDED;
@@ -819,7 +854,6 @@ void OnTimer()
   {
    for(int i = 0; i < g_channelCount; i++)
       PollChannel(i);
-   PollPendingRange();
   }
 
 //+------------------------------------------------------------------+

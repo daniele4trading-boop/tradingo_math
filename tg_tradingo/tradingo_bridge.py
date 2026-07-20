@@ -264,7 +264,7 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
 # Formato completo (aggiorna il trade naked appena aperto, oppure standalone):
 #   "Sell gold now 4775 - 4780\nSL: 4789\nTp: 4768*\nTp: 4755"
 #
-# Entry range: se c'e' un range [min, max], l'EA entra se il prezzo e' nel range
+# Entry range: [min, max] — EA valuta se il prezzo e' nel range (non usa la media)
 # BE: AUTOMATICO nell'EA su TP1 hit — messaggi BE/SL/TP hit ignorati
 
 def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
@@ -374,7 +374,7 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
                 entry_range = None
             else:
                 entry_range = [min(v1, v2), max(v1, v2)]
-                entry       = (v1 + v2) / 2
+                entry       = None
         elif len(parts) == 1:
             entry = pf(parts[0])
 
@@ -560,8 +560,8 @@ def parser_sala_oro(text: str, ch: dict) -> dict | None:
     direction = m.group(1)
     entry1    = pf(m.group(2))
     entry2    = pf(m.group(3)) if m.group(3) else None
-    entry     = (entry1 + entry2) / 2 if entry2 else entry1
     entry_range = [min(entry1, entry2), max(entry1, entry2)] if entry2 else None
+    entry     = None if entry_range else entry1
 
     sl = None
     m_sl = re.search(r"\bSL\s*[:\s]\s*([\d.,]+)", upper)
@@ -575,7 +575,8 @@ def parser_sala_oro(text: str, ch: dict) -> dict | None:
     if not tps and sl is None:
         return None
 
-    log.info(f"[ORO] OPEN {direction} XAUUSD @ {entry} TP={tps} SL={sl}")
+    entry_log = f"range={entry_range}" if entry_range else f"@{entry}"
+    log.info(f"[ORO] OPEN {direction} XAUUSD {entry_log} TP={tps} SL={sl}")
     return {
         "action":      "OPEN",
         "direction":   direction,

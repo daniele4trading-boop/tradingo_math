@@ -48,8 +48,8 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 | `action` | string | Vedi tabella azioni |
 | `direction` | `"BUY"` \| `"SELL"` | Obbligatorio per OPEN* |
 | `symbol` | string | Es. `XAUUSD`, `EURUSD` |
-| `entry` | number \| null | Prezzo singolo o media del range |
-| `entry_range` | `[lo, hi]` \| null | Entra solo se prezzo nel range |
+| `entry` | number \| null | Prezzo singolo; **null** se c'è `entry_range` |
+| `entry_range` | `[lo, hi]` \| null | EA valuta prezzo nel range (non usa media) |
 | `sl` | number \| null | Stop loss |
 | `tp_levels` | number[] | Un TP per trade split |
 | `trades` | int | Numero posizioni da aprire |
@@ -99,12 +99,19 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 
 ### Entry range
 
-Se `entry_range` è `[lo, hi]`:
+Se `entry_range` è `[lo, hi]` il parser **non** calcola la media in `entry` (resta `null`).
 
-- **BUY:** entra quando Ask ∈ [lo, hi]
-- **SELL:** entra quando Bid ∈ [lo, hi]
-- Se il prezzo è fuori range: **attendi** (non saltare il segnale finché non scade timeout opzionale o arriva un nuovo timestamp)
-- Se span > 500 punti il bridge non invia `entry_range` (solo `entry`)
+L'EA valuta **subito** al ricevimento del segnale:
+
+| Condizione | Azione |
+|------------|--------|
+| Prezzo ∈ [lo, hi] | Esegue a mercato (`ENTRY_IN_RANGE`) |
+| Prezzo fuori range ma distanza ≤ `InpRangeTolerancePoints` (default **150** ≈ 15 pip su XAUUSD) | Esegue comunque (`ENTRY_TOLERANCE`) |
+| Prezzo troppo lontano | **Non esegue** — log `SIGNAL_CANCELLED` + riga in `MQL5\Files\tradingo_signal_stats.csv` |
+
+`InpRangeTolerancePoints` è in **punti MT5** del simbolo (`_Point`). Per XAUUSD 2 decimali: 100 punti ≈ 1.0$, 200 punti ≈ 2.0$.
+
+Non c'è più attesa passiva del prezzo nel range.
 
 ### STARK `is_add_signal` / `inherit_from_first`
 
@@ -127,7 +134,8 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 | `InpLotMultiplier` | 1.0 | Scala lotti per amici |
 | `InpMaxSlippagePoints` | 50 | Slippage |
 | `InpPollMs` | 500 | Intervallo lettura file |
-| `InpEntryRangeTimeoutSec` | 3600 | Abbandona attesa range dopo N sec |
+| `InpRangeTolerancePoints` | 150 | Max distanza (punti) dal range per entrare comunque |
+| `InpLogCancelledSignals` | true | Scrive `tradingo_signal_stats.csv` |
 | `InpChannels` | `gold,forex,oro,stark` | File da monitorare |
 
 ---

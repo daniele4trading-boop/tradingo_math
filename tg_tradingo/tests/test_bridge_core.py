@@ -13,6 +13,7 @@ if str(TG_ROOT) not in sys.path:
 from bridge_core import (
     ProcessedMessageStore,
     atomic_write_text,
+    validate_signal,
 )
 
 
@@ -36,3 +37,34 @@ def test_dedup_new_and_edit(tmp_path: Path):
     store.mark_processed(key_edit_a)
     assert store.is_duplicate(key_edit_a)
     assert not store.is_duplicate(key_edit_b)
+
+
+def test_validate_open_with_entry_range_no_entry_price():
+    signal = {
+        "action": "OPEN",
+        "direction": "BUY",
+        "symbol": "XAUUSD",
+        "entry": None,
+        "entry_range": [4006.0, 4007.0],
+        "sl": 4004.0,
+        "tp_levels": [4017.0],
+        "magic_base": 14100,
+    }
+    ok, reason = validate_signal(signal)
+    assert ok, reason
+
+
+def test_validate_rejects_sl_inside_entry_range():
+    signal = {
+        "action": "OPEN",
+        "direction": "BUY",
+        "symbol": "XAUUSD",
+        "entry": None,
+        "entry_range": [4006.0, 4007.0],
+        "sl": 4006.5,
+        "tp_levels": [4017.0],
+        "magic_base": 14100,
+    }
+    ok, reason = validate_signal(signal)
+    assert not ok
+    assert "range" in reason

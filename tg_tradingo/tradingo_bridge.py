@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.0
+TG TradinGo Bridge - v2.01
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -50,6 +50,8 @@ def load_config():
         return json.load(f)
 
 CONFIG = load_config()
+
+BRIDGE_VERSION = "2.01"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGGING
@@ -1014,7 +1016,7 @@ async def run_bridge():
     bridge_state, processed_messages = _ensure_runtime()
     tg_cfg = CONFIG["telegram"]
     log.info("=" * 60)
-    log.info("TG TradinGo Bridge v2.0")
+    log.info(f"TG TradinGo Bridge v{BRIDGE_VERSION}")
     log.info(f"Config:  {CONFIG_FILE}")
     log.info(f"Session: {tg_cfg['session_file']}")
 

@@ -28,14 +28,25 @@ git pull origin cursor/tg-tradingo-hardening-8e22
 powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_to_vps.ps1
 ```
 
-## 2. Risolvi IvanTrades - VIP
+## 2. IvanTrades - VIP (ID confermato)
 
-```powershell
-cd C:\TG_TradinGo
-python resolve_channels.py --query "IvanTrades - VIP"
+`telegram_id: -1002112242007`
+
+In `tradingo_config.json` → canale `CH_IVAN`:
+
+```json
+"telegram_id": -1002112242007,
+"enabled": false
 ```
 
-Copia `telegram_id` in `tradingo_config.json` → canale `CH_IVAN`, poi `"enabled": true` quando pronti.
+Lasciare `enabled: false` finché non arriva il primo segnale operativo e non costruiamo il parser.
+Per campionare messaggi Ivan senza abilitare il bridge:
+
+```powershell
+python fetch_date_range.py --from 2026-07-20 --to 2026-07-20 --channel CH_IVAN
+```
+
+(serve `CH_IVAN` nel config con telegram_id corretto)
 
 ## 3. Aggiorna config produzione
 

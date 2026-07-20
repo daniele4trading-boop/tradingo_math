@@ -31,6 +31,7 @@ tg_tradingo/signals/signal_ch*.json
 !tg_tradingo/signals/signal_ch*.json.example
 tg_tradingo/state/
 tg_tradingo/.pytest_cache/
+tg_tradingo/C:/
 
 # accounts MT5 StatArb (credenziali)
 accounts.json

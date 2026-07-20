@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.00"
+#property version   "2.01"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -13,8 +13,10 @@
 #include <Trade/SymbolInfo.mqh>
 
 //--- inputs
-input string InpSignalsPath        = "C:\\TG_TradinGo\\signals\\";
-input bool   InpUseAbsolutePath    = true;
+// Default: read signal_ch_*.json from MQL5\\Files (where the bridge writes).
+// Set InpUseAbsolutePath=true only for a custom folder outside MQL5\\Files.
+input string InpSignalsPath        = "";
+input bool   InpUseAbsolutePath    = false;
 input string InpChannels           = "gold,forex,oro,stark";
 input string InpSymbolSuffix       = "";
 input double InpLotMultiplier      = 1.0;
@@ -151,33 +153,38 @@ bool JsonGetNumberArray(const string json, const string key, double &out[])
   }
 
 //+------------------------------------------------------------------+
-string BuildSignalPath(const string fileName)
+string BuildAbsoluteSignalPath(const string fileName)
   {
-   if(InpUseAbsolutePath)
-     {
-      string base = InpSignalsPath;
-      if(StringLen(base) > 0 && StringGetCharacter(base, StringLen(base) - 1) != '\\')
-         base += "\\";
-      return base + fileName;
-     }
-   return fileName;
+   string base = InpSignalsPath;
+   if(StringLen(base) > 0 && StringGetCharacter(base, StringLen(base) - 1) != '\\')
+      base += "\\";
+   return base + fileName;
   }
 
 //+------------------------------------------------------------------+
-bool ReadTextFile(const string path, string &content)
+string BuildRelativeSignalPath(const string fileName)
+  {
+   if(StringLen(InpSignalsPath) == 0)
+      return fileName;
+   string base = InpSignalsPath;
+   if(StringGetCharacter(base, StringLen(base) - 1) != '\\')
+      base += "\\";
+   return base + fileName;
+  }
+
+//+------------------------------------------------------------------+
+bool ReadTextFileContent(const string path, string &content)
   {
    content = "";
    int flags = FILE_READ | FILE_TXT | FILE_ANSI | FILE_SHARE_READ;
+   ResetLastError();
    int h = FileOpen(path, flags);
    if(h == INVALID_HANDLE)
      {
-      // retry relative to MQL5/Files
+      ResetLastError();
       h = FileOpen(path, flags | FILE_COMMON);
       if(h == INVALID_HANDLE)
-        {
-         Print("[TradinGo] FileOpen failed: ", path, " err=", GetLastError());
          return false;
-        }
      }
    while(!FileIsEnding(h))
      {
@@ -187,6 +194,50 @@ bool ReadTextFile(const string path, string &content)
      }
    FileClose(h);
    return true;
+  }
+
+//+------------------------------------------------------------------+
+string JoinStrings(const string &parts[], const string sep)
+  {
+   string out = "";
+   for(int i = 0; i < ArraySize(parts); i++)
+     {
+      if(i > 0)
+         out += sep;
+      out += parts[i];
+     }
+   return out;
+  }
+
+//+------------------------------------------------------------------+
+bool ReadSignalFile(const string fileName, string &content)
+  {
+   string candidates[];
+   int n = 0;
+
+   if(InpUseAbsolutePath && StringLen(InpSignalsPath) > 0)
+     {
+      ArrayResize(candidates, n + 1);
+      candidates[n++] = BuildAbsoluteSignalPath(fileName);
+     }
+
+   ArrayResize(candidates, n + 1);
+   candidates[n++] = BuildRelativeSignalPath(fileName);
+
+   ArrayResize(candidates, n + 1);
+   candidates[n++] = fileName;
+
+   for(int i = 0; i < n; i++)
+     {
+      if(ReadTextFileContent(candidates[i], content))
+         return true;
+     }
+
+   Print("[TradinGo] FileOpen failed for ", fileName,
+         " | tried: ", JoinStrings(candidates, " ; "),
+         " | err=", GetLastError(),
+         " | hint: bridge writes to MQL5\\Files of THIS terminal");
+   return false;
   }
 
 //+------------------------------------------------------------------+
@@ -696,9 +747,8 @@ bool ProcessSignalJson(const string channelFile, const string json)
 //+------------------------------------------------------------------+
 void PollChannel(const int index)
   {
-   string path = BuildSignalPath(g_channelFile[index]);
    string json;
-   if(!ReadTextFile(path, json))
+   if(!ReadSignalFile(g_channelFile[index], json))
       return;
    ProcessSignalJson(g_channelFile[index], json);
   }
@@ -750,8 +800,9 @@ int OnInit()
    ClearPendingRange();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.0 started | channels=", g_channelCount,
-         " path=", InpSignalsPath, " abs=", InpUseAbsolutePath);
+   Print("[TradinGo] EA v2.01 started | channels=", g_channelCount,
+         " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
+         " abs=", InpUseAbsolutePath);
    for(int i = 0; i < g_channelCount; i++)
       Print("[TradinGo]  watch ", g_channelFile[i]);
    return INIT_SUCCEEDED;

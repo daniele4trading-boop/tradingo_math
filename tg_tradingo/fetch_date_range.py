@@ -93,16 +93,49 @@ def format_signal(sig: dict | None) -> str:
     return " | ".join(parts)
 
 
-async def fetch_channel_messages(client, entity, start: datetime, end: datetime):
-    msgs = []
-    async for m in client.iter_messages(entity, offset_date=end, reverse=True):
-        msg_dt = m.date.replace(tzinfo=timezone.utc) if m.date.tzinfo is None else m.date.astimezone(timezone.utc)
-        if msg_dt < start:
-            break
+def message_body(message) -> str:
+    text = (getattr(message, "text", None) or getattr(message, "message", None) or "").strip()
+    if not text:
+        caption = getattr(message, "caption", None)
+        if caption:
+            text = caption.strip()
+    return text
+
+
+async def fetch_channel_messages(
+    client,
+    entity,
+    start: datetime,
+    end: datetime,
+    limit: int = 500,
+) -> list[tuple]:
+    """Newest-first scan; returns (message, body) in chronological order."""
+    msgs: list[tuple] = []
+    async for m in client.iter_messages(entity, limit=limit):
+        msg_dt = (
+            m.date.replace(tzinfo=timezone.utc)
+            if m.date.tzinfo is None
+            else m.date.astimezone(timezone.utc)
+        )
         if msg_dt > end:
             continue
-        if m.text and m.text.strip():
-            msgs.append(m)
+        if msg_dt < start:
+            break
+        body = message_body(m)
+        if body:
+            msgs.append((m, body))
+    msgs.reverse()
+    return msgs
+
+
+async def fetch_last_messages(client, entity, limit: int = 50) -> list[tuple]:
+    """Last N text/caption messages, chronological order."""
+    msgs: list[tuple] = []
+    async for m in client.iter_messages(entity, limit=limit):
+        body = message_body(m)
+        if body:
+            msgs.append((m, body))
+    msgs.reverse()
     return msgs
 
 
@@ -113,15 +146,19 @@ async def run(args: argparse.Namespace) -> None:
     log_dir = Path(config["paths"]["logs"])
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    date_from = parse_day(args.date_from)
-    date_to = parse_day(args.date_to)
-    if date_to < date_from:
-        raise SystemExit("--to deve essere >= --from")
-
-    start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
-    end = datetime.combine(date_to, time.max, tzinfo=timezone.utc)
-
-    out_name = f"signals_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.txt"
+    date_from = parse_day(args.date_from) if args.date_from else None
+    date_to = parse_day(args.date_to) if args.date_to else None
+    if args.last <= 0:
+        if not date_from or not date_to:
+            raise SystemExit("Specifica --from e --to, oppure --last N")
+        if date_to < date_from:
+            raise SystemExit("--to deve essere >= --from")
+        start = datetime.combine(date_from, time.min, tzinfo=timezone.utc)
+        end = datetime.combine(date_to, time.max, tzinfo=timezone.utc)
+        out_name = f"signals_{date_from.strftime('%Y%m%d')}_{date_to.strftime('%Y%m%d')}.txt"
+    else:
+        start = end = None
+        out_name = f"signals_last_{args.last}.txt"
     out_file = log_dir / out_name
     fixture_copy = (
         Path(__file__).resolve().parent
@@ -152,10 +189,13 @@ async def run(args: argparse.Namespace) -> None:
     try:
         async with client:
             log("=" * 72)
-            log(f"TG TradinGo — dump {date_from} → {date_to}")
+            if args.last > 0:
+                log(f"TG TradinGo — ultimi {args.last} messaggi")
+            else:
+                log(f"TG TradinGo — dump {date_from} → {date_to}")
+                log(f"Intervallo UTC: {start.isoformat()} → {end.isoformat()}")
             log(f"Config: {config_path}")
             log(f"Generato: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            log(f"Intervallo UTC: {start.isoformat()} → {end.isoformat()}")
             log("=" * 72)
 
             for ch in channels:
@@ -174,7 +214,12 @@ async def run(args: argparse.Namespace) -> None:
                 parser_fn = parsers.get(ch.get("parser", ""))
                 try:
                     entity = await client.get_entity(cid)
-                    msgs = await fetch_channel_messages(client, entity, start, end)
+                    if args.last > 0:
+                        msgs = await fetch_last_messages(client, entity, args.last)
+                    else:
+                        msgs = await fetch_channel_messages(
+                            client, entity, start, end, limit=args.scan_limit
+                        )
                 except Exception as exc:
                     log(f"  ERRORE: {exc}\n")
                     continue
@@ -183,16 +228,16 @@ async def run(args: argparse.Namespace) -> None:
                     log("  (nessun messaggio nel periodo)\n")
                     continue
 
-                for i, m in enumerate(msgs, 1):
+                for i, (m, body) in enumerate(msgs, 1):
                     ts = m.date.astimezone().strftime("%Y-%m-%d %H:%M:%S")
                     log(f"[{i:02d}] {ts} | msg_id={m.id}")
                     if args.parser_dry_run and parser_fn:
                         try:
-                            sig = parser_fn(m.text, ch)
+                            sig = parser_fn(body, ch)
                             log(f"     -> {format_signal(sig)}")
                         except Exception as exc:
                             log(f"     -> PARSER_ERROR: {exc}")
-                    for row in m.text.splitlines():
+                    for row in body.splitlines():
                         log(f"     {row}")
                     log()
 
@@ -214,8 +259,11 @@ async def run(args: argparse.Namespace) -> None:
 def main() -> None:
     configure_stdio()
     p = argparse.ArgumentParser(description="Dump messaggi Telegram per intervallo date")
-    p.add_argument("--from", dest="date_from", required=True, help="YYYY-MM-DD")
-    p.add_argument("--to", dest="date_to", required=True, help="YYYY-MM-DD")
+    p.add_argument("--from", dest="date_from", help="YYYY-MM-DD (richiesto senza --last)")
+    p.add_argument("--to", dest="date_to", help="YYYY-MM-DD (richiesto senza --last)")
+    p.add_argument("--last", type=int, default=0, help="Ultimi N messaggi testo/caption (ignora date)")
+    p.add_argument("--scan-limit", dest="scan_limit", type=int, default=500,
+                   help="Max messaggi Telegram da scansionare per intervallo date")
     p.add_argument("--parser-dry-run", action="store_true")
     p.add_argument("--config", help="Path tradingo_config.json (default: auto, preferisce C:\\TG_TradinGo)")
     p.add_argument("--channel", action="append", help="Filtra per id canale (es. CH_IVAN); include anche canali disabled")

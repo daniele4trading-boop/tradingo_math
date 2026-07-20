@@ -42,10 +42,11 @@ $deployFiles = @(
 # File/cartelle MAI sovrascritti in produzione
 $neverOverwrite = @(
     "tradingo_config.json",
-    "signals\signal_ch1.json",
-    "signals\signal_ch2.json",
-    "signals\signal_ch3.json",
-    "signals\signal_ch4.json",
+    "signals\signal_ch_gold.json",
+    "signals\signal_ch_forex.json",
+    "signals\signal_ch_oro.json",
+    "signals\signal_ch_stark.json",
+    "signals\signal_ch_ivan.json",
     "state\bridge_state.json",
     "state\processed_messages.json"
 )

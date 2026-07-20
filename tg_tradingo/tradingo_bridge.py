@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.01
+TG TradinGo Bridge - v2.02
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -51,7 +51,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.01"
+BRIDGE_VERSION = "2.02"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGGING
@@ -979,6 +979,124 @@ def parser_sala_stark(text: str, ch: dict) -> dict | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PARSER IVANTRADES VIP
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Formato tipico:
+#   XAUUSD SELL 4011
+#   TP 1 4006
+#   TP 2 4004
+#   ...
+#   SL @ 4022
+#
+# Gestione:
+#   Spostiamo SL a BE  -> CHECK_AND_BE
+#   CHIUDERE ORA       -> CLOSE_ALL_SYMBOL (XAUUSD)
+#   Meta size          -> lot_factor 0.5
+
+def parser_ivan_vip(text: str, ch: dict) -> dict | None:
+    raw = text.strip()
+    if not raw:
+        return None
+
+    upper = strip_md(raw).upper()
+
+    ignore_pats = [
+        r"^SL$",
+        r"^PECCATO$",
+        r"BUONGIORNO",
+        r"GTA\s+FRATELLI",
+        r"SCREEN\s+DI\s+PROFITTI",
+        r"STO\s+(?:SEMPRE\s+)?VALUTANDO",
+        r"^PROVIAMO$",
+        r"BOOO+MM",
+        r"EHEHE",
+        r"TP\s*\d+\s+HIT",
+        r"BE\s+HIT",
+        r"TAKE\s+PROFIT",
+        r"GESTIAMO\s+A\s+MERCATO",
+        r"SE\s+NON\s+LI\s+PIACE",
+        r"PRONTI\s+A\s+CHIUDERE",
+        r"VI\s+ERO\s+MANCATO",
+        r"CECCHINO",
+        r"INIZIO\s+SETTIMANA",
+        r"SIAMO\s+IN\s+LIVE",
+        r"TIK\s*TOK",
+        r"YOUTUBE\.COM",
+        r"^HTTPS?://",
+    ]
+    for pat in ignore_pats:
+        if re.search(pat, upper):
+            log.debug(f"[IVAN] Ignorato: {raw[:60]}")
+            return None
+
+    if contains_any(upper, "SPOSTO SL A BE", "SPOSTIAMO SL A BE", "SL A BE"):
+        log.info(f"[IVAN] CHECK_AND_BE: {raw[:60]}")
+        return {
+            "action":      "CHECK_AND_BE",
+            "symbol":      "XAUUSD",
+            "tp_index":    1,
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
+        }
+
+    if re.search(r"CHIUDERE\s+ORA", upper):
+        log.info(f"[IVAN] CLOSE_ALL_SYMBOL XAUUSD: {raw[:60]}")
+        return {
+            "action":      "CLOSE_ALL_SYMBOL",
+            "symbol":      "XAUUSD",
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
+        }
+
+    m_open = re.search(
+        r"(XAUUSD|GOLD)\s+(BUY|SELL)\s+(\d+(?:[.,]\d+)?)",
+        upper,
+    )
+    if not m_open:
+        return None
+
+    symbol = normalize_symbol(m_open.group(1))
+    direction = m_open.group(2)
+    entry = pf(m_open.group(3))
+
+    tps: list[float] = []
+    sl = None
+    for line in raw.splitlines():
+        lu = strip_md(line).upper().strip()
+        m_tp = re.match(r"TP\s*\d+\s+([\d.,]+)", lu)
+        if m_tp:
+            tps.append(pf(m_tp.group(1)))
+            continue
+        m_sl = re.match(r"SL\s*@?\s*([\d.,]+)", lu)
+        if m_sl:
+            sl = pf(m_sl.group(1))
+
+    if not tps or sl is None:
+        log.debug(f"[IVAN] Segnale incompleto: {raw[:60]}")
+        return None
+
+    lot_factor = 0.5 if re.search(r"META\s*SIZE", upper) else 1.0
+    log.info(
+        f"[IVAN] OPEN {direction} {symbol} @ {entry} TP={tps} SL={sl} "
+        f"lot_factor={lot_factor}"
+    )
+    signal = {
+        "action":      "OPEN",
+        "direction":   direction,
+        "symbol":      symbol,
+        "entry":       entry,
+        "tp_levels":   tps,
+        "sl":          sl,
+        "magic_base":  ch["magic_base"],
+        "raw_message": raw,
+    }
+    if lot_factor != 1.0:
+        signal["lot_factor"] = lot_factor
+    return signal
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # MAPPA PARSER
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -988,6 +1106,7 @@ PARSERS = {
     "sala_vip":   parser_sala_vip,
     "sala_oro":   parser_sala_oro,
     "sala_stark": parser_sala_stark,
+    "ivan_vip":   parser_ivan_vip,
     "placeholder": lambda _t, _c: None,
 }
 

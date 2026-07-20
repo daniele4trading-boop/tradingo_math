@@ -67,6 +67,7 @@ def import_parsers():
         parser_sala_oro,
         parser_sala_stark,
         parser_sala_vip,
+        parser_ivan_vip,
         parser_zanni_vip,
     )
 
@@ -77,6 +78,7 @@ def import_parsers():
         "sala_vip": lambda text, ch: parser_sala_vip(text, ch, dry),
         "sala_oro": parser_sala_oro,
         "sala_stark": parser_sala_stark,
+        "ivan_vip": parser_ivan_vip,
         "placeholder": lambda _text, _ch: None,
     }
 

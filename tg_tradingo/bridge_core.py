@@ -513,13 +513,15 @@ def apply_lot_rules(signal: dict, ch: dict) -> dict:
     signal["use_fixed_lot"] = True
     signal.pop("risk_percent", None)
 
+    lot_factor = float(signal.get("lot_factor", 1.0))
+
     if n_tp >= 2:
         signal["trades"] = n_tp
-        signal["fixed_lot"] = lot_per_tp
+        signal["fixed_lot"] = lot_per_tp * lot_factor
         signal["splits"] = [round(1.0 / n_tp, 4)] * n_tp
     else:
         signal["trades"] = 1
-        signal["fixed_lot"] = lot_single
+        signal["fixed_lot"] = lot_single * lot_factor
         signal["splits"] = [1.0]
 
     return signal

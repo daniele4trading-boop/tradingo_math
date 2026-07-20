@@ -19,6 +19,7 @@ from tradingo_bridge import (
     parser_sala_oro,
     parser_sala_stark,
     parser_sala_vip,
+    parser_ivan_vip,
     parser_zanni_vip,
 )
 
@@ -55,6 +56,12 @@ CH4 = {
 CH_ORO = {
     "id": "CH_ORO",
     "magic_base": 14100,
+    "execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10},
+}
+
+CH_IVAN = {
+    "id": "CH_IVAN",
+    "magic_base": 17000,
     "execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10},
 }
 
@@ -388,6 +395,57 @@ class TestCHORO:
         assert sig["sl"] == 4008.0
 
 
+class TestCHIvan:
+    def test_open_sell_four_tp(self):
+        text = (
+            "XAUUSD SELL 4011\n\n"
+            "TP 1 4006\n"
+            "TP 2 4004\n"
+            "TP 3 4002\n"
+            "TP 4 3990\n\n"
+            "SL @ 4022"
+        )
+        sig = parser_ivan_vip(text, CH_IVAN)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry"] == 4011.0
+        assert sig["tp_levels"] == [4006.0, 4004.0, 4002.0, 3990.0]
+        assert sig["sl"] == 4022.0
+        sized = apply_lot_rules(sig, CH_IVAN)
+        assert sized["trades"] == 4
+        assert sized["fixed_lot"] == 0.10
+
+    def test_check_and_be(self):
+        sig = parser_ivan_vip("Spostiamo SL a BE", CH_IVAN)
+        assert sig["action"] == "CHECK_AND_BE"
+        assert sig["symbol"] == "XAUUSD"
+
+    def test_close_now(self):
+        sig = parser_ivan_vip("CHIUDERE ORA", CH_IVAN)
+        assert sig["action"] == "CLOSE_ALL_SYMBOL"
+        assert sig["symbol"] == "XAUUSD"
+
+    def test_meta_size_half_lot(self):
+        text = (
+            "XAUUSD BUY 4012\n\n"
+            "TP 1 4018\n"
+            "TP 2 4020\n"
+            "TP 3 4023\n"
+            "TP 4 4030\n\n"
+            "SL @ 4000\n\n"
+            "Meta size"
+        )
+        sig = parser_ivan_vip(text, CH_IVAN)
+        assert sig["lot_factor"] == 0.5
+        sized = apply_lot_rules(sig, CH_IVAN)
+        assert sized["fixed_lot"] == 0.05
+
+    def test_chat_ignored(self):
+        assert parser_ivan_vip("BOOOOOOMM", CH_IVAN) is None
+        assert parser_ivan_vip("SL", CH_IVAN) is None
+        assert parser_ivan_vip("**TP 1 HIT SQUAD**", CH_IVAN) is None
+
+
 class TestLotRules:
     def test_single_tp_020(self):
         ch = {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}}
@@ -400,6 +458,14 @@ class TestLotRules:
         sig = apply_lot_rules({"action": "OPEN", "tp_levels": [4100.0, 4110.0]}, ch)
         assert sig["trades"] == 2
         assert sig["fixed_lot"] == 0.10
+
+    def test_lot_factor(self):
+        ch = {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}}
+        sig = apply_lot_rules(
+            {"action": "OPEN", "tp_levels": [4100.0, 4110.0], "lot_factor": 0.5},
+            ch,
+        )
+        assert sig["fixed_lot"] == 0.05
 
 
 class TestCH4SalaStark:

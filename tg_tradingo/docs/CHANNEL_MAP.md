@@ -63,9 +63,12 @@
 | Campo | Valore |
 |-------|--------|
 | telegram_id | **-1002112242007** (confermato 20 lug 2026) |
-| Parser | `placeholder` → da costruire con primi segnali |
-| Stato | `enabled: false` finché non mappato |
-| Magic | 17001 |
+| Parser | `ivan_vip` |
+| TP standard | **4** (4 × 0.10 lotto; `Meta size` → 4 × 0.05) |
+| Trade demo | 4 × 0.10 (o 4 × 0.05 con Meta size) |
+| Magic | 17001–17004 |
+| Flusso | OPEN → CHECK_AND_BE → CLOSE_ALL_SYMBOL |
+| Stato | `enabled: false` in config finché non attivato in produzione |
 
 ## Accantonata
 

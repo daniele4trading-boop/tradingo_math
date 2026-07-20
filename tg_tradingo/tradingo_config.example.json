@@ -91,15 +91,15 @@
       "enabled": false,
       "telegram_id": -1002112242007,
       "name": "IvanTrades - VIP",
-      "parser": "placeholder",
+      "parser": "ivan_vip",
       "signal_file": "signal_ch_ivan.json",
       "magic_base": 17000,
       "execution": {
         "mode": "fixed_lot",
         "fixed_lot_single": 0.20,
         "fixed_lot_per_tp": 0.10,
-        "tp_levels_expected": 1,
-        "notes": "Attivo dal 20 lug 2026. Abilitare quando il parser è pronto (telegram_id confermato)."
+        "tp_levels_expected": 4,
+        "notes": "4 TP standard (4x0.10). Meta size = lot_factor 0.5 (4x0.05)."
       }
     }
   ]

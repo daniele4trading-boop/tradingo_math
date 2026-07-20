@@ -136,12 +136,14 @@ async def run(args: argparse.Namespace) -> None:
         / out_name
     )
 
-    channels = [ch for ch in config.get("channels", []) if ch.get("enabled", True)]
+    channels = config.get("channels", [])
     if args.channel:
         wanted = set(args.channel)
         channels = [ch for ch in channels if ch["id"] in wanted]
         if not channels:
             raise SystemExit(f"Nessun canale trovato per id: {', '.join(wanted)}")
+    else:
+        channels = [ch for ch in channels if ch.get("enabled", True)]
 
     parsers = import_parsers() if args.parser_dry_run else {}
 
@@ -220,7 +222,7 @@ def main() -> None:
     p.add_argument("--from", dest="date_from", required=True, help="YYYY-MM-DD")
     p.add_argument("--to", dest="date_to", required=True, help="YYYY-MM-DD")
     p.add_argument("--parser-dry-run", action="store_true")
-    p.add_argument("--channel", action="append", help="Filtra per id canale (es. CH_GOLD)")
+    p.add_argument("--channel", action="append", help="Filtra per id canale (es. CH_IVAN); include anche canali disabled")
     asyncio.run(run(p.parse_args()))
 
 

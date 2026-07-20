@@ -37,6 +37,8 @@ DEFAULT_QUERIES = [
     "Ivan",
     "Sala VIP",
     "Sala ORO",
+    "IvanTrades - VIP",
+    "IvanTrades",
 ]
 
 

@@ -26,6 +26,7 @@ from bridge_core import (
     BridgeState,
     ProcessedMessageStore,
     atomic_write_text,
+    apply_lot_rules,
     validate_signal,
 )
 
@@ -108,6 +109,8 @@ def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
         signal["chat_id"]       = meta.get("chat_id")
         signal["telegram_date"] = meta.get("telegram_date")
         signal["event_type"]    = meta.get("event_type")
+
+    apply_lot_rules(signal, channel_cfg)
 
     ok, reason = validate_signal(signal)
     if not ok:
@@ -246,8 +249,6 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
         "entry":        entry,
         "tp_levels":    tps,
         "sl":           sl,
-        "risk_percent": ch.get("risk_percent", 0.5),
-        "splits":       ch.get("splits", [0.4, 0.4, 0.2]),
         "magic_base":   ch["magic_base"],
         "raw_message":  raw,
     }
@@ -346,8 +347,6 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
             "entry_range":  None,
             "tp_levels":    [],
             "sl":           None,
-            "risk_percent": ch.get("risk_percent", 0.5),
-            "splits":       ch.get("splits", [0.6, 0.4]),
             "magic_base":   ch["magic_base"],
             "raw_message":  raw,
         }
@@ -407,8 +406,6 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         "entry_range":  entry_range,
         "tp_levels":    tps,
         "sl":           sl,
-        "risk_percent": ch.get("risk_percent", 0.5),
-        "splits":       ch.get("splits", [0.6, 0.4]),
         "magic_base":   ch["magic_base"],
         "raw_message":  raw,
     }
@@ -438,67 +435,68 @@ def parser_sala_vip(text: str, ch: dict) -> dict | None:
 
     # ── Messaggi da ignorare ─────────────────────────────────────────────────
     ignore_pats = [
-        r"GIORNALIERO\s+RAPPORTO", r"SETTIMANALE\s+RAPPORTO",
-        r"SALA\s+APERT", r"ZOOM\.US", r"FORMAZIONE\s+STRATEG",
+        r"GIORNALIERO\s+RAPPORTO", r"SETTIMANALE\s+RAPPORTO", r"REPORT\s+SETTIMANALE",
+        r"SALA\s+APERT", r"ZOOM\.US", r"FORMAZIONE\s+STRATEG", r"LIVE\s+DI\s+FORMAZIONE",
         r"LEZIONE\s+LIVE", r"VIDEO\s+ANALISI", r"RICORDO\s+A\s+TUTTI",
         r"ENTRATE\s+TUTTI", r"LINK\s+.*LIVE", r"ID\s+DE\s+REUNI",
         r"NEL\s+TRADING\s+NON", r"QUESTI\s+SONO\s+I\s+RISULTATI",
         r"ORDINI\s+ANCORA\s+IN\s+ESECUZIONE",
+        r"QUESTO MESSAGGIO NON INCITA",
     ]
     for pat in ignore_pats:
         if re.search(pat, upper):
             log.debug(f"[CH3] Ignorato: {raw[:60]}")
             return None
 
-    # ── Apertura nuovo ordine ─────────────────────────────────────────────────
-    m_new = re.search(r"NUOVO\s+ORDINE\s*[-]\s*(\w+)\s+(BUY|SELL)", upper)
+    # ── Apertura (IT / EN) ────────────────────────────────────────────────────
+    m_new = re.search(
+        r"(?:NUOVO\s+ORDINE|NEW\s+ORDER)\s*[-]\s*(\w+)\s+(BUY|SELL)", upper
+    )
     if m_new:
         symbol    = normalize_symbol(m_new.group(1))
         direction = m_new.group(2)
-        m_entry   = re.search(r"ENTRATA\s*[:\s]\s*([\d.,]+)", upper)
+        m_entry   = re.search(r"(?:ENTRATA|ENTRY)\s*[:\s]\s*([\d.,]+)", upper)
         entry     = pf(m_entry.group(1)) if m_entry else None
-        lot       = (ch.get("fixed_lot_xauusd", 0.05)
-                     if "XAUUSD" in symbol
-                     else ch.get("fixed_lot_forex", 0.20))
-        log.info(f"[CH3] OPEN {direction} {symbol} @ {entry} lot={lot}")
+        log.info(f"[FOREX] OPEN {direction} {symbol} @ {entry}")
         return {
-            "action":        "OPEN",
-            "direction":     direction,
-            "symbol":        symbol,
-            "entry":         entry,
-            "tp_levels":     [],
-            "sl":            None,
-            "use_fixed_lot": True,
-            "fixed_lot":     lot,
-            "magic_base":    ch["magic_base"],
-            "raw_message":   raw,
+            "action":      "OPEN",
+            "direction":   direction,
+            "symbol":      symbol,
+            "entry":       entry,
+            "tp_levels":   [],
+            "sl":          None,
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
         }
 
-    # ── Modifica (TP o SL) ────────────────────────────────────────────────────
-    m_mod = re.search(r"(\w+)\s+(BUY|SELL)\s*[-]\s*MODIFICATO", upper)
+    # ── Modifica TP/SL (IT / EN) ─────────────────────────────────────────────
+    m_mod = re.search(
+        r"(\w+)\s+(BUY|SELL)\s*[-]\s*(MODIFICATO|MODIFIED)", upper
+    )
     if m_mod:
         symbol    = normalize_symbol(m_mod.group(1))
         direction = m_mod.group(2)
 
-        m_tp = re.search(r"NUOVO\s+TP\s*[:\s]\s*([\d.,]+)", upper)
-        m_sl = re.search(r"NUOVO\s+SL\s*[:\s]\s*([\d.,]+)", upper)
+        m_tp = re.search(r"(?:NUOVO|NEW)\s+TP\s*[:\s]\s*([\d.,]+)", upper)
+        m_sl = re.search(r"(?:NUOVO|NEW)\s+SL\s*[:\s]\s*([\d.,]+)", upper)
 
         if m_tp:
             tp_val = pf(m_tp.group(1))
-            log.info(f"[CH3] UPDATE_TP {symbol} {direction} TP={tp_val}")
+            log.info(f"[FOREX] UPDATE_TP {symbol} {direction} TP={tp_val}")
             return {
                 "action":      "UPDATE_TP",
                 "symbol":      symbol,
                 "direction":   direction,
                 "new_tp":      tp_val,
+                "tp_levels":   [tp_val],
                 "magic_base":  ch["magic_base"],
                 "raw_message": raw,
             }
 
         if m_sl:
             sl_val = pf(m_sl.group(1))
-            is_be  = contains_any(upper, "PAREGGIO", "BREAK EVEN")
-            log.info(f"[CH3] UPDATE_SL {symbol} {direction} SL={sl_val} be={is_be}")
+            is_be  = contains_any(upper, "PAREGGIO", "BREAK EVEN", "BREAKEVEN")
+            log.info(f"[FOREX] UPDATE_SL {symbol} {direction} SL={sl_val} be={is_be}")
             return {
                 "action":      "UPDATE_SL",
                 "symbol":      symbol,
@@ -511,8 +509,8 @@ def parser_sala_vip(text: str, ch: dict) -> dict | None:
 
         return None
 
-    # ── Chiusura ──────────────────────────────────────────────────────────────
-    m_close = re.search(r"CHIUSO\s*[-]\s*(\w+)\s+(BUY|SELL)", upper)
+    # ── Chiusura (IT / EN) ────────────────────────────────────────────────────
+    m_close = re.search(r"(?:CHIUSO|CLOSED)\s*[-]\s*(\w+)\s+(BUY|SELL)", upper)
     if m_close:
         symbol    = normalize_symbol(m_close.group(1))
         direction = m_close.group(2)
@@ -526,6 +524,69 @@ def parser_sala_vip(text: str, ch: dict) -> dict | None:
         }
 
     return None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PARSER SALA ORO VIP
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Formato compatto:
+#   XAUUSD BUY 4088
+#   TP 4098
+#   SL 4083
+#   XAUUSD BUY 4088-4087  (range entry)
+
+def parser_sala_oro(text: str, ch: dict) -> dict | None:
+    raw   = text.strip()
+    upper = strip_md(raw).upper()
+
+    ignore_pats = [
+        r"REPORT", r"PIPS\s*✅", r"^\d+\s+PIPS",
+        r"BOOO?MM", r"RAGAZZI", r"POTREBBE", r"ATTENDIAMO",
+        r"DOVREBBE", r"FORMazione", r"LIVE",
+    ]
+    for pat in ignore_pats:
+        if re.search(pat, upper):
+            log.debug(f"[ORO] Ignorato: {raw[:60]}")
+            return None
+
+    m = re.search(
+        r"XAUUSD\s+(BUY|SELL)\s+([\d.,]+)(?:\s*-\s*([\d.,]+))?",
+        upper,
+    )
+    if not m:
+        return None
+
+    direction = m.group(1)
+    entry1    = pf(m.group(2))
+    entry2    = pf(m.group(3)) if m.group(3) else None
+    entry     = (entry1 + entry2) / 2 if entry2 else entry1
+    entry_range = [min(entry1, entry2), max(entry1, entry2)] if entry2 else None
+
+    sl = None
+    m_sl = re.search(r"\bSL\s*[:\s]\s*([\d.,]+)", upper)
+    if m_sl:
+        sl = pf(m_sl.group(1))
+
+    tps = [pf(v) for v in re.findall(r"TP\d*\s*[:\s]\s*([\d.,]+)", upper)]
+    if not tps:
+        tps = [pf(v) for v in re.findall(r"\bTP\s+([\d.,]+)", upper)]
+
+    if not tps and sl is None:
+        return None
+
+    log.info(f"[ORO] OPEN {direction} XAUUSD @ {entry} TP={tps} SL={sl}")
+    return {
+        "action":      "OPEN",
+        "direction":   direction,
+        "symbol":      "XAUUSD",
+        "entry":       entry,
+        "entry_range": entry_range,
+        "tp_levels":   tps,
+        "sl":          sl,
+        "magic_base":  ch["magic_base"],
+        "raw_message": raw,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -610,8 +671,6 @@ def parser_sala_stark(text: str, ch: dict) -> dict | None:
             "entry":              entry,
             "tp_levels":          tps,
             "sl":                 sl,
-            "risk_percent":       ch.get("risk_percent", 0.5),
-            "splits":             ch.get("splits", [0.5, 0.4, 0.1]),
             "is_add_signal":      is_add,
             "inherit_from_first": inherit,
             "magic_base":         ch["magic_base"],
@@ -638,8 +697,6 @@ def parser_sala_stark(text: str, ch: dict) -> dict | None:
             "entry":              entry,
             "tp_levels":          tps,
             "sl":                 sl,
-            "risk_percent":       ch.get("risk_percent", 0.5),
-            "splits":             ch.get("splits", [0.5, 0.4, 0.1]),
             "is_add_signal":      False,
             "inherit_from_first": False,
             "magic_base":         ch["magic_base"],
@@ -657,7 +714,9 @@ PARSERS = {
     "zanni_vip":  parser_zanni_vip,
     "sala_gold":  parser_sala_gold,
     "sala_vip":   parser_sala_vip,
+    "sala_oro":   parser_sala_oro,
     "sala_stark": parser_sala_stark,
+    "placeholder": lambda _t, _c: None,
 }
 
 def get_parser(name: str):

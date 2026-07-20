@@ -13,9 +13,10 @@ if str(TG_ROOT) not in sys.path:
     sys.path.insert(0, str(TG_ROOT))
 
 # Import parsers without Telethon client startup side effects
-from bridge_core import BridgeState, validate_signal
+from bridge_core import BridgeState, validate_signal, apply_lot_rules
 from tradingo_bridge import (
     parser_sala_gold,
+    parser_sala_oro,
     parser_sala_stark,
     parser_sala_vip,
     parser_zanni_vip,
@@ -158,8 +159,9 @@ class TestCH3SalaVip:
         assert sig["action"] == "OPEN"
         assert sig["direction"] == "BUY"
         assert sig["symbol"] == "XAUUSD"
-        assert sig["use_fixed_lot"] is True
-        assert sig["fixed_lot"] == 0.05
+        sized = apply_lot_rules(sig, {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}})
+        assert sized["fixed_lot"] == 0.20
+        assert sized["trades"] == 1
 
     def test_update_tp(self):
         text = (
@@ -186,6 +188,65 @@ class TestCH3SalaVip:
         sig = parser_sala_vip(text, CH3)
         assert sig["action"] == "CHECK_AND_CLOSE"
         assert sig["direction"] == "BUY"
+
+    def test_open_forex_english(self):
+        text = (
+            "NEW ORDER - GBPCADpm Sell\n"
+            "Entry: 1.89235 [Lots: 0.02]\n"
+            "No SL\nNo TP"
+        )
+        sig = parser_sala_vip(text, CH3)
+        assert sig["action"] == "OPEN"
+        assert sig["symbol"] == "GBPCAD"
+        assert sig["direction"] == "SELL"
+
+    def test_update_tp_english(self):
+        text = (
+            "GBPCADpm Sell - Modified\n"
+            "New TP: 1.88924 [31.1 Pips]"
+        )
+        sig = parser_sala_vip(text, CH3)
+        assert sig["action"] == "UPDATE_TP"
+        assert sig["new_tp"] == 1.88924
+
+    def test_close_english(self):
+        text = "CLOSED - GBPCADpm Sell"
+        sig = parser_sala_vip(text, CH3)
+        assert sig["action"] == "CHECK_AND_CLOSE"
+
+
+class TestCHORO:
+    def test_open_with_two_tp(self):
+        text = (
+            "XAUUSD BUY 4073-4071\n"
+            "TP 4094\n"
+            "TP 4120\n"
+            "SL 4068"
+        )
+        sig = parser_sala_oro(text, CH4)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert len(sig["tp_levels"]) == 2
+        assert sig["sl"] == 4068.0
+
+    def test_open_single_tp(self):
+        text = "XAUUSD BUY 4088\nTP 4098\nSL 4083"
+        sig = parser_sala_oro(text, CH4)
+        assert len(sig["tp_levels"]) == 1
+
+
+class TestLotRules:
+    def test_single_tp_020(self):
+        ch = {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}}
+        sig = apply_lot_rules({"action": "OPEN", "tp_levels": [4100.0]}, ch)
+        assert sig["trades"] == 1
+        assert sig["fixed_lot"] == 0.20
+
+    def test_two_tp_010_each(self):
+        ch = {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}}
+        sig = apply_lot_rules({"action": "OPEN", "tp_levels": [4100.0, 4110.0]}, ch)
+        assert sig["trades"] == 2
+        assert sig["fixed_lot"] == 0.10
 
 
 class TestCH4SalaStark:

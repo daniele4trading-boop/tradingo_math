@@ -296,3 +296,31 @@ def validate_signal(signal: dict) -> tuple[bool, str]:
             return False, "OPEN_NOW must not include SL/TP"
 
     return True, ""
+
+
+def apply_lot_rules(signal: dict, ch: dict) -> dict:
+    """Fixed lots: 0.20 with one TP, 0.10 per TP when multiple levels are set."""
+    exec_cfg = ch.get("execution", {})
+    lot_single = float(exec_cfg.get("fixed_lot_single", ch.get("fixed_lot_single", 0.20)))
+    lot_per_tp = float(exec_cfg.get("fixed_lot_per_tp", ch.get("fixed_lot_per_tp", 0.10)))
+
+    action = signal.get("action", "")
+    if action not in ("OPEN", "OPEN_NOW", "UPDATE_OPEN"):
+        return signal
+
+    tps = signal.get("tp_levels") or []
+    n_tp = len(tps)
+
+    signal["use_fixed_lot"] = True
+    signal.pop("risk_percent", None)
+
+    if n_tp >= 2:
+        signal["trades"] = n_tp
+        signal["fixed_lot"] = lot_per_tp
+        signal["splits"] = [round(1.0 / n_tp, 4)] * n_tp
+    else:
+        signal["trades"] = 1
+        signal["fixed_lot"] = lot_single
+        signal["splits"] = [1.0]
+
+    return signal

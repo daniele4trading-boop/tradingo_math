@@ -71,6 +71,7 @@ def import_parsers():
     from bridge_core import EphemeralBridgeState
     from tradingo_bridge import (
         parser_sala_gold,
+        parser_sala_oro,
         parser_sala_stark,
         parser_sala_vip,
         parser_zanni_vip,
@@ -81,6 +82,7 @@ def import_parsers():
         "zanni_vip": parser_zanni_vip,
         "sala_gold": lambda text, ch: parser_sala_gold(text, ch, dry),
         "sala_vip": parser_sala_vip,
+        "sala_oro": parser_sala_oro,
         "sala_stark": parser_sala_stark,
         "placeholder": lambda _text, _ch: None,
     }
@@ -101,8 +103,11 @@ def format_signal(sig: dict | None) -> str:
 async def fetch_channel_messages(client, entity, start: datetime, end: datetime):
     msgs = []
     async for m in client.iter_messages(entity, offset_date=end, reverse=True):
-        if m.date.replace(tzinfo=timezone.utc) < start:
+        msg_dt = m.date.replace(tzinfo=timezone.utc) if m.date.tzinfo is None else m.date.astimezone(timezone.utc)
+        if msg_dt < start:
             break
+        if msg_dt > end:
+            continue
         if m.text and m.text.strip():
             msgs.append(m)
     return msgs

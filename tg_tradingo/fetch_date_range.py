@@ -213,7 +213,10 @@ async def run(args: argparse.Namespace) -> None:
                 log(f"execution: {json.dumps(ch.get('execution', {}), ensure_ascii=False)}")
                 log("=" * 72)
 
-                parser_fn = parsers.get(ch.get("parser", ""))
+                parser_name = args.parser or ch.get("parser", "")
+                if args.parser_dry_run:
+                    log(f"dry-run parser: {parser_name}")
+                parser_fn = parsers.get(parser_name) if args.parser_dry_run else None
                 try:
                     entity = await client.get_entity(cid)
                     if args.last > 0:
@@ -233,12 +236,15 @@ async def run(args: argparse.Namespace) -> None:
                 for i, (m, body) in enumerate(msgs, 1):
                     ts = m.date.astimezone().strftime("%Y-%m-%d %H:%M:%S")
                     log(f"[{i:02d}] {ts} | msg_id={m.id}")
-                    if args.parser_dry_run and parser_fn:
-                        try:
-                            sig = parser_fn(body, ch)
-                            log(f"     -> {format_signal(sig)}")
-                        except Exception as exc:
-                            log(f"     -> PARSER_ERROR: {exc}")
+                    if args.parser_dry_run:
+                        if not parser_fn:
+                            log(f"     -> PARSER_MISSING: {parser_name}")
+                        else:
+                            try:
+                                sig = parser_fn(body, ch)
+                                log(f"     -> {format_signal(sig)}")
+                            except Exception as exc:
+                                log(f"     -> PARSER_ERROR: {exc}")
                     for row in body.splitlines():
                         log(f"     {row}")
                     log()
@@ -267,6 +273,7 @@ def main() -> None:
     p.add_argument("--scan-limit", dest="scan_limit", type=int, default=500,
                    help="Max messaggi Telegram da scansionare per intervallo date")
     p.add_argument("--parser-dry-run", action="store_true")
+    p.add_argument("--parser", help="Override parser per dry-run (es. ivan_vip)")
     p.add_argument("--config", help="Path tradingo_config.json (default: auto, preferisce C:\\TG_TradinGo)")
     p.add_argument("--channel", action="append", help="Filtra per id canale (es. CH_IVAN); include anche canali disabled")
     asyncio.run(run(p.parse_args()))

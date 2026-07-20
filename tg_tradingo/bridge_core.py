@@ -16,6 +16,51 @@ from typing import Any
 
 log = logging.getLogger("TradinGo")
 
+PLACEHOLDER_API_HASH = "INSERISCI_API_HASH_TELEGRAM"
+PRODUCTION_CONFIG = Path(r"C:\TG_TradinGo\tradingo_config.json")
+
+
+def resolve_config_path(explicit: str | os.PathLike | None = None) -> Path:
+    """Return config path with real Telegram credentials when available."""
+    script_dir = Path(__file__).resolve().parent
+    candidates: list[Path] = []
+    if explicit:
+        candidates.append(Path(explicit))
+    env = os.environ.get("TRADINGO_CONFIG")
+    if env:
+        candidates.append(Path(env))
+    candidates.extend([
+        script_dir / "tradingo_config.json",
+        PRODUCTION_CONFIG,
+        script_dir / "tradingo_config.example.json",
+    ])
+
+    def has_telegram_creds(path: Path) -> bool:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            tg = data.get("telegram", {})
+            api_id = tg.get("api_id")
+            api_hash = (tg.get("api_hash") or "").strip()
+            return bool(api_id) and bool(api_hash) and api_hash != PLACEHOLDER_API_HASH
+        except Exception:
+            return False
+
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen or not resolved.exists():
+            continue
+        seen.add(resolved)
+        if has_telegram_creds(resolved):
+            return resolved
+
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved.exists():
+            return resolved
+    return candidates[0].resolve()
+
+
 VALID_ACTIONS = frozenset({
     "NONE",
     "OPEN",

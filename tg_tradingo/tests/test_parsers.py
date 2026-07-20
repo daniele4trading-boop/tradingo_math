@@ -278,13 +278,25 @@ class TestCHORO:
         assert sig2["action"] == "UPDATE_TP"
         assert sig2["new_tp"] == 4012.0
 
-    def test_real_world_sell_range(self, tmp_path: Path):
+    def test_fragmented_sell_sl_tp_sequence(self, tmp_path: Path):
+        """Real flow 13:32 — Sell 4034, Sl 4039, Tp 4027 as separate messages."""
         state = BridgeState(tmp_path / "bridge_state.json")
-        sig = parser_sala_oro(
-            "XAUUSD SELL 4020-4022\nTP 4010\nSL 4024", CH_ORO, state
-        )
-        assert sig["entry_range"] == [4020.0, 4022.0]
-        assert sig["entry"] is None
+        assert parser_sala_oro("Sell 4034", CH_ORO, state) is None
+        assert state.oro_pending_dir == "SELL"
+        assert parser_sala_oro("Sl 4039", CH_ORO, state) is None
+        assert state.oro_pending_sl == 4039.0
+        sig = parser_sala_oro("Tp 4027", CH_ORO, state)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry"] == 4034.0
+        assert sig["sl"] == 4039.0
+        assert sig["tp_levels"] == [4027.0]
+
+    def test_range_only_updates_pending(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        parser_sala_oro("Sell 4029", CH_ORO, state)
+        assert parser_sala_oro("4027-4029", CH_ORO, state) is None
+        assert state.oro_pending_range == [4027.0, 4029.0]
 
 
 class TestLotRules:

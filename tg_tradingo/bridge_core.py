@@ -91,6 +91,8 @@ class BridgeState:
         self.oro_pending_dir: str | None = None
         self.oro_pending_entry: float | None = None
         self.oro_pending_range: list[float] | None = None
+        self.oro_pending_sl: float | None = None
+        self.oro_pending_tps: list[float] | None = None
         self.oro_last_trade: dict | None = None
         self.load()
 
@@ -107,6 +109,9 @@ class BridgeState:
             self.oro_pending_entry = oro_p.get("entry")
             pr = oro_p.get("entry_range")
             self.oro_pending_range = pr if isinstance(pr, list) else None
+            self.oro_pending_sl = oro_p.get("sl")
+            pt = oro_p.get("tp_levels")
+            self.oro_pending_tps = pt if isinstance(pt, list) else None
             self.oro_last_trade = data.get("oro_last_trade")
             log.info(
                 "Bridge state loaded: ch2_pending_open=%s dir=%s oro_pending=%s",
@@ -127,6 +132,8 @@ class BridgeState:
                 "direction": self.oro_pending_dir,
                 "entry": self.oro_pending_entry,
                 "entry_range": self.oro_pending_range,
+                "sl": self.oro_pending_sl,
+                "tp_levels": self.oro_pending_tps,
             },
             "oro_last_trade": self.oro_last_trade,
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -152,12 +159,23 @@ class BridgeState:
         self.oro_pending_dir = direction
         self.oro_pending_entry = entry
         self.oro_pending_range = entry_range
+        self.oro_pending_sl = None
+        self.oro_pending_tps = None
+        self.save()
+
+    def oro_pending_add_levels(self, sl: float | None, tps: list[float] | None) -> None:
+        if sl is not None:
+            self.oro_pending_sl = sl
+        if tps:
+            self.oro_pending_tps = tps
         self.save()
 
     def clear_oro_pending(self) -> None:
         self.oro_pending_dir = None
         self.oro_pending_entry = None
         self.oro_pending_range = None
+        self.oro_pending_sl = None
+        self.oro_pending_tps = None
         self.save()
 
     def set_oro_last_trade(self, trade: dict) -> None:
@@ -181,6 +199,8 @@ class EphemeralBridgeState(BridgeState):
         self.oro_pending_dir: str | None = None
         self.oro_pending_entry: float | None = None
         self.oro_pending_range: list[float] | None = None
+        self.oro_pending_sl: float | None = None
+        self.oro_pending_tps: list[float] | None = None
         self.oro_last_trade: dict | None = None
 
     def load(self) -> None:

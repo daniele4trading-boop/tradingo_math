@@ -605,6 +605,44 @@ def _oro_resolve_context(state: BridgeState) -> tuple[str | None, float | None, 
     return None, None, None
 
 
+def _oro_try_emit_pending_open(state: BridgeState, ch: dict, raw: str) -> dict | None:
+    """Emit OPEN when fragmented ORO messages collected direction + SL + TP."""
+    if not state.oro_pending_dir:
+        return None
+    if state.oro_pending_sl is None or not state.oro_pending_tps:
+        return None
+    direction = state.oro_pending_dir
+    entry = state.oro_pending_entry
+    entry_range = state.oro_pending_range
+    sl = state.oro_pending_sl
+    tps = list(state.oro_pending_tps)
+    entry_log = f"range={entry_range}" if entry_range else f"@{entry}"
+    log.info(f"[ORO] OPEN (fragmented) {direction} XAUUSD {entry_log} TP={tps} SL={sl}")
+    signal = {
+        "action":      "OPEN",
+        "direction":   direction,
+        "symbol":      "XAUUSD",
+        "entry":       entry,
+        "entry_range": entry_range,
+        "tp_levels":   tps,
+        "sl":          sl,
+        "magic_base":  ch["magic_base"],
+        "raw_message": raw,
+    }
+    state.set_oro_last_trade(signal)
+    state.clear_oro_pending()
+    return signal
+
+
+def _oro_parse_range_only(upper: str) -> list[float] | None:
+    m = re.match(r"^([\d.,]+)\s*-\s*([\d.,]+)$", upper.strip())
+    if not m:
+        return None
+    v1 = pf(m.group(1))
+    v2 = pf(m.group(2))
+    return [min(v1, v2), max(v1, v2)]
+
+
 def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
     if state is None:
         state, _ = _ensure_runtime()
@@ -642,11 +680,28 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
     sl, tps = _parse_oro_sl_tp(upper)
     direction, entry, entry_range = _parse_oro_direction_entry(upper)
 
+    range_only = _oro_parse_range_only(upper)
+    if range_only and state.oro_pending_dir:
+        state.oro_pending_entry = None
+        state.oro_pending_range = range_only
+        state.save()
+        log.info(f"[ORO] Pending range {range_only} for {state.oro_pending_dir}")
+        return None
+
     if direction is None and (sl is not None or tps):
         direction, entry, entry_range = _oro_resolve_context(state)
         if not direction:
             log.debug(f"[ORO] SL/TP senza contesto: {raw[:60]}")
             return None
+
+        if state.oro_pending_dir:
+            state.oro_pending_add_levels(sl, tps if tps else None)
+            log.info(
+                f"[ORO] Fragment accumulate {direction} SL={state.oro_pending_sl} "
+                f"TP={state.oro_pending_tps}"
+            )
+            return _oro_try_emit_pending_open(state, ch, raw)
+
         if tps and sl is None:
             log.info(f"[ORO] UPDATE_TP XAUUSD {direction} TP={tps[0]}")
             state.set_oro_last_trade({
@@ -656,7 +711,6 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
                 "sl": state.oro_last_trade.get("sl") if state.oro_last_trade else None,
                 "tp_levels": tps,
             })
-            state.clear_oro_pending()
             return {
                 "action":      "UPDATE_TP",
                 "symbol":      "XAUUSD",
@@ -675,7 +729,6 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
                 "sl": sl,
                 "tp_levels": state.oro_last_trade.get("tp_levels") if state.oro_last_trade else [],
             })
-            state.clear_oro_pending()
             return {
                 "action":      "UPDATE_SL",
                 "symbol":      "XAUUSD",

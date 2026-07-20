@@ -81,7 +81,7 @@ def import_parsers():
     return {
         "zanni_vip": parser_zanni_vip,
         "sala_gold": lambda text, ch: parser_sala_gold(text, ch, dry),
-        "sala_vip": parser_sala_vip,
+        "sala_vip": lambda text, ch: parser_sala_vip(text, ch, dry),
         "sala_oro": parser_sala_oro,
         "sala_stark": parser_sala_stark,
         "placeholder": lambda _text, _ch: None,

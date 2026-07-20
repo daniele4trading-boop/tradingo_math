@@ -94,6 +94,10 @@ class BridgeState:
         self.oro_pending_sl: float | None = None
         self.oro_pending_tps: list[float] | None = None
         self.oro_last_trade: dict | None = None
+        self.forex_pending_symbol: str | None = None
+        self.forex_pending_dir: str | None = None
+        self.forex_pending_entry: float | None = None
+        self.forex_last_trade: dict | None = None
         self.load()
 
     def load(self) -> None:
@@ -113,11 +117,17 @@ class BridgeState:
             pt = oro_p.get("tp_levels")
             self.oro_pending_tps = pt if isinstance(pt, list) else None
             self.oro_last_trade = data.get("oro_last_trade")
+            fx_p = data.get("forex_pending", {})
+            self.forex_pending_symbol = fx_p.get("symbol")
+            self.forex_pending_dir = fx_p.get("direction")
+            self.forex_pending_entry = fx_p.get("entry")
+            self.forex_last_trade = data.get("forex_last_trade")
             log.info(
-                "Bridge state loaded: ch2_pending_open=%s dir=%s oro_pending=%s",
+                "Bridge state loaded: ch2_pending_open=%s dir=%s oro_pending=%s forex_pending=%s",
                 self.ch2_pending_open,
                 self.ch2_pending_dir,
                 self.oro_pending_dir,
+                self.forex_pending_symbol,
             )
         except Exception as exc:
             log.warning("Could not load bridge state %s: %s", self.state_file, exc)
@@ -136,6 +146,12 @@ class BridgeState:
                 "tp_levels": self.oro_pending_tps,
             },
             "oro_last_trade": self.oro_last_trade,
+            "forex_pending": {
+                "symbol": self.forex_pending_symbol,
+                "direction": self.forex_pending_dir,
+                "entry": self.forex_pending_entry,
+            },
+            "forex_last_trade": self.forex_last_trade,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         atomic_write_json(self.state_file, payload)
@@ -188,6 +204,37 @@ class BridgeState:
         }
         self.save()
 
+    def set_forex_pending(
+        self,
+        symbol: str,
+        direction: str,
+        entry: float | None = None,
+    ) -> None:
+        self.forex_pending_symbol = symbol
+        self.forex_pending_dir = direction
+        self.forex_pending_entry = entry
+        self.save()
+
+    def clear_forex_pending(self) -> None:
+        self.forex_pending_symbol = None
+        self.forex_pending_dir = None
+        self.forex_pending_entry = None
+        self.save()
+
+    def set_forex_last_trade(self, trade: dict) -> None:
+        self.forex_last_trade = {
+            "symbol": trade.get("symbol"),
+            "direction": trade.get("direction"),
+            "entry": trade.get("entry"),
+            "sl": trade.get("sl"),
+            "tp_levels": list(trade.get("tp_levels") or []),
+        }
+        self.save()
+
+    def clear_forex_last_trade(self) -> None:
+        self.forex_last_trade = None
+        self.save()
+
 
 class EphemeralBridgeState(BridgeState):
     """In-memory state for dry-run; never reads/writes disk (Windows-safe)."""
@@ -202,6 +249,10 @@ class EphemeralBridgeState(BridgeState):
         self.oro_pending_sl: float | None = None
         self.oro_pending_tps: list[float] | None = None
         self.oro_last_trade: dict | None = None
+        self.forex_pending_symbol: str | None = None
+        self.forex_pending_dir: str | None = None
+        self.forex_pending_entry: float | None = None
+        self.forex_last_trade: dict | None = None
 
     def load(self) -> None:
         return

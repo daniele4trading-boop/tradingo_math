@@ -157,30 +157,73 @@ class TestCH2SalaGold:
 
 
 class TestCH3SalaVip:
-    def test_open_xauusd(self):
+    def test_open_xauusd(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
         text = (
             "NUOVO ORDINE - XAUUSDpm Buy\n"
             "Entrata: 4736.64 [Lotti: 0.01]\n"
             "Nessuno SL\nNessuno TP"
         )
-        sig = parser_sala_vip(text, CH3)
+        assert parser_sala_vip(text, CH3, state) is None
+        assert state.forex_pending_symbol == "XAUUSD"
+        assert state.forex_pending_dir == "BUY"
+        assert state.forex_pending_entry == 4736.64
+
+        mod = (
+            "XAUUSDpm Buy - Modificato\n"
+            "Nuovo TP: 4747.00 [103.6 Pips]"
+        )
+        sig = parser_sala_vip(mod, CH3, state)
         assert sig["action"] == "OPEN"
         assert sig["direction"] == "BUY"
         assert sig["symbol"] == "XAUUSD"
+        assert sig["entry"] == 4736.64
+        assert sig["tp_levels"] == [4747.0]
         sized = apply_lot_rules(sig, {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}})
         assert sized["fixed_lot"] == 0.20
         assert sized["trades"] == 1
 
-    def test_update_tp(self):
+    def test_new_order_then_modified_open(self, tmp_path: Path):
+        """Real flow — NEW ORDER senza TP, poi Modified con TP (NZDJPY 13:51)."""
+        state = BridgeState(tmp_path / "bridge_state.json")
+        new_order = (
+            "NUOVO ORDINE - NZDJPYpm Sell\n"
+            "Entrata: 95.102 [Lotti: 0.02]\n"
+            "Nessuno SL\nNessuno TP"
+        )
+        assert parser_sala_vip(new_order, CH3, state) is None
+        modified = (
+            "NZDJPYpm Sell - Modificato\n"
+            "Nuovo TP: 94.801 [30.1 Pips]"
+        )
+        sig = parser_sala_vip(modified, CH3, state)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["symbol"] == "NZDJPY"
+        assert sig["entry"] == 95.102
+        assert sig["tp_levels"] == [94.801]
+
+    def test_update_tp(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        parser_sala_vip(
+            "NUOVO ORDINE - XAUUSDpm Buy\nEntrata: 4736.64\nNessuno TP",
+            CH3,
+            state,
+        )
+        parser_sala_vip(
+            "XAUUSDpm Buy - Modificato\nNuovo TP: 4747.00 [103.6 Pips]",
+            CH3,
+            state,
+        )
         text = (
             "XAUUSDpm Buy - Modificato\n"
-            "Nuovo TP: 4747.00 [103.6 Pips]"
+            "Nuovo TP: 4750.00 [103.6 Pips]"
         )
-        sig = parser_sala_vip(text, CH3)
+        sig = parser_sala_vip(text, CH3, state)
         assert sig["action"] == "UPDATE_TP"
-        assert sig["new_tp"] == 4747.0
+        assert sig["new_tp"] == 4750.0
 
-    def test_update_sl_be(self):
+    def test_update_sl_be(self, tmp_path: Path):
         text = (
             "XAUUSDpm Buy - Modificato\n"
             "Nuovo SL: 4730.00 [15.9 Pips]\n"
@@ -191,31 +234,60 @@ class TestCH3SalaVip:
         assert sig["new_sl"] == 4730.0
         assert sig["is_be"] is True
 
-    def test_check_and_close(self):
+    def test_check_and_close(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        parser_sala_vip(
+            "NUOVO ORDINE - XAUUSDpm Buy\nEntrata: 4736.64\nNessuno TP",
+            CH3,
+            state,
+        )
+        parser_sala_vip(
+            "XAUUSDpm Buy - Modificato\nNuovo TP: 4747.00",
+            CH3,
+            state,
+        )
         text = "CHIUSO - XAUUSDpm Buy"
-        sig = parser_sala_vip(text, CH3)
+        sig = parser_sala_vip(text, CH3, state)
         assert sig["action"] == "CHECK_AND_CLOSE"
         assert sig["direction"] == "BUY"
+        assert state.forex_last_trade is None
 
-    def test_open_forex_english(self):
+    def test_open_forex_english(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
         text = (
             "NEW ORDER - GBPCADpm Sell\n"
             "Entry: 1.89235 [Lots: 0.02]\n"
             "No SL\nNo TP"
         )
-        sig = parser_sala_vip(text, CH3)
+        assert parser_sala_vip(text, CH3, state) is None
+        sig = parser_sala_vip(
+            "GBPCADpm Sell - Modified\nNew TP: 1.88924 [31.1 Pips]",
+            CH3,
+            state,
+        )
         assert sig["action"] == "OPEN"
         assert sig["symbol"] == "GBPCAD"
         assert sig["direction"] == "SELL"
 
-    def test_update_tp_english(self):
+    def test_update_tp_english(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        parser_sala_vip(
+            "NEW ORDER - GBPCADpm Sell\nEntry: 1.89235\nNo TP",
+            CH3,
+            state,
+        )
+        parser_sala_vip(
+            "GBPCADpm Sell - Modified\nNew TP: 1.88924 [31.1 Pips]",
+            CH3,
+            state,
+        )
         text = (
             "GBPCADpm Sell - Modified\n"
-            "New TP: 1.88924 [31.1 Pips]"
+            "New TP: 1.88500 [31.1 Pips]"
         )
-        sig = parser_sala_vip(text, CH3)
+        sig = parser_sala_vip(text, CH3, state)
         assert sig["action"] == "UPDATE_TP"
-        assert sig["new_tp"] == 1.88924
+        assert sig["new_tp"] == 1.885
 
     def test_close_english(self):
         text = "CLOSED - GBPCADpm Sell"
@@ -297,6 +369,23 @@ class TestCHORO:
         parser_sala_oro("Sell 4029", CH_ORO, state)
         assert parser_sala_oro("4027-4029", CH_ORO, state) is None
         assert state.oro_pending_range == [4027.0, 4029.0]
+
+    def test_zona_buy_range(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        assert parser_sala_oro("Zona buy 4026-4024", CH_ORO, state) is None
+        assert state.oro_pending_dir == "BUY"
+        assert state.oro_pending_entry is None
+        assert state.oro_pending_range == [4024.0, 4026.0]
+
+    def test_zona_buy_range_with_levels(self, tmp_path: Path):
+        text = "Zona buy 4016-4010\nTP 4025\nSL 4008"
+        sig = parser_sala_oro(text, CH_ORO)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["entry"] is None
+        assert sig["entry_range"] == [4010.0, 4016.0]
+        assert sig["tp_levels"] == [4025.0]
+        assert sig["sl"] == 4008.0
 
 
 class TestLotRules:

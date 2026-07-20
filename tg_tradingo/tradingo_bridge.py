@@ -429,7 +429,9 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
 # Formato chiusura:
 #   CHIUSO - XAUUSDpm Buy            <- verifica se gia' chiuso, altrimenti chiudi
 
-def parser_sala_vip(text: str, ch: dict) -> dict | None:
+def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
+    if state is None:
+        state, _ = _ensure_runtime()
     raw   = text.strip()
     upper = strip_md(raw).upper()
 
@@ -448,7 +450,7 @@ def parser_sala_vip(text: str, ch: dict) -> dict | None:
             log.debug(f"[CH3] Ignorato: {raw[:60]}")
             return None
 
-    # ── Apertura (IT / EN) ────────────────────────────────────────────────────
+    # ── Apertura (IT / EN) — TP arriva nel messaggio Modified successivo ─────
     m_new = re.search(
         r"(?:NUOVO\s+ORDINE|NEW\s+ORDER)\s*[-]\s*(\w+)\s+(BUY|SELL)", upper
     )
@@ -457,17 +459,9 @@ def parser_sala_vip(text: str, ch: dict) -> dict | None:
         direction = m_new.group(2)
         m_entry   = re.search(r"(?:ENTRATA|ENTRY)\s*[:\s]\s*([\d.,]+)", upper)
         entry     = pf(m_entry.group(1)) if m_entry else None
-        log.info(f"[FOREX] OPEN {direction} {symbol} @ {entry}")
-        return {
-            "action":      "OPEN",
-            "direction":   direction,
-            "symbol":      symbol,
-            "entry":       entry,
-            "tp_levels":   [],
-            "sl":          None,
-            "magic_base":  ch["magic_base"],
-            "raw_message": raw,
-        }
+        state.set_forex_pending(symbol, direction, entry)
+        log.info(f"[FOREX] Pending {direction} {symbol} @ {entry}")
+        return None
 
     # ── Modifica TP/SL (IT / EN) ─────────────────────────────────────────────
     m_mod = re.search(
@@ -482,7 +476,41 @@ def parser_sala_vip(text: str, ch: dict) -> dict | None:
 
         if m_tp:
             tp_val = pf(m_tp.group(1))
+            sl_val = pf(m_sl.group(1)) if m_sl else None
+            if (
+                state.forex_pending_symbol == symbol
+                and state.forex_pending_dir == direction
+            ):
+                entry = state.forex_pending_entry
+                log.info(
+                    f"[FOREX] OPEN (pending+modified) {direction} {symbol} "
+                    f"@{entry} TP={tp_val} SL={sl_val}"
+                )
+                signal = {
+                    "action":      "OPEN",
+                    "direction":   direction,
+                    "symbol":      symbol,
+                    "entry":       entry,
+                    "tp_levels":   [tp_val],
+                    "sl":          sl_val,
+                    "magic_base":  ch["magic_base"],
+                    "raw_message": raw,
+                }
+                state.set_forex_last_trade(signal)
+                state.clear_forex_pending()
+                return signal
+
             log.info(f"[FOREX] UPDATE_TP {symbol} {direction} TP={tp_val}")
+            if (
+                state.forex_last_trade
+                and state.forex_last_trade.get("symbol") == symbol
+                and state.forex_last_trade.get("direction") == direction
+            ):
+                state.set_forex_last_trade({
+                    **state.forex_last_trade,
+                    "tp_levels": [tp_val],
+                    "sl": sl_val or state.forex_last_trade.get("sl"),
+                })
             return {
                 "action":      "UPDATE_TP",
                 "symbol":      symbol,
@@ -514,6 +542,12 @@ def parser_sala_vip(text: str, ch: dict) -> dict | None:
     if m_close:
         symbol    = normalize_symbol(m_close.group(1))
         direction = m_close.group(2)
+        if (
+            state.forex_last_trade
+            and state.forex_last_trade.get("symbol") == symbol
+            and state.forex_last_trade.get("direction") == direction
+        ):
+            state.clear_forex_last_trade()
         log.info(f"[CH3] CHECK_AND_CLOSE {symbol} {direction}")
         return {
             "action":      "CHECK_AND_CLOSE",
@@ -548,6 +582,16 @@ def _parse_oro_sl_tp(upper: str) -> tuple[float | None, list[float]]:
 
 
 def _parse_oro_direction_entry(upper: str) -> tuple[str | None, float | None, list[float] | None]:
+    m = re.search(
+        r"ZONA\s+(BUY|SELL)\s+([\d.,]+)\s*-\s*([\d.,]+)",
+        upper,
+    )
+    if m:
+        direction = m.group(1)
+        v1 = pf(m.group(2))
+        v2 = pf(m.group(3))
+        return direction, None, [min(v1, v2), max(v1, v2)]
+
     m = re.search(
         r"(?:XAUUSD|GOLD)\s+(BUY|SELL)\s+([\d.,]+)(?:\s*-\s*([\d.,]+))?",
         upper,
@@ -1041,7 +1085,7 @@ async def run_bridge():
                         bridge_state.set_ch2_pending(direction)
                         log.info(f"[CH2] EDIT con dati completi → forzo UPDATE_OPEN {direction}")
 
-            if ch_cfg["parser"] in ("sala_gold", "sala_oro"):
+            if ch_cfg["parser"] in ("sala_gold", "sala_oro", "sala_vip"):
                 signal = parser(text, ch_cfg, bridge_state)
             else:
                 signal = parser(text, ch_cfg)

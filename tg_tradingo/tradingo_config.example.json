@@ -89,7 +89,7 @@
     {
       "id": "CH_IVAN",
       "enabled": false,
-      "telegram_id": 0,
+      "telegram_id": -1002112242007,
       "name": "IvanTrades - VIP",
       "parser": "placeholder",
       "signal_file": "signal_ch_ivan.json",
@@ -99,7 +99,7 @@
         "fixed_lot_single": 0.20,
         "fixed_lot_per_tp": 0.10,
         "tp_levels_expected": 1,
-        "notes": "Impostare telegram_id con resolve_channels.py poi abilitare."
+        "notes": "Attivo dal 20 lug 2026. Abilitare quando il parser è pronto (telegram_id confermato)."
       }
     }
   ]

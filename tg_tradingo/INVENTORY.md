@@ -4,16 +4,14 @@ Elenco file trovati sulla VPS. Runtime non in git; sorgenti in `tg_tradingo/`.
 
 ## VPS / deploy
 
-**TG_TradinGoEA.mq5** — non trovato in repo (ricerca cloud agent lug 2026).  
-Sulla VPS cercare con:
+**TG_TradinGoEA.mq5** — in repo: `tg_tradingo/mql5/TG_TradinGoEA.mq5` (v2.0, lug 2026).  
+Specifica JSON: `tg_tradingo/docs/EA_SPEC.md`. Setup amici: `tg_tradingo/docs/FRIEND_SETUP.md`.
 
-```bat
-dir "C:\Program Files" /s /b TG_TradinGoEA.mq5
-dir "%APPDATA%\MetaQuotes\Terminal" /s /b TG_TradinGoEA.mq5
-dir C:\TG_TradinGo /s /b *.mq5
+Sulla VPS, per trovare eventuale EA legacy:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\find_tradingo_ea.ps1
 ```
-
-Se trovato, copiare in `tg_tradingo/mql5/TG_TradinGoEA.mq5` prima di modifiche lato EA.
 
 | Percorso VPS | Ruolo |
 |--------------|-------|

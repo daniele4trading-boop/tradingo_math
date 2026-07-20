@@ -80,9 +80,11 @@ TG_TradinGoEA.mq5  (legge JSON, esegue ordini MT5)
 - `docs/fixtures/signals_apr21.txt` — messaggi 20-21 apr
 - `docs/fixtures/channel_dump.txt` — dump canali completo
 
-### Mancante nella cartella VPS
+### EA MT5
 
-- `TG_TradinGoEA.mq5` — referenziato nel README ma **non presente** in `C:\TG_TradinGo`; probabilmente installato sotto `MQL5\Experts\` del terminale MT5.
+- `mql5/TG_TradinGoEA.mq5` — EA in repo (v2.0); installare in `MQL5\Experts\` del terminale MT5.
+- `docs/EA_SPEC.md` — contratto JSON bridge → EA.
+- `docs/FRIEND_SETUP.md` — distribuzione EA su VPS amici.
 
 ---
 

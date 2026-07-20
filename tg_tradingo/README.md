@@ -7,7 +7,7 @@ C:\TG_TradinGo\
   tradingo_bridge.py      ← Bridge Python (Telegram → JSON)
   tradingo_config.json    ← Configurazione centralizzata
   start_tradingo.bat      ← Avvio bridge
-  TG_TradinGoEA.mq5       ← EA MQL5 (JSON → MT5 trades)
+  mql5/TG_TradinGoEA.mq5  ← EA MQL5 (JSON → MT5 trades)
   logs\
     tradingo_YYYYMMDD.log
   signals\

@@ -82,12 +82,16 @@ def atomic_write_json(path: Path, data: dict) -> None:
 
 
 class BridgeState:
-    """Persistent CH2 naked→complete pending state."""
+    """Persistent CH2 naked→complete and ORO partial/update state."""
 
     def __init__(self, state_file: Path):
         self.state_file = state_file
         self.ch2_pending_dir: str | None = None
         self.ch2_pending_open: bool = False
+        self.oro_pending_dir: str | None = None
+        self.oro_pending_entry: float | None = None
+        self.oro_pending_range: list[float] | None = None
+        self.oro_last_trade: dict | None = None
         self.load()
 
     def load(self) -> None:
@@ -98,10 +102,17 @@ class BridgeState:
             ch2 = data.get("ch2_pending", {})
             self.ch2_pending_dir = ch2.get("pending_dir")
             self.ch2_pending_open = bool(ch2.get("pending_open", False))
+            oro_p = data.get("oro_pending", {})
+            self.oro_pending_dir = oro_p.get("direction")
+            self.oro_pending_entry = oro_p.get("entry")
+            pr = oro_p.get("entry_range")
+            self.oro_pending_range = pr if isinstance(pr, list) else None
+            self.oro_last_trade = data.get("oro_last_trade")
             log.info(
-                "Bridge state loaded: ch2_pending_open=%s dir=%s",
+                "Bridge state loaded: ch2_pending_open=%s dir=%s oro_pending=%s",
                 self.ch2_pending_open,
                 self.ch2_pending_dir,
+                self.oro_pending_dir,
             )
         except Exception as exc:
             log.warning("Could not load bridge state %s: %s", self.state_file, exc)
@@ -112,6 +123,12 @@ class BridgeState:
                 "pending_open": self.ch2_pending_open,
                 "pending_dir": self.ch2_pending_dir,
             },
+            "oro_pending": {
+                "direction": self.oro_pending_dir,
+                "entry": self.oro_pending_entry,
+                "entry_range": self.oro_pending_range,
+            },
+            "oro_last_trade": self.oro_last_trade,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         atomic_write_json(self.state_file, payload)
@@ -126,14 +143,45 @@ class BridgeState:
         self.ch2_pending_dir = None
         self.save()
 
+    def set_oro_pending(
+        self,
+        direction: str,
+        entry: float | None = None,
+        entry_range: list[float] | None = None,
+    ) -> None:
+        self.oro_pending_dir = direction
+        self.oro_pending_entry = entry
+        self.oro_pending_range = entry_range
+        self.save()
+
+    def clear_oro_pending(self) -> None:
+        self.oro_pending_dir = None
+        self.oro_pending_entry = None
+        self.oro_pending_range = None
+        self.save()
+
+    def set_oro_last_trade(self, trade: dict) -> None:
+        self.oro_last_trade = {
+            "direction": trade.get("direction"),
+            "entry": trade.get("entry"),
+            "entry_range": trade.get("entry_range"),
+            "sl": trade.get("sl"),
+            "tp_levels": list(trade.get("tp_levels") or []),
+        }
+        self.save()
+
 
 class EphemeralBridgeState(BridgeState):
-    """In-memory CH2 state for dry-run; never reads/writes disk (Windows-safe)."""
+    """In-memory state for dry-run; never reads/writes disk (Windows-safe)."""
 
     def __init__(self):
         self.state_file = Path("_ephemeral_")
         self.ch2_pending_dir: str | None = None
         self.ch2_pending_open: bool = False
+        self.oro_pending_dir: str | None = None
+        self.oro_pending_entry: float | None = None
+        self.oro_pending_range: list[float] | None = None
+        self.oro_last_trade: dict | None = None
 
     def load(self) -> None:
         return

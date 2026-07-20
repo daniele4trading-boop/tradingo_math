@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.02"
+#property version   "2.03"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -468,6 +468,28 @@ bool OpenSplitTrades(const string symbol, const string direction,
   }
 
 //+------------------------------------------------------------------+
+bool ModifyExistingTrades(const string symbol, const int magicBase,
+                          const double sl, const double &tps[])
+  {
+   int idx = 0;
+   bool any = false;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(g_pos.Symbol() != symbol)
+         continue;
+      if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
+         continue;
+      double tp = (idx < ArraySize(tps)) ? tps[idx] : 0.0;
+      if(ModifyPositionSLTP(g_pos.Ticket(), sl, tp))
+         any = true;
+      idx++;
+     }
+   return any;
+  }
+
+//+------------------------------------------------------------------+
 bool HandleOpen(const string channelFile, const string json)
   {
    string action = JsonGetString(json, "action");
@@ -526,6 +548,14 @@ bool HandleOpen(const string channelFile, const string json)
    if(action == "OPEN_NOW")
      {
       return OpenMarket(symbol, direction, lot, 0, 0, TradeMagic(magicBase, 1));
+     }
+
+   int openCnt = CountOurPositions(symbol, magicBase, 5);
+   if(openCnt > 0)
+     {
+      Print("[TradinGo] OPEN skipped — ", openCnt,
+            " position(s) exist, modifying SL/TP instead");
+      return ModifyExistingTrades(symbol, magicBase, sl, tps);
      }
 
    return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase);
@@ -698,6 +728,7 @@ bool HandleCloseHalfBe(const string json)
   {
    string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
    int magicBase = JsonGetInt(json, "magic_base");
+   Print("[TradinGo] CLOSE_HALF_BE ", symbol, " — close 50% + SL to entry");
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       if(!g_pos.SelectByIndex(i))
@@ -834,7 +865,7 @@ int OnInit()
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.02 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.03 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints);

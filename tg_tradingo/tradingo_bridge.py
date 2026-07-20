@@ -530,54 +530,170 @@ def parser_sala_vip(text: str, ch: dict) -> dict | None:
 # PARSER SALA ORO VIP
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# Formato compatto:
-#   XAUUSD BUY 4088
-#   TP 4098
-#   SL 4083
-#   XAUUSD BUY 4088-4087  (range entry)
+# Canale sempre XAUUSD. Formati:
+#   XAUUSD SELL 4020-4022 | TP 4010 | SL 4024
+#   4020 sell  /  sell 4020  (senza simbolo)
+#   Tp 4010 | Sl 4024  (completamento edit)
+#   60 PIPS CLOSE OR BREKIVEN  -> CLOSE_HALF_BE (meta' + BE)
 
-def parser_sala_oro(text: str, ch: dict) -> dict | None:
-    raw   = text.strip()
+def _parse_oro_sl_tp(upper: str) -> tuple[float | None, list[float]]:
+    sl = None
+    m_sl = re.search(r"\bSL\s*[:\s|]\s*([\d.,]+)", upper)
+    if m_sl:
+        sl = pf(m_sl.group(1))
+    tps = [pf(v) for v in re.findall(r"TP\d*\s*[:\s|]\s*([\d.,]+)", upper)]
+    if not tps:
+        tps = [pf(v) for v in re.findall(r"\bTP\s+([\d.,]+)", upper)]
+    return sl, tps
+
+
+def _parse_oro_direction_entry(upper: str) -> tuple[str | None, float | None, list[float] | None]:
+    m = re.search(
+        r"(?:XAUUSD|GOLD)\s+(BUY|SELL)\s+([\d.,]+)(?:\s*-\s*([\d.,]+))?",
+        upper,
+    )
+    if m:
+        direction = m.group(1)
+        entry1 = pf(m.group(2))
+        entry2 = pf(m.group(3)) if m.group(3) else None
+        if entry2 is not None:
+            return direction, None, [min(entry1, entry2), max(entry1, entry2)]
+        return direction, entry1, None
+
+    m = re.search(r"([\d.,]+)\s+(BUY|SELL)\b", upper)
+    if m:
+        return m.group(2), pf(m.group(1)), None
+
+    m = re.search(r"\b(BUY|SELL)\s+([\d.,]+)", upper)
+    if m:
+        return m.group(1), pf(m.group(2)), None
+
+    return None, None, None
+
+
+def _oro_is_close_half_be(upper: str) -> bool:
+    if not re.search(r"\d+\s*PIPS?", upper):
+        return False
+    return contains_any(
+        upper,
+        "CLOSE",
+        "BREK",
+        "BREAK",
+        "BREAKEVEN",
+        " BE ",
+    )
+
+
+def _oro_same_trade_setup(a: dict, b: dict) -> bool:
+    if a.get("direction") != b.get("direction"):
+        return False
+    if a.get("entry_range") and b.get("entry_range"):
+        ar = [min(a["entry_range"]), max(a["entry_range"])]
+        br = [min(b["entry_range"]), max(b["entry_range"])]
+        return ar == br
+    if a.get("entry") is not None and b.get("entry") is not None:
+        return a["entry"] == b["entry"]
+    return False
+
+
+def _oro_resolve_context(state: BridgeState) -> tuple[str | None, float | None, list[float] | None]:
+    if state.oro_pending_dir:
+        return state.oro_pending_dir, state.oro_pending_entry, state.oro_pending_range
+    if state.oro_last_trade:
+        lt = state.oro_last_trade
+        return lt.get("direction"), lt.get("entry"), lt.get("entry_range")
+    return None, None, None
+
+
+def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
+    if state is None:
+        state, _ = _ensure_runtime()
+    raw = text.strip()
+    if not raw or raw in (".", "…", "-", "—"):
+        return None
+
     upper = strip_md(raw).upper()
 
     ignore_pats = [
-        r"REPORT", r"PIPS\s*✅", r"^\d+\s+PIPS",
-        r"BOOO?MM", r"RAGAZZI", r"POTREBBE", r"ATTENDIAMO",
-        r"DOVREBBE", r"FORMazione", r"LIVE",
+        r"REPORT",
+        r"BOOO?MM",
+        r"RAGAZZI",
+        r"POTREBBE",
+        r"ATTENDIAMO",
+        r"DOVREBBE",
+        r"FORMazione",
+        r"LIVE",
+        r"^\d+\s+PIPS?\s*✅\s*$",
     ]
     for pat in ignore_pats:
         if re.search(pat, upper):
             log.debug(f"[ORO] Ignorato: {raw[:60]}")
             return None
 
-    m = re.search(
-        r"XAUUSD\s+(BUY|SELL)\s+([\d.,]+)(?:\s*-\s*([\d.,]+))?",
-        upper,
-    )
-    if not m:
+    if _oro_is_close_half_be(upper):
+        log.info(f"[ORO] CLOSE_HALF_BE: {raw[:60]}")
+        return {
+            "action":      "CLOSE_HALF_BE",
+            "symbol":      "XAUUSD",
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
+        }
+
+    sl, tps = _parse_oro_sl_tp(upper)
+    direction, entry, entry_range = _parse_oro_direction_entry(upper)
+
+    if direction is None and (sl is not None or tps):
+        direction, entry, entry_range = _oro_resolve_context(state)
+        if not direction:
+            log.debug(f"[ORO] SL/TP senza contesto: {raw[:60]}")
+            return None
+        if tps and sl is None:
+            log.info(f"[ORO] UPDATE_TP XAUUSD {direction} TP={tps[0]}")
+            state.set_oro_last_trade({
+                "direction": direction,
+                "entry": entry,
+                "entry_range": entry_range,
+                "sl": state.oro_last_trade.get("sl") if state.oro_last_trade else None,
+                "tp_levels": tps,
+            })
+            state.clear_oro_pending()
+            return {
+                "action":      "UPDATE_TP",
+                "symbol":      "XAUUSD",
+                "direction":   direction,
+                "new_tp":      tps[0],
+                "tp_levels":   tps,
+                "magic_base":  ch["magic_base"],
+                "raw_message": raw,
+            }
+        if sl is not None and not tps:
+            log.info(f"[ORO] UPDATE_SL XAUUSD {direction} SL={sl}")
+            state.set_oro_last_trade({
+                "direction": direction,
+                "entry": entry,
+                "entry_range": entry_range,
+                "sl": sl,
+                "tp_levels": state.oro_last_trade.get("tp_levels") if state.oro_last_trade else [],
+            })
+            state.clear_oro_pending()
+            return {
+                "action":      "UPDATE_SL",
+                "symbol":      "XAUUSD",
+                "direction":   direction,
+                "new_sl":      sl,
+                "magic_base":  ch["magic_base"],
+                "raw_message": raw,
+            }
+
+    if direction is None:
         return None
-
-    direction = m.group(1)
-    entry1    = pf(m.group(2))
-    entry2    = pf(m.group(3)) if m.group(3) else None
-    entry_range = [min(entry1, entry2), max(entry1, entry2)] if entry2 else None
-    entry     = None if entry_range else entry1
-
-    sl = None
-    m_sl = re.search(r"\bSL\s*[:\s]\s*([\d.,]+)", upper)
-    if m_sl:
-        sl = pf(m_sl.group(1))
-
-    tps = [pf(v) for v in re.findall(r"TP\d*\s*[:\s]\s*([\d.,]+)", upper)]
-    if not tps:
-        tps = [pf(v) for v in re.findall(r"\bTP\s+([\d.,]+)", upper)]
 
     if not tps and sl is None:
+        state.set_oro_pending(direction, entry, entry_range)
+        log.info(f"[ORO] Pending {direction} XAUUSD entry={entry} range={entry_range}")
         return None
 
-    entry_log = f"range={entry_range}" if entry_range else f"@{entry}"
-    log.info(f"[ORO] OPEN {direction} XAUUSD {entry_log} TP={tps} SL={sl}")
-    return {
+    signal = {
         "action":      "OPEN",
         "direction":   direction,
         "symbol":      "XAUUSD",
@@ -588,6 +704,62 @@ def parser_sala_oro(text: str, ch: dict) -> dict | None:
         "magic_base":  ch["magic_base"],
         "raw_message": raw,
     }
+
+    last = state.oro_last_trade
+    if last and _oro_same_trade_setup(signal, last):
+        last_tps = last.get("tp_levels") or []
+        last_sl = last.get("sl")
+        tps_changed = tps != last_tps
+        sl_changed = sl != last_sl
+        if tps_changed and not sl_changed:
+            log.info(f"[ORO] UPDATE_TP (edit) XAUUSD {direction} TP={tps}")
+            signal = {
+                "action":      "UPDATE_TP",
+                "symbol":      "XAUUSD",
+                "direction":   direction,
+                "new_tp":      tps[0],
+                "tp_levels":   tps,
+                "magic_base":  ch["magic_base"],
+                "raw_message": raw,
+            }
+        elif sl_changed and not tps_changed:
+            log.info(f"[ORO] UPDATE_SL (edit) XAUUSD {direction} SL={sl}")
+            signal = {
+                "action":      "UPDATE_SL",
+                "symbol":      "XAUUSD",
+                "direction":   direction,
+                "new_sl":      sl,
+                "magic_base":  ch["magic_base"],
+                "raw_message": raw,
+            }
+        elif tps_changed or sl_changed:
+            log.info(f"[ORO] UPDATE_OPEN (edit) XAUUSD {direction} TP={tps} SL={sl}")
+            signal["action"] = "UPDATE_OPEN"
+
+    if signal["action"] == "OPEN":
+        entry_log = f"range={entry_range}" if entry_range else f"@{entry}"
+        log.info(f"[ORO] OPEN {direction} XAUUSD {entry_log} TP={tps} SL={sl}")
+
+    if signal["action"] in ("OPEN", "UPDATE_OPEN"):
+        state.set_oro_last_trade(signal)
+    elif signal["action"] == "UPDATE_TP":
+        state.set_oro_last_trade({
+            "direction": direction,
+            "entry": entry,
+            "entry_range": entry_range,
+            "sl": last.get("sl") if last else sl,
+            "tp_levels": tps,
+        })
+    elif signal["action"] == "UPDATE_SL":
+        state.set_oro_last_trade({
+            "direction": direction,
+            "entry": entry,
+            "entry_range": entry_range,
+            "sl": sl,
+            "tp_levels": last.get("tp_levels") if last else tps,
+        })
+    state.clear_oro_pending()
+    return signal
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -816,7 +988,7 @@ async def run_bridge():
                         bridge_state.set_ch2_pending(direction)
                         log.info(f"[CH2] EDIT con dati completi → forzo UPDATE_OPEN {direction}")
 
-            if ch_cfg["parser"] == "sala_gold":
+            if ch_cfg["parser"] in ("sala_gold", "sala_oro"):
                 signal = parser(text, ch_cfg, bridge_state)
             else:
                 signal = parser(text, ch_cfg)

@@ -34,6 +34,14 @@
 
 | Campo | Valore |
 |-------|--------|
+| Parser | `sala_oro` |
+| Simbolo | sempre **XAUUSD** (anche senza simbolo nel messaggio) |
+| Range entry | `entry` null, solo `entry_range` |
+| Edit TP | `UPDATE_TP` (non secondo OPEN) |
+| `60 PIPS CLOSE OR BREKIVEN` | `CLOSE_HALF_BE` (chiudi 50% + BE) |
+
+| Campo | Valore |
+|-------|--------|
 | telegram_id | -1003950995427 |
 | Parser | `sala_oro` (nuovo) |
 | TP standard | **2** predominante (33 msg 1TP, 14 msg 2TP) |

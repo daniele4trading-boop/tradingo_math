@@ -52,6 +52,13 @@ CH4 = {
 }
 
 
+CH_ORO = {
+    "id": "CH_ORO",
+    "magic_base": 14100,
+    "execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10},
+}
+
+
 class TestCH1ZanniVip:
     def test_open_buy_xauusd(self):
         text = (
@@ -224,7 +231,7 @@ class TestCHORO:
             "TP 4120\n"
             "SL 4068"
         )
-        sig = parser_sala_oro(text, CH4)
+        sig = parser_sala_oro(text, CH_ORO)
         assert sig["action"] == "OPEN"
         assert sig["direction"] == "BUY"
         assert len(sig["tp_levels"]) == 2
@@ -234,8 +241,50 @@ class TestCHORO:
 
     def test_open_single_tp(self):
         text = "XAUUSD BUY 4088\nTP 4098\nSL 4083"
-        sig = parser_sala_oro(text, CH4)
+        sig = parser_sala_oro(text, CH_ORO)
         assert len(sig["tp_levels"]) == 1
+
+    def test_close_half_be_brekiven(self):
+        sig = parser_sala_oro("60 PIPS CLOSE OR BREKIVEN ✅", CH_ORO)
+        assert sig["action"] == "CLOSE_HALF_BE"
+        assert sig["symbol"] == "XAUUSD"
+
+    def test_compact_sell_without_symbol(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        assert parser_sala_oro("4020 sell", CH_ORO, state) is None
+        assert state.oro_pending_dir == "SELL"
+        assert state.oro_pending_entry == 4020.0
+
+    def test_tp_sl_completes_pending(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        parser_sala_oro("4020 sell", CH_ORO, state)
+        sig = parser_sala_oro("Tp 4010 | Sl 4024", CH_ORO, state)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["symbol"] == "XAUUSD"
+        assert sig["entry"] == 4020.0
+        assert sig["tp_levels"] == [4010.0]
+        assert sig["sl"] == 4024.0
+
+    def test_update_tp_on_edit(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        sig1 = parser_sala_oro(
+            "XAUUSD SELL 4020-4022\nTP 4010\nSL 4024", CH_ORO, state
+        )
+        assert sig1["action"] == "OPEN"
+        sig2 = parser_sala_oro(
+            "XAUUSD SELL 4020-4022\nTP 4012\nSL 4024", CH_ORO, state
+        )
+        assert sig2["action"] == "UPDATE_TP"
+        assert sig2["new_tp"] == 4012.0
+
+    def test_real_world_sell_range(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        sig = parser_sala_oro(
+            "XAUUSD SELL 4020-4022\nTP 4010\nSL 4024", CH_ORO, state
+        )
+        assert sig["entry_range"] == [4020.0, 4022.0]
+        assert sig["entry"] is None
 
 
 class TestLotRules:

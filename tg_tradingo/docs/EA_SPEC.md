@@ -93,7 +93,7 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 | `CHECK_AND_CLOSE` | Chiudi se esiste posizione symbol+direction |
 | `CLOSE_ALL_SYMBOL` | Chiudi tutte le posizioni del simbolo (magic del canale) |
 | `BREAK_EVEN_PRICE` | Sposta SL a `be_price` |
-| `CLOSE_HALF_BE` | Chiudi metà volume + BE sul resto |
+| `CLOSE_HALF_BE` | Chiudi metà volume + BE sul resto (ORO: `60 PIPS CLOSE OR BREKIVEN`) |
 | `CHECK_AND_BE` | Se TP1 non chiuso, sposta SL a entry |
 | `CHECK_AND_CLOSE_TP` | Chiudi trade con `tp_index` se ancora aperto |
 

@@ -135,8 +135,41 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 | `InpMaxSlippagePoints` | 50 | Slippage |
 | `InpPollMs` | 500 | Intervallo lettura file |
 | `InpRangeTolerancePoints` | 150 | Max distanza (punti) dal range per entrare comunque |
-| `InpLogCancelledSignals` | true | Scrive `tradingo_signal_stats.csv` |
-| `InpChannels` | `gold,forex,oro,stark` | File da monitorare |
+| `InpLogCancelledSignals` | true | Scrive `tradingo_signal_stats.csv` (esecuzioni + cancellazioni) |
+| `InpChannels` | `gold,forex,oro,stark,ivan` | File da monitorare |
+
+### Commento ordini MT5
+
+Ogni trade aperto dall'EA ha commento:
+
+```
+TG-GOLD-T1    (canale GOLD, TP 1)
+TG-IVAN-T3    (canale Ivan, TP 3)
+TG-STARK-T1
+```
+
+Il tag deriva da `channel_id` nel JSON (`CH_GOLD` → `GOLD`). Visibile in tab Trade / History.
+
+### Statistiche esecuzione (`tradingo_signal_stats.csv`)
+
+In `MQL5\Files\`, una riga per ogni trade aperto o segnale scartato:
+
+| status | Significato |
+|--------|-------------|
+| `EXECUTED_IN_RANGE` | Prezzo dentro `entry_range` |
+| `EXECUTED_TOLERANCE` | Fuori range ma dentro tolleranza |
+| `EXECUTED_DIRECT` | OPEN senza range (entry singolo) |
+| `EXECUTED_OPEN_NOW` | GOLD naked |
+| `CANCELLED_RANGE` | Prezzo troppo lontano, trade non aperto |
+
+Colonne: `signal_entry`, `fill_price`, `slippage_points`, `distance_points`, `channel_id`, `tp_index`, `magic`.
+
+Analisi da VPS:
+
+```bat
+cd C:\StatArb\tg_tradingo
+python analyze_signal_stats.py
+```
 
 ---
 

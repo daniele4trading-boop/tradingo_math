@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.03"
+#property version   "2.04"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -309,8 +309,111 @@ double NormalizeLot(const string symbol, double lot)
   }
 
 //+------------------------------------------------------------------+
+string ChannelShortTag(const string channelFile, const string json)
+  {
+   string cid = JsonGetString(json, "channel_id");
+   if(cid != "")
+     {
+      StringReplace(cid, "CH_", "");
+      return cid;
+     }
+   string f = channelFile;
+   StringReplace(f, "signal_ch_", "");
+   StringReplace(f, ".json", "");
+   StringToUpper(f);
+   return f;
+  }
+
+//+------------------------------------------------------------------+
+string BuildTradeComment(const string channelTag, const int tpIndex)
+  {
+   if(tpIndex > 0)
+      return StringFormat("TG-%s-T%d", channelTag, tpIndex);
+   return StringFormat("TG-%s", channelTag);
+  }
+
+//+------------------------------------------------------------------+
+void AppendSignalStat(const string channelFile, const string json,
+                      const string symbol, const string direction,
+                      const string status,
+                      const double rangeLo, const double rangeHi,
+                      const double signalEntry, const double fillPrice,
+                      const double distancePoints, const int tpIndex,
+                      const ulong magic)
+  {
+   if(!InpLogCancelledSignals)
+      return;
+
+   string ch = JsonGetString(json, "channel_id");
+   string ts = JsonGetString(json, "timestamp");
+   double slippagePts = 0.0;
+   if(signalEntry > 0.0 && fillPrice > 0.0)
+     {
+      g_sym.Name(symbol);
+      double point = g_sym.Point();
+      if(point <= 0.0)
+         point = _Point;
+      slippagePts = (fillPrice - signalEntry) / point;
+      if(direction == "SELL")
+         slippagePts = -slippagePts;
+     }
+
+   string line = StringFormat(
+      "%s,%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.5f,%.1f,%.1f,%d,%s,%s\n",
+      TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS),
+      ch,
+      channelFile,
+      symbol,
+      direction,
+      status,
+      signalEntry,
+      rangeLo,
+      rangeHi,
+      fillPrice,
+      slippagePts,
+      distancePoints,
+      tpIndex,
+      IntegerToString(magic),
+      ts
+   );
+
+   int h = FileOpen("tradingo_signal_stats.csv",
+                    FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE)
+     {
+      h = FileOpen("tradingo_signal_stats.csv",
+                   FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_WRITE);
+      if(h != INVALID_HANDLE)
+         FileWriteString(h,
+            "time,channel_id,channel_file,symbol,direction,status,signal_entry,range_lo,range_hi,fill_price,slippage_points,distance_points,tp_index,magic,telegram_ts\n");
+     }
+   if(h != INVALID_HANDLE)
+     {
+      FileSeek(h, 0, SEEK_END);
+      FileWriteString(h, line);
+      FileClose(h);
+     }
+  }
+
+//+------------------------------------------------------------------+
+double SignalEntryFromJson(const string json, const double rangeLo, const double rangeHi)
+  {
+   double entry = JsonGetNumber(json, "entry");
+   if(entry > 0.0)
+      return entry;
+   if(rangeHi > rangeLo)
+      return (rangeLo + rangeHi) / 2.0;
+   return 0.0;
+  }
+
+//+------------------------------------------------------------------+
 bool OpenMarket(const string symbol, const string direction, const double lot,
-                const double sl, const double tp, const ulong magic)
+                const double sl, const double tp, const ulong magic,
+                const string comment,
+                const string channelFile, const string json,
+                const string entryStatus,
+                const double rangeLo, const double rangeHi,
+                const double distancePoints, const int tpIndex)
   {
    g_sym.Name(symbol);
    g_sym.RefreshRates();
@@ -318,12 +421,26 @@ bool OpenMarket(const string symbol, const string direction, const double lot,
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    bool ok = false;
    if(direction == "BUY")
-      ok = g_trade.Buy(lot, symbol, 0.0, sl > 0 ? sl : 0.0, tp > 0 ? tp : 0.0);
+      ok = g_trade.Buy(lot, symbol, 0.0, sl > 0 ? sl : 0.0, tp > 0 ? tp : 0.0, comment);
    else
-      ok = g_trade.Sell(lot, symbol, 0.0, sl > 0 ? sl : 0.0, tp > 0 ? tp : 0.0);
+      ok = g_trade.Sell(lot, symbol, 0.0, sl > 0 ? sl : 0.0, tp > 0 ? tp : 0.0, comment);
    if(!ok)
+     {
       Print("[TradinGo] Open failed ", symbol, " ", direction, " err=", g_trade.ResultRetcode());
-   return ok;
+      return false;
+     }
+   double fillPrice = g_trade.ResultPrice();
+   if(fillPrice <= 0.0)
+      fillPrice = (direction == "BUY") ? g_sym.Ask() : g_sym.Bid();
+   double signalEntry = SignalEntryFromJson(json, rangeLo, rangeHi);
+   AppendSignalStat(channelFile, json, symbol, direction, entryStatus,
+                    rangeLo, rangeHi, signalEntry, fillPrice, distancePoints,
+                    tpIndex, magic);
+   Print("[TradinGo] Opened ", comment, " ", symbol, " ", direction,
+         " lot=", DoubleToString(lot, 2),
+         " fill=", DoubleToString(fillPrice, (int)g_sym.Digits()),
+         " status=", entryStatus);
+   return true;
   }
 
 //+------------------------------------------------------------------+
@@ -378,58 +495,30 @@ void LogCancelledSignal(const string channelFile, const string json,
                         const double lo, const double hi,
                         const double price, const double distancePoints)
   {
-   string ts = JsonGetString(json, "timestamp");
-   string ch = JsonGetString(json, "channel_id");
-   Print("[TradinGo] SIGNAL_CANCELLED ", ch, " ", symbol, " ", direction,
+   Print("[TradinGo] SIGNAL_CANCELLED ", JsonGetString(json, "channel_id"), " ", symbol, " ", direction,
          " range=[", DoubleToString(lo, (int)g_sym.Digits()), ",",
          DoubleToString(hi, (int)g_sym.Digits()), "]",
          " price=", DoubleToString(price, (int)g_sym.Digits()),
          " distance_points=", DoubleToString(distancePoints, 1),
          " max_tolerance=", InpRangeTolerancePoints,
-         " ts=", ts);
-
-   if(!InpLogCancelledSignals)
-      return;
-
-   string line = StringFormat(
-      "%s,%s,%s,%s,%s,%.5f,%.5f,%.5f,%.1f,CANCELLED_RANGE\n",
-      TimeToString(TimeCurrent(), TIME_DATE | TIME_SECONDS),
-      ch,
-      channelFile,
-      symbol,
-      direction,
-      lo,
-      hi,
-      price,
-      distancePoints
-   );
-   int h = FileOpen("tradingo_signal_stats.csv",
-                    FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_WRITE);
-   if(h == INVALID_HANDLE)
-     {
-      h = FileOpen("tradingo_signal_stats.csv",
-                   FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_WRITE);
-      if(h != INVALID_HANDLE)
-         FileWriteString(h, "time,channel_id,file,symbol,direction,range_lo,range_hi,price,distance_points,status\n");
-     }
-   if(h != INVALID_HANDLE)
-     {
-      FileSeek(h, 0, SEEK_END);
-      FileWriteString(h, line);
-      FileClose(h);
-     }
+         " ts=", JsonGetString(json, "timestamp"));
+   AppendSignalStat(channelFile, json, symbol, direction, "CANCELLED_RANGE",
+                    lo, hi, SignalEntryFromJson(json, lo, hi), price,
+                    distancePoints, 0, 0);
   }
 
 //+------------------------------------------------------------------+
 bool TryExecuteWithEntryRange(const string channelFile, const string json,
                               const string symbol, const string direction,
-                              const double lo, const double hi)
+                              const double lo, const double hi,
+                              string &outEntryStatus, double &outDistancePoints)
   {
    double price = 0.0;
-   double distPoints = 0.0;
-   EntryRangeDecision decision = EvaluateEntryRange(symbol, direction, lo, hi, price, distPoints);
+   outDistancePoints = 0.0;
+   EntryRangeDecision decision = EvaluateEntryRange(symbol, direction, lo, hi, price, outDistancePoints);
    if(decision == ENTRY_EXECUTE_IN_RANGE)
      {
+      outEntryStatus = "EXECUTED_IN_RANGE";
       Print("[TradinGo] ENTRY_IN_RANGE ", symbol, " ", direction,
             " price=", DoubleToString(price, (int)g_sym.Digits()),
             " range=[", DoubleToString(lo, (int)g_sym.Digits()), ",",
@@ -438,21 +527,28 @@ bool TryExecuteWithEntryRange(const string channelFile, const string json,
      }
    if(decision == ENTRY_EXECUTE_TOLERANCE)
      {
+      outEntryStatus = "EXECUTED_TOLERANCE";
       Print("[TradinGo] ENTRY_TOLERANCE ", symbol, " ", direction,
             " price=", DoubleToString(price, (int)g_sym.Digits()),
-            " distance_points=", DoubleToString(distPoints, 1),
+            " distance_points=", DoubleToString(outDistancePoints, 1),
             " max=", InpRangeTolerancePoints);
       return true;
      }
-   LogCancelledSignal(channelFile, json, symbol, direction, lo, hi, price, distPoints);
+   LogCancelledSignal(channelFile, json, symbol, direction, lo, hi, price, outDistancePoints);
+   outEntryStatus = "CANCELLED_RANGE";
    return false;
   }
 
 //+------------------------------------------------------------------+
 bool OpenSplitTrades(const string symbol, const string direction,
                      const double lot, const double sl, const double &tps[],
-                     const int magicBase)
+                     const int magicBase,
+                     const string channelFile, const string json,
+                     const string entryStatus,
+                     const double rangeLo, const double rangeHi,
+                     const double distancePoints)
   {
+   string channelTag = ChannelShortTag(channelFile, json);
    int n = ArraySize(tps);
    if(n <= 0)
       n = 1;
@@ -461,7 +557,10 @@ bool OpenSplitTrades(const string symbol, const string direction,
      {
       double tp = (i < ArraySize(tps)) ? tps[i] : 0.0;
       ulong magic = TradeMagic(magicBase, i + 1);
-      if(OpenMarket(symbol, direction, lot, sl, tp, magic))
+      string comment = BuildTradeComment(channelTag, i + 1);
+      if(OpenMarket(symbol, direction, lot, sl, tp, magic, comment,
+                    channelFile, json, entryStatus, rangeLo, rangeHi,
+                    distancePoints, i + 1))
          any = true;
      }
    return any;
@@ -539,15 +638,22 @@ bool HandleOpen(const string channelFile, const string json)
       rangeHi = MathMax(entryRange[0], entryRange[1]);
      }
 
+   string entryStatus = "EXECUTED_DIRECT";
+   double distPoints = 0.0;
    if(rangeHi > rangeLo)
      {
-      if(!TryExecuteWithEntryRange(channelFile, json, symbol, direction, rangeLo, rangeHi))
+      if(!TryExecuteWithEntryRange(channelFile, json, symbol, direction, rangeLo, rangeHi,
+                                   entryStatus, distPoints))
          return true;
      }
 
+   string channelTag = ChannelShortTag(channelFile, json);
    if(action == "OPEN_NOW")
      {
-      return OpenMarket(symbol, direction, lot, 0, 0, TradeMagic(magicBase, 1));
+      return OpenMarket(symbol, direction, lot, 0, 0, TradeMagic(magicBase, 1),
+                        BuildTradeComment(channelTag, 1),
+                        channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
+                        distPoints, 1);
      }
 
    int openCnt = CountOurPositions(symbol, magicBase, 5);
@@ -558,11 +664,12 @@ bool HandleOpen(const string channelFile, const string json)
       return ModifyExistingTrades(symbol, magicBase, sl, tps);
      }
 
-   return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase);
+   return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
+                          channelFile, json, entryStatus, rangeLo, rangeHi, distPoints);
   }
 
 //+------------------------------------------------------------------+
-bool HandleUpdateOpen(const string json)
+bool HandleUpdateOpen(const string channelFile, const string json)
   {
    string direction = JsonGetString(json, "direction");
    string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
@@ -581,23 +688,29 @@ bool HandleUpdateOpen(const string json)
    int openCnt = CountOurPositions(symbol, magicBase, 5);
    if(openCnt == 0)
      {
+      double rangeLo = 0, rangeHi = 0;
       double entryRange[];
+      string entryStatus = "EXECUTED_DIRECT";
+      double distPoints = 0.0;
       if(JsonGetNumberArray(json, "entry_range", entryRange) && ArraySize(entryRange) >= 2)
         {
-         double lo = MathMin(entryRange[0], entryRange[1]);
-         double hi = MathMax(entryRange[0], entryRange[1]);
-         if(!TryExecuteWithEntryRange("", json, symbol, direction, lo, hi))
+         rangeLo = MathMin(entryRange[0], entryRange[1]);
+         rangeHi = MathMax(entryRange[0], entryRange[1]);
+         if(!TryExecuteWithEntryRange(channelFile, json, symbol, direction, rangeLo, rangeHi,
+                                      entryStatus, distPoints))
             return true;
         }
       Print("[TradinGo] UPDATE_OPEN but no positions — opening fresh");
-      return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase);
+      return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
+                             channelFile, json, entryStatus, rangeLo, rangeHi, distPoints);
      }
 
    if(openCnt == 1 && trades > 1)
      {
       Print("[TradinGo] UPDATE_OPEN split: close 1 reopen ", trades);
       CloseOurPositions(symbol, magicBase, 5);
-      return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase);
+      return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
+                             channelFile, json, "EXECUTED_DIRECT", 0, 0, 0);
      }
 
    int idx = 0;
@@ -810,7 +923,7 @@ bool ProcessSignalJson(const string channelFile, const string json)
    if(action == "OPEN" || action == "OPEN_NOW")
       return HandleOpen(channelFile, json);
    if(action == "UPDATE_OPEN")
-      return HandleUpdateOpen(json);
+      return HandleUpdateOpen(channelFile, json);
    if(action == "UPDATE_TP")
       return HandleUpdateTp(json);
    if(action == "UPDATE_SL")
@@ -865,7 +978,7 @@ int OnInit()
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.03 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.04 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints);

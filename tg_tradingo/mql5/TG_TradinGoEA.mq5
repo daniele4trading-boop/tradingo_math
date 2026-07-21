@@ -17,7 +17,7 @@
 // Set InpUseAbsolutePath=true only for a custom folder outside MQL5\\Files.
 input string InpSignalsPath        = "";
 input bool   InpUseAbsolutePath    = false;
-input string InpChannels           = "gold,forex,oro,stark";
+input string InpChannels           = "gold,forex,oro,stark,ivan";
 input string InpSymbolSuffix       = "";
 input double InpLotMultiplier      = 1.0;
 input double InpAddLotFactor       = 0.5;

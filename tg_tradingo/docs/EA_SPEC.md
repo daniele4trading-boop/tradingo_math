@@ -37,7 +37,7 @@ L'EA non richiede Telegram né Python: legge solo i JSON.
 
 Stato iniziale / idle: `{"action": "NONE"}`.
 
-Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + replace). L'EA deve deduplicare con `timestamp` (o `message_id` + `event_type`).
+Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + replace). L'EA deduplica con `timestamp` in memoria e, se `InpClearSignalAfterProcess=true` (default), riscrive il file a `{"action":"NONE"}` dopo ogni segnale gestito (esecuzione o scarto range) per evitare replay al riavvio.
 
 ---
 
@@ -136,6 +136,7 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 | `InpPollMs` | 500 | Intervallo lettura file |
 | `InpRangeTolerancePoints` | 150 | Max distanza (punti) dal range per entrare comunque |
 | `InpLogCancelledSignals` | true | Scrive `tradingo_signal_stats.csv` (esecuzioni + cancellazioni) |
+| `InpClearSignalAfterProcess` | true | Dopo ogni segnale gestito, riscrive il JSON a `NONE` |
 | `InpChannels` | `gold,forex,oro,stark,ivan` | File da monitorare |
 
 ### Commento ordini MT5

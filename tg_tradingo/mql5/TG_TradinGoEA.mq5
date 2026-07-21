@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.04"
+#property version   "2.05"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -25,6 +25,7 @@ input int    InpMaxSlippagePoints  = 50;
 input int    InpPollMs             = 500;
 input int    InpRangeTolerancePoints = 150;
 input bool   InpLogCancelledSignals  = true;
+input bool   InpClearSignalAfterProcess = true;
 input bool   InpAutoBreakEvenOnTp1 = true;
 input ulong  InpMagicOffset        = 0;
 
@@ -225,6 +226,55 @@ bool ReadSignalFile(const string fileName, string &content)
          " | tried: ", JoinStrings(candidates, " ; "),
          " | err=", GetLastError(),
          " | hint: bridge writes to MQL5\\Files of THIS terminal");
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+bool WriteTextFileContent(const string path, const string content)
+  {
+   int flags = FILE_WRITE | FILE_TXT | FILE_ANSI;
+   ResetLastError();
+   int h = FileOpen(path, flags);
+   if(h == INVALID_HANDLE)
+     {
+      ResetLastError();
+      h = FileOpen(path, flags | FILE_COMMON);
+      if(h == INVALID_HANDLE)
+         return false;
+     }
+   FileWriteString(h, content);
+   FileClose(h);
+   return true;
+  }
+
+//+------------------------------------------------------------------+
+bool ClearSignalFile(const string fileName)
+  {
+   string payload = "{\"action\":\"NONE\"}\n";
+   string candidates[];
+   int n = 0;
+
+   if(InpUseAbsolutePath && StringLen(InpSignalsPath) > 0)
+     {
+      ArrayResize(candidates, n + 1);
+      candidates[n++] = BuildAbsoluteSignalPath(fileName);
+     }
+
+   ArrayResize(candidates, n + 1);
+   candidates[n++] = BuildRelativeSignalPath(fileName);
+
+   ArrayResize(candidates, n + 1);
+   candidates[n++] = fileName;
+
+   for(int i = 0; i < n; i++)
+     {
+      if(WriteTextFileContent(candidates[i], payload))
+        {
+         Print("[TradinGo] Cleared ", fileName, " -> NONE (path=", candidates[i], ")");
+         return true;
+        }
+     }
+   Print("[TradinGo] Clear failed for ", fileName, " err=", GetLastError());
    return false;
   }
 
@@ -920,29 +970,33 @@ bool ProcessSignalJson(const string channelFile, const string json)
          " sym=", JsonGetString(json, "symbol"),
          " ts=", ts);
 
+   bool handled = false;
    if(action == "OPEN" || action == "OPEN_NOW")
-      return HandleOpen(channelFile, json);
-   if(action == "UPDATE_OPEN")
-      return HandleUpdateOpen(channelFile, json);
-   if(action == "UPDATE_TP")
-      return HandleUpdateTp(json);
-   if(action == "UPDATE_SL")
-      return HandleUpdateSl(json);
-   if(action == "CHECK_AND_CLOSE")
-      return HandleCheckAndClose(json);
-   if(action == "CLOSE_ALL_SYMBOL")
-      return HandleCloseAllSymbol(json);
-   if(action == "BREAK_EVEN_PRICE")
-      return HandleBreakEvenPrice(json);
-   if(action == "CLOSE_HALF_BE")
-      return HandleCloseHalfBe(json);
-   if(action == "CHECK_AND_BE")
-      return HandleCheckAndBe(json);
-   if(action == "CHECK_AND_CLOSE_TP")
-      return HandleCheckAndCloseTp(json);
+      handled = HandleOpen(channelFile, json);
+   else if(action == "UPDATE_OPEN")
+      handled = HandleUpdateOpen(channelFile, json);
+   else if(action == "UPDATE_TP")
+      handled = HandleUpdateTp(json);
+   else if(action == "UPDATE_SL")
+      handled = HandleUpdateSl(json);
+   else if(action == "CHECK_AND_CLOSE")
+      handled = HandleCheckAndClose(json);
+   else if(action == "CLOSE_ALL_SYMBOL")
+      handled = HandleCloseAllSymbol(json);
+   else if(action == "BREAK_EVEN_PRICE")
+      handled = HandleBreakEvenPrice(json);
+   else if(action == "CLOSE_HALF_BE")
+      handled = HandleCloseHalfBe(json);
+   else if(action == "CHECK_AND_BE")
+      handled = HandleCheckAndBe(json);
+   else if(action == "CHECK_AND_CLOSE_TP")
+      handled = HandleCheckAndCloseTp(json);
+   else
+      Print("[TradinGo] Unknown action: ", action);
 
-   Print("[TradinGo] Unknown action: ", action);
-   return false;
+   if(handled && InpClearSignalAfterProcess)
+      ClearSignalFile(channelFile);
+   return handled;
   }
 
 //+------------------------------------------------------------------+
@@ -978,7 +1032,7 @@ int OnInit()
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.04 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.05 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints);

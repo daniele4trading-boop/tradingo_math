@@ -135,9 +135,12 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 | `InpMaxSlippagePoints` | 50 | Slippage |
 | `InpPollMs` | 500 | Intervallo lettura file |
 | `InpRangeTolerancePoints` | 150 | Max distanza (punti) dal range per entrare comunque |
+| `InpOroRangeTolerancePoints` | 250 | Tolleranza dedicata CH_ORO (`0` = usa il default globale) |
 | `InpLogCancelledSignals` | true | Scrive `tradingo_signal_stats.csv` (esecuzioni + cancellazioni) |
 | `InpClearSignalAfterProcess` | true | Dopo ogni segnale gestito, riscrive il JSON a `NONE` |
 | `InpChannels` | `gold,forex,oro,stark,ivan` | File da monitorare |
+
+**v2.06:** prima di `OrderSend`, l'EA normalizza SL/TP alla distanza minima `SYMBOL_TRADE_STOPS_LEVEL` (evita retcode **10016**).
 
 ### Commento ordini MT5
 

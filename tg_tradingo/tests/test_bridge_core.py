@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 TG_ROOT = Path(__file__).resolve().parents[1]
 if str(TG_ROOT) not in sys.path:
@@ -22,6 +25,40 @@ def test_atomic_write_no_partial_read(tmp_path: Path):
     payload = json.dumps({"action": "OPEN", "symbol": "XAUUSD"}, indent=2)
     atomic_write_text(target, payload)
     assert target.read_text(encoding="utf-8") == payload
+
+
+def test_atomic_write_retries_permission_error(tmp_path: Path):
+    target = tmp_path / "signal_ch_oro.json"
+    payload = '{"action":"OPEN"}'
+    calls = {"n": 0}
+    real_replace = __import__("os").replace
+
+    def flaky_replace(src, dst):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError(13, "Access is denied", str(dst))
+        return real_replace(src, dst)
+
+    with patch("bridge_core.os.replace", side_effect=flaky_replace):
+        with patch("bridge_core.time.sleep", return_value=None):
+            atomic_write_text(target, payload, retries=5, backoff_ms=1)
+
+    assert calls["n"] == 3
+    assert target.read_text(encoding="utf-8") == payload
+
+
+def test_atomic_write_exhausted_retries(tmp_path: Path):
+    target = tmp_path / "signal_ch_oro.json"
+
+    def always_fail(src, dst):
+        err = OSError(5, "Access is denied")
+        err.winerror = 5
+        raise err
+
+    with patch("bridge_core.os.replace", side_effect=always_fail):
+        with patch("bridge_core.time.sleep", return_value=None):
+            with pytest.raises(OSError):
+                atomic_write_text(target, "{}", retries=3, backoff_ms=1)
 
 
 def test_dedup_new_and_edit(tmp_path: Path):

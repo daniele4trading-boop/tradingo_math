@@ -64,8 +64,8 @@
 |-------|--------|
 | telegram_id | **-1002112242007** (confermato 20 lug 2026) |
 | Parser | `ivan_vip` |
-| TP standard | **4** (4 × 0.10 lotto; `Meta size` → 4 × 0.05) |
-| Trade demo | 4 × 0.10 (o 4 × 0.05 con Meta size) |
+| TP standard | **4** (4 × 0.10 lotto; `Meta size` / `METÀ SIZE` / `MEZZA SIZE` → 4 × 0.05) |
+| Trade demo | 4 × 0.10 (o 4 × 0.05 con Meta/METÀ size) |
 | Magic | 17001–17004 |
 | Flusso | OPEN → CHECK_AND_BE → CLOSE_ALL_SYMBOL |
 | Stato | `enabled: false` in config finché non attivato in produzione |

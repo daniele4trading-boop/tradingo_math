@@ -118,26 +118,75 @@ def summarize(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def collect_bridge_logs(bridge_log: Path | None, bridge_log_dir: Path | None) -> list[Path]:
+    paths: list[Path] = []
+    if bridge_log:
+        paths.append(bridge_log)
+    if bridge_log_dir and bridge_log_dir.exists():
+        paths.extend(sorted(bridge_log_dir.glob("tradingo_*.log")))
+    # dedupe preserving order
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for p in paths:
+        rp = p.resolve() if p.exists() else p
+        if rp in seen:
+            continue
+        seen.add(rp)
+        out.append(p)
+    return out
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Analisi performance segnali per canale")
     p.add_argument("--stats", type=Path, default=DEFAULT_STATS)
     p.add_argument("--bridge-log", type=Path, default=None,
                    help="Log bridge (opzionale) per conteggio OPEN emessi")
+    p.add_argument("--bridge-log-dir", type=Path, default=None,
+                   help="Cartella logs bridge (es. C:\\TG_TradinGo\\logs)")
+    p.add_argument("--from-date", type=str, default=None,
+                   help="Filtra log YYYYMMDD inizio (inclusive), es. 20260720")
+    p.add_argument("--to-date", type=str, default=None,
+                   help="Filtra log YYYYMMDD fine (inclusive), es. 20260722")
     args = p.parse_args()
 
     rows = load_stats(args.stats)
     print(summarize(rows))
     print(f"\nFile stats: {args.stats} ({len(rows)} righe)")
 
-    if args.bridge_log:
-        opens = parse_bridge_opens(args.bridge_log)
-        if opens:
-            print(f"\nBridge OPEN nel log: {len(opens)}")
-            by = defaultdict(int)
-            for o in opens:
-                by[o.get("ch", "?")] += 1
-            for ch, n in sorted(by.items()):
-                print(f"  {ch}: {n}")
+    log_paths = collect_bridge_logs(args.bridge_log, args.bridge_log_dir)
+    if args.from_date or args.to_date:
+        filtered: list[Path] = []
+        for lp in log_paths:
+            m = re.search(r"tradingo_(\d{8})", lp.name)
+            if not m:
+                filtered.append(lp)
+                continue
+            day = m.group(1)
+            if args.from_date and day < args.from_date:
+                continue
+            if args.to_date and day > args.to_date:
+                continue
+            filtered.append(lp)
+        log_paths = filtered
+
+    if log_paths:
+        all_opens: list[dict] = []
+        for lp in log_paths:
+            all_opens.extend(parse_bridge_opens(lp))
+        print(f"\nBridge OPEN nei log ({len(log_paths)} file): {len(all_opens)}")
+        by = defaultdict(int)
+        by_action = defaultdict(int)
+        for o in all_opens:
+            by[o.get("ch", "?")] += 1
+            by_action[o.get("action", "?")] += 1
+        for ch, n in sorted(by.items()):
+            print(f"  {ch}: {n}")
+        if by_action:
+            print("Per action:")
+            for act, n in sorted(by_action.items()):
+                print(f"  {act}: {n}")
+    elif args.bridge_log or args.bridge_log_dir:
+        print("\nNessun log bridge trovato / leggibile.")
 
 
 if __name__ == "__main__":

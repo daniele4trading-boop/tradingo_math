@@ -154,6 +154,28 @@ class TestCH2SalaGold:
         )
         assert sig["action"] == "CLOSE_HALF_BE"
 
+    def test_partial_closure_break_even(self, bridge_state: BridgeState):
+        # Bug 20-22 Jul: "PARTIAL CLOSURE" did not match "PARTIAL CLOSE"
+        sig = parser_sala_gold("Partial closure break Even", CH2, bridge_state)
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_partial_closure_break_even_exclaim(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Partial closure break Even!!!", CH2, bridge_state
+        )
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_standalone_break_even(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("break Even", CH2, bridge_state)
+        assert sig["action"] == "CHECK_AND_BE"
+        assert sig["symbol"] == "XAUUSD"
+
+    def test_tp1_hit_break_even(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "TP1 hit gold +90 pips break even", CH2, bridge_state
+        )
+        assert sig["action"] == "CHECK_AND_BE"
+
     def test_state_persists_across_restart(self, tmp_path: Path):
         state_file = tmp_path / "bridge_state.json"
         s1 = BridgeState(state_file)
@@ -439,6 +461,22 @@ class TestCHIvan:
         assert sig["lot_factor"] == 0.5
         sized = apply_lot_rules(sig, CH_IVAN)
         assert sized["fixed_lot"] == 0.05
+
+    def test_meta_size_accent_and_typo(self):
+        base = (
+            "XAUUSD SELL 4122\n\n"
+            "TP 1 4117\n"
+            "TP 2 4115\n"
+            "TP 3 4112\n"
+            "TP 4 4100\n\n"
+            "SL @ 4135\n\n"
+        )
+        for suffix in ("METÀ SIZE", "MEZZA SIZE", "META SAZIE", "Half size"):
+            sig = parser_ivan_vip(base + suffix, CH_IVAN)
+            assert sig is not None, suffix
+            assert sig["lot_factor"] == 0.5, suffix
+            sized = apply_lot_rules(sig, CH_IVAN)
+            assert sized["fixed_lot"] == 0.05, suffix
 
     def test_chat_ignored(self):
         assert parser_ivan_vip("BOOOOOOMM", CH_IVAN) is None

@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.02
+TG TradinGo Bridge - v2.03
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -17,6 +17,7 @@ import sys
 import time
 import logging
 import traceback
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,7 +52,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.02"
+BRIDGE_VERSION = "2.03"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGGING
@@ -152,6 +153,13 @@ def strip_md(text: str) -> str:
     # Normalizza spazi multipli
     text = re.sub(r"  +", " ", text)
     return text
+
+
+def fold_accents(text: str) -> str:
+    """NFKD fold: METÀ → META, useful for Ivan lot-size keywords."""
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
 
 def contains_any(text: str, *words) -> bool:
     t = text.upper()
@@ -299,19 +307,34 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         return {"action": "CLOSE_ALL_SYMBOL", "symbol": "XAUUSD",
                 "magic_base": ch["magic_base"], "raw_message": raw}
 
-    # ── "Close half / partial close + break even" → chiudi T1 se profitto ──
-    is_partial = contains_any(upper, "CLOSE HALF", "PARTIAL CLOSE", "HALF CLOSE",
-                               "CHIUDI META", "PARZIALE", "CLOSE PART")
-    is_be_msg  = contains_any(upper, "BREAK EVEN", "BREAKEVEN", " BE ")
+    # ── "Close half / partial close|closure + break even" → metà + BE ──────
+    is_partial = contains_any(
+        upper,
+        "CLOSE HALF", "PARTIAL CLOSE", "PARTIAL CLOSURE", "HALF CLOSE",
+        "CHIUDI META", "PARZIALE", "CLOSE PART",
+    )
+    is_be_msg = contains_any(upper, "BREAK EVEN", "BREAKEVEN")
     if is_partial and is_be_msg:
         log.info(f"[CH2] CLOSE_HALF_BE: {raw[:60]}")
         return {"action": "CLOSE_HALF_BE", "symbol": "XAUUSD",
                 "magic_base": ch["magic_base"], "raw_message": raw}
 
+    # ── "break even" standalone (dopo trade aperto) → SL a entry ───────────
+    # Esempi: "break Even", "TP1 hit gold +90 pips break even"
+    if is_be_msg:
+        log.info(f"[CH2] CHECK_AND_BE (break even): {raw[:60]}")
+        return {
+            "action": "CHECK_AND_BE",
+            "symbol": "XAUUSD",
+            "tp_index": 1,
+            "magic_base": ch["magic_base"],
+            "raw_message": raw,
+        }
+
     # ── Messaggi da ignorare completamente ───────────────────────────────────
     ignore_pats = [
         r"ZOOM\.US", r"SALA\s+APERT", r"FORMAZIONE", r"STASERA\s+FORM",
-        r"TP2?\s+HIT", r"PIPS\s+BREAK", r"BREAK\s*EVEN",
+        r"TP2?\s+HIT", r"PIPS\s+BREAK",
         r"SL\s+HIT", r"\bSL\s+\d{4}\b",
         r"BE\s+O\s+TP", r"RICORDO\s+A\s+TUTTI", r"MINUTI\s+E\s+APRIAMO",
         r"ID\s+DE\s+REUNI", r"CODIGO\s+DE\s+ACCESO",
@@ -992,7 +1015,7 @@ def parser_sala_stark(text: str, ch: dict) -> dict | None:
 # Gestione:
 #   Spostiamo SL a BE  -> CHECK_AND_BE
 #   CHIUDERE ORA       -> CLOSE_ALL_SYMBOL (XAUUSD)
-#   Meta size          -> lot_factor 0.5
+#   Meta size / METÀ SIZE / MEZZA SIZE -> lot_factor 0.5
 
 def parser_ivan_vip(text: str, ch: dict) -> dict | None:
     raw = text.strip()
@@ -1076,7 +1099,12 @@ def parser_ivan_vip(text: str, ch: dict) -> dict | None:
         log.debug(f"[IVAN] Segnale incompleto: {raw[:60]}")
         return None
 
-    lot_factor = 0.5 if re.search(r"META\s*SIZE", upper) else 1.0
+    # Accent-insensitive: METÀ SIZE, Meta size, MEZZA SIZE, typo META SAZIE
+    folded = fold_accents(upper)
+    lot_factor = 0.5 if re.search(
+        r"(?:META|MEZZA|HALF)\s*(?:SIZE|SAZIE)",
+        folded,
+    ) else 1.0
     log.info(
         f"[IVAN] OPEN {direction} {symbol} @ {entry} TP={tps} SL={sl} "
         f"lot_factor={lot_factor}"

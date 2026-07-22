@@ -31,12 +31,23 @@ $deployFiles = @(
     "bridge_core.py",
     "dump_channels.py",
     "sample_channels.py",
+    "sample_last_24h.py",
     "fetch_apr21.py",
+    "fetch_date_range.py",
+    "analyze_signal_stats.py",
+    "resolve_channels.py",
     "start_tradingo.bat",
     "requirements.txt",
     "README.md",
     "AGENTS.md",
     "INVENTORY.md"
+)
+
+# EA sorgente (copia, NON compila — MetaEditor F7 resta manuale sulla VPS)
+$eaSrcRelative = "mql5\TG_TradinGoEA.mq5"
+$eaProdCopyDir = Join-Path $ProdRoot "mql5"
+$eaTerminalExperts = @(
+    "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\AE2CC2E013FDE1E3CDF010AA51C60400\MQL5\Experts"
 )
 
 # File/cartelle MAI sovrascritti in produzione
@@ -195,6 +206,39 @@ foreach ($f in $deployFiles) {
     if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
     Copy-Item $from $to -Force
     Write-Host "OK $f"
+}
+
+# ── Deploy EA .mq5 (senza compilare) ───────────────────────────────────────────
+
+Write-Step "Deploy EA MQ5 (copia sorgente, compile MetaEditor manuale)"
+
+$eaFrom = Join-Path $src $eaSrcRelative
+if (-not (Test-Path $eaFrom)) {
+    Write-Host "WARN: EA non trovato in repo: $eaFrom" -ForegroundColor Yellow
+}
+else {
+    $eaTargets = @()
+    $eaTargets += (Join-Path $eaProdCopyDir "TG_TradinGoEA.mq5")
+    foreach ($expertsDir in $eaTerminalExperts) {
+        if (Test-Path $expertsDir) {
+            $eaTargets += (Join-Path $expertsDir "TG_TradinGoEA.mq5")
+        }
+        else {
+            Write-Host "SKIP Experts (cartella assente): $expertsDir" -ForegroundColor Yellow
+        }
+    }
+
+    foreach ($eaTo in $eaTargets) {
+        if ($DryRun) {
+            Write-Host "[DRY-RUN] copy EA -> $eaTo"
+            continue
+        }
+        $parent = Split-Path $eaTo -Parent
+        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+        Copy-Item $eaFrom $eaTo -Force
+        Write-Host "OK EA -> $eaTo"
+    }
+    Write-Host "NOTA: apri MetaEditor e compila (F7) TG_TradinGoEA.mq5, poi riattacca l'EA." -ForegroundColor Yellow
 }
 
 # ── Config (solo se assente) + merge path state ───────────────────────────────

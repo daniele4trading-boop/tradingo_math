@@ -24,8 +24,8 @@ Documento creato il **2026-07-22** per continuare il lavoro **senza intervento m
 
 | Componente | Versione | Note |
 |------------|----------|------|
-| Bridge | **v2.02** (`tradingo_bridge.py`, `start_tradingo.bat`) | Bump versione a ogni release utente |
-| EA | **v2.05** (`mql5/TG_TradinGoEA.mq5`) | `InpClearSignalAfterProcess` default true — azzera JSON a `{"action":"NONE"}` dopo processamento |
+| Bridge | **v2.03** (`tradingo_bridge.py`, `start_tradingo.bat`) | Bump versione a ogni release utente |
+| EA | **v2.06** (`mql5/TG_TradinGoEA.mq5`) | Clear JSON + stops-level + ORO tolerance 250 |
 | Canali config esempio | CH_GOLD, CH_FOREX, CH_ORO, CH_STARK, CH_IVAN | Parser `ivan_vip` in `tradingo_config.example.json` |
 
 Produzione utente aveva EA **v2.04** poi **v2.05**; bridge **v2.02**; Ivan aggiunto manualmente in `InpChannels` su MT5 prima che il default EA includesse `ivan`.
@@ -188,8 +188,9 @@ Lo script **non** sovrascrive `tradingo_config.json` né `state/*.json`.
 
 ## 10. Checklist agente “fine turno”
 
-- [ ] `pytest tg_tradingo/tests/test_parsers.py`
-- [ ] Versioni bridge/EA aggiornate se modificati
+- [x] `pytest tg_tradingo/tests/` (54 passed — GOLD/IVAN/atomic_write Jul 2026)
+- [x] Versioni bridge **v2.03** / EA **v2.06**
+- [x] Report analisi: `docs/ANALYSIS_JUL20_22_2026.md`
 - [ ] PR creata/aggiornata con riepilogo analisi o fix
 - [ ] Istruzioni deploy in PR description (pull + deploy ps1 + riavvio bridge; nota compile EA)
 - [ ] Nessun segreto nel diff

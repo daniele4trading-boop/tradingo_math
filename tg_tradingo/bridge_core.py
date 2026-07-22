@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -100,26 +101,74 @@ ACTIONS_WITH_SL_TP = frozenset({
 })
 
 
-def atomic_write_text(path: Path, payload: str) -> None:
-    """Write text atomically via temp file + os.replace."""
+def _is_retryable_write_error(exc: BaseException) -> bool:
+    """True for Windows file-lock / access-denied (WinError 5) and POSIX EACCES/EAGAIN."""
+    if isinstance(exc, PermissionError):
+        return True
+    if isinstance(exc, OSError):
+        winerr = getattr(exc, "winerror", None)
+        if winerr in (5, 32):  # ACCESS_DENIED, SHARING_VIOLATION
+            return True
+        if getattr(exc, "errno", None) in (11, 13, 16):  # EAGAIN, EACCES, EBUSY
+            return True
+    return False
+
+
+def atomic_write_text(
+    path: Path,
+    payload: str,
+    *,
+    retries: int = 5,
+    backoff_ms: float = 40.0,
+) -> None:
+    """Write text atomically via temp file + os.replace.
+
+    Retries on PermissionError / WinError 5 when the EA holds the JSON file.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
-            tmp_file.write(payload)
-            tmp_file.flush()
-            os.fsync(tmp_file.fileno())
-        os.replace(tmp_name, path)
-    except Exception:
+    last_err: BaseException | None = None
+
+    for attempt in range(max(1, retries)):
+        fd, tmp_name = tempfile.mkstemp(
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+        )
         try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
+            with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+                tmp_file.write(payload)
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())
+            os.replace(tmp_name, path)
+            if attempt > 0:
+                log.warning(
+                    "atomic_write retry ok path=%s attempt=%s",
+                    path,
+                    attempt + 1,
+                )
+            return
+        except Exception as exc:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            if _is_retryable_write_error(exc) and attempt + 1 < retries:
+                last_err = exc
+                delay = (backoff_ms / 1000.0) * (attempt + 1)
+                log.warning(
+                    "atomic_write locked path=%s attempt=%s/%s err=%s; sleep=%.0fms",
+                    path,
+                    attempt + 1,
+                    retries,
+                    exc,
+                    delay * 1000,
+                )
+                time.sleep(delay)
+                continue
+            raise
+
+    if last_err is not None:
+        raise last_err
 
 
 def atomic_write_json(path: Path, data: dict) -> None:

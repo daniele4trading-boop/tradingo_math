@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.05"
+#property version   "2.06"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -24,6 +24,7 @@ input double InpAddLotFactor       = 0.5;
 input int    InpMaxSlippagePoints  = 50;
 input int    InpPollMs             = 500;
 input int    InpRangeTolerancePoints = 150;
+input int    InpOroRangeTolerancePoints = 250; // 0 = use InpRangeTolerancePoints
 input bool   InpLogCancelledSignals  = true;
 input bool   InpClearSignalAfterProcess = true;
 input bool   InpAutoBreakEvenOnTp1 = true;
@@ -359,6 +360,54 @@ double NormalizeLot(const string symbol, double lot)
   }
 
 //+------------------------------------------------------------------+
+int RangeToleranceForChannel(const string channelFile, const string json)
+  {
+   string ch = JsonGetString(json, "channel_id");
+   StringToUpper(ch);
+   string fileLower = channelFile;
+   StringToLower(fileLower);
+   bool isOro = (ch == "CH_ORO" || StringFind(fileLower, "oro") >= 0);
+   if(isOro && InpOroRangeTolerancePoints > 0)
+      return InpOroRangeTolerancePoints;
+   return InpRangeTolerancePoints;
+  }
+
+//+------------------------------------------------------------------+
+void AdjustStopsToMinDistance(const string symbol, const string direction,
+                              double &sl, double &tp)
+  {
+   // Avoid MT5 retcode 10016 (invalid stops) by enforcing SYMBOL_TRADE_STOPS_LEVEL.
+   g_sym.Name(symbol);
+   g_sym.RefreshRates();
+   double point = g_sym.Point();
+   if(point <= 0.0)
+      point = _Point;
+   int stopsLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   int freezeLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   int minPts = MathMax(stopsLevel, freezeLevel);
+   if(minPts < 1)
+      minPts = 1;
+   double minDist = minPts * point;
+   int digits = (int)g_sym.Digits();
+   double price = (direction == "BUY") ? g_sym.Ask() : g_sym.Bid();
+
+   if(direction == "BUY")
+     {
+      if(sl > 0.0 && (price - sl) < minDist)
+         sl = NormalizeDouble(price - minDist, digits);
+      if(tp > 0.0 && (tp - price) < minDist)
+         tp = NormalizeDouble(price + minDist, digits);
+     }
+   else
+     {
+      if(sl > 0.0 && (sl - price) < minDist)
+         sl = NormalizeDouble(price + minDist, digits);
+      if(tp > 0.0 && (price - tp) < minDist)
+         tp = NormalizeDouble(price - minDist, digits);
+     }
+  }
+
+//+------------------------------------------------------------------+
 string ChannelShortTag(const string channelFile, const string json)
   {
    string cid = JsonGetString(json, "channel_id");
@@ -469,11 +518,15 @@ bool OpenMarket(const string symbol, const string direction, const double lot,
    g_sym.RefreshRates();
    g_trade.SetExpertMagicNumber((int)magic);
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
+   double nsl = sl;
+   double ntp = tp;
+   if(nsl > 0.0 || ntp > 0.0)
+      AdjustStopsToMinDistance(symbol, direction, nsl, ntp);
    bool ok = false;
    if(direction == "BUY")
-      ok = g_trade.Buy(lot, symbol, 0.0, sl > 0 ? sl : 0.0, tp > 0 ? tp : 0.0, comment);
+      ok = g_trade.Buy(lot, symbol, 0.0, nsl > 0 ? nsl : 0.0, ntp > 0 ? ntp : 0.0, comment);
    else
-      ok = g_trade.Sell(lot, symbol, 0.0, sl > 0 ? sl : 0.0, tp > 0 ? tp : 0.0, comment);
+      ok = g_trade.Sell(lot, symbol, 0.0, nsl > 0 ? nsl : 0.0, ntp > 0 ? ntp : 0.0, comment);
    if(!ok)
      {
       Print("[TradinGo] Open failed ", symbol, " ", direction, " err=", g_trade.ResultRetcode());
@@ -519,6 +572,7 @@ bool PriceInRange(const string symbol, const string direction, const double lo, 
 //+------------------------------------------------------------------+
 EntryRangeDecision EvaluateEntryRange(const string symbol, const string direction,
                                       const double lo, const double hi,
+                                      const int maxTolerancePoints,
                                       double &outPrice, double &outDistancePoints)
   {
    g_sym.Name(symbol);
@@ -534,7 +588,7 @@ EntryRangeDecision EvaluateEntryRange(const string symbol, const string directio
    if(point <= 0.0)
       point = _Point;
    outDistancePoints = distPrice / point;
-   if(outDistancePoints <= (double)InpRangeTolerancePoints)
+   if(outDistancePoints <= (double)maxTolerancePoints)
       return ENTRY_EXECUTE_TOLERANCE;
    return ENTRY_CANCELLED;
   }
@@ -543,14 +597,15 @@ EntryRangeDecision EvaluateEntryRange(const string symbol, const string directio
 void LogCancelledSignal(const string channelFile, const string json,
                         const string symbol, const string direction,
                         const double lo, const double hi,
-                        const double price, const double distancePoints)
+                        const double price, const double distancePoints,
+                        const int maxTolerancePoints)
   {
    Print("[TradinGo] SIGNAL_CANCELLED ", JsonGetString(json, "channel_id"), " ", symbol, " ", direction,
          " range=[", DoubleToString(lo, (int)g_sym.Digits()), ",",
          DoubleToString(hi, (int)g_sym.Digits()), "]",
          " price=", DoubleToString(price, (int)g_sym.Digits()),
          " distance_points=", DoubleToString(distancePoints, 1),
-         " max_tolerance=", InpRangeTolerancePoints,
+         " max_tolerance=", maxTolerancePoints,
          " ts=", JsonGetString(json, "timestamp"));
    AppendSignalStat(channelFile, json, symbol, direction, "CANCELLED_RANGE",
                     lo, hi, SignalEntryFromJson(json, lo, hi), price,
@@ -565,7 +620,9 @@ bool TryExecuteWithEntryRange(const string channelFile, const string json,
   {
    double price = 0.0;
    outDistancePoints = 0.0;
-   EntryRangeDecision decision = EvaluateEntryRange(symbol, direction, lo, hi, price, outDistancePoints);
+   int maxTol = RangeToleranceForChannel(channelFile, json);
+   EntryRangeDecision decision = EvaluateEntryRange(symbol, direction, lo, hi, maxTol,
+                                                    price, outDistancePoints);
    if(decision == ENTRY_EXECUTE_IN_RANGE)
      {
       outEntryStatus = "EXECUTED_IN_RANGE";
@@ -581,10 +638,11 @@ bool TryExecuteWithEntryRange(const string channelFile, const string json,
       Print("[TradinGo] ENTRY_TOLERANCE ", symbol, " ", direction,
             " price=", DoubleToString(price, (int)g_sym.Digits()),
             " distance_points=", DoubleToString(outDistancePoints, 1),
-            " max=", InpRangeTolerancePoints);
+            " max=", maxTol);
       return true;
      }
-   LogCancelledSignal(channelFile, json, symbol, direction, lo, hi, price, outDistancePoints);
+   LogCancelledSignal(channelFile, json, symbol, direction, lo, hi, price,
+                      outDistancePoints, maxTol);
    outEntryStatus = "CANCELLED_RANGE";
    return false;
   }
@@ -1032,10 +1090,11 @@ int OnInit()
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.05 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.06 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
-         " range_tolerance_pts=", InpRangeTolerancePoints);
+         " range_tolerance_pts=", InpRangeTolerancePoints,
+         " oro_tolerance_pts=", InpOroRangeTolerancePoints);
    for(int i = 0; i < g_channelCount; i++)
       Print("[TradinGo]  watch ", g_channelFile[i]);
    return INIT_SUCCEEDED;

@@ -1,13 +1,16 @@
-# Deploy tg_tradingo dalla repo (C:\StatArb) alla produzione (C:\TG_TradinGo)
+# Deploy tg_tradingo from repo (C:\StatArb) to production (C:\TG_TradinGo)
 #
-# - Backup automatico timestampato prima di ogni deploy
-# - NON sovrascrive: tradingo_config.json, signals/*.json runtime, state/*.json
-# - NON avvia/ferma il bridge (richiede conferma manuale)
+# - Timestamped backup before each deploy
+# - Does NOT overwrite: tradingo_config.json, signals/*.json runtime, state/*.json
+# - Does NOT start/stop the bridge (manual restart required)
 #
-# Uso:
+# Usage:
 #   powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_to_vps.ps1
 #   powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_to_vps.ps1 -DryRun
 #   powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_to_vps.ps1 -SkipBackup
+#
+# NOTE: ASCII-only comments/strings for Windows PowerShell 5.1 (UTF-8 without BOM
+#       used to break parsing on em-dashes / box-drawing chars).
 
 [CmdletBinding()]
 param(
@@ -25,7 +28,7 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupRoot = Join-Path $ProdRoot "_backups"
 $backupDir = Join-Path $backupRoot "backup_$timestamp"
 
-# File da deployare (codice + script avvio)
+# Files to deploy (code + start script)
 $deployFiles = @(
     "tradingo_bridge.py",
     "bridge_core.py",
@@ -43,14 +46,14 @@ $deployFiles = @(
     "INVENTORY.md"
 )
 
-# EA sorgente (copia, NON compila — MetaEditor F7 resta manuale sulla VPS)
+# EA source (copy only; MetaEditor F7 remains manual on VPS)
 $eaSrcRelative = "mql5\TG_TradinGoEA.mq5"
 $eaProdCopyDir = Join-Path $ProdRoot "mql5"
 $eaTerminalExperts = @(
     "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\AE2CC2E013FDE1E3CDF010AA51C60400\MQL5\Experts"
 )
 
-# File/cartelle MAI sovrascritti in produzione
+# Never overwrite these in production
 $neverOverwrite = @(
     "tradingo_config.json",
     "signals\signal_ch_gold.json",
@@ -82,7 +85,7 @@ function Ensure-ConfigStatePath {
         $raw = Get-Content $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
     }
     catch {
-        Write-Host "WARN: impossibile leggere $ConfigPath per merge path state" -ForegroundColor Yellow
+        Write-Host "WARN: cannot read $ConfigPath for state path merge" -ForegroundColor Yellow
         return
     }
 
@@ -90,27 +93,27 @@ function Ensure-ConfigStatePath {
 
     $statePath = "C:\TG_TradinGo\state"
     if ($raw.paths.state -and ($raw.paths.state -eq $statePath)) {
-        Write-Host "OK tradingo_config.json: paths.state gia' presente"
+        Write-Host "OK tradingo_config.json: paths.state already set"
         return
     }
 
     if ($DryRun) {
-        Write-Host "[DRY-RUN] Aggiungerei paths.state = $statePath in tradingo_config.json"
+        Write-Host "[DRY-RUN] Would set paths.state = $statePath in tradingo_config.json"
         return
     }
 
     $raw.paths.state = $statePath
     $json = $raw | ConvertTo-Json -Depth 10
     Set-Content -Path $ConfigPath -Value $json -Encoding UTF8
-    Write-Host "OK tradingo_config.json: aggiunto paths.state = $statePath" -ForegroundColor Green
+    Write-Host "OK tradingo_config.json: added paths.state = $statePath" -ForegroundColor Green
 }
 
-# ── Validazione ──────────────────────────────────────────────────────────────
+# --- Validation ---
 
-Write-Step "Validazione percorsi"
+Write-Step "Validate paths"
 
 if (-not (Test-Path $src)) {
-    Write-Error "Cartella repo mancante: $src`nEsegui prima: cd C:\StatArb && git pull"
+    Write-Error "Repo folder missing: $src`nRun first: cd C:\StatArb && git pull"
 }
 
 $missing = @()
@@ -120,63 +123,67 @@ foreach ($f in $deployFiles) {
     }
 }
 if ($missing.Count -gt 0) {
-    Write-Error "File mancanti in $src :`n  - $($missing -join "`n  - ")`nEsegui git pull su C:\StatArb"
+    Write-Error "Missing files in $src :`n  - $($missing -join "`n  - ")`nRun git pull on C:\StatArb"
 }
 
 Write-Host "Repo:       $src"
-Write-Host "Produzione: $dst"
-if ($DryRun) { Write-Host "MODALITA': DRY-RUN (nessuna modifica)" -ForegroundColor Yellow }
-if ($SkipBackup) { Write-Host "MODALITA': SKIP BACKUP" -ForegroundColor Yellow }
+Write-Host "Production: $dst"
+if ($DryRun) { Write-Host "MODE: DRY-RUN (no changes)" -ForegroundColor Yellow }
+if ($SkipBackup) { Write-Host "MODE: SKIP BACKUP" -ForegroundColor Yellow }
 
-# ── Backup ─────────────────────────────────────────────────────────────────────
+# --- Backup ---
 
-Write-Step "Backup produzione"
+Write-Step "Backup production"
 
 if (-not (Test-Path $dst)) {
-    Write-Host "Cartella produzione non esiste, verra' creata: $dst"
+    Write-Host "Production folder missing, will be created: $dst"
 }
 elseif (-not $SkipBackup) {
-  $toBackup = @()
-  foreach ($f in $deployFiles) {
-    $prodFile = Join-Path $dst $f
-    if (Test-Path $prodFile) { $toBackup += $f }
-  }
-  # backup anche config (solo copia, non deploy)
-  if (Test-Path (Join-Path $dst "tradingo_config.json")) {
-    $toBackup += "tradingo_config.json"
-  }
+    $toBackup = @()
+    foreach ($f in $deployFiles) {
+        $prodFile = Join-Path $dst $f
+        if (Test-Path $prodFile) { $toBackup += $f }
+    }
+    if (Test-Path (Join-Path $dst "tradingo_config.json")) {
+        $toBackup += "tradingo_config.json"
+    }
+    $eaProdExisting = Join-Path $eaProdCopyDir "TG_TradinGoEA.mq5"
+    if (Test-Path $eaProdExisting) {
+        $toBackup += "mql5\TG_TradinGoEA.mq5"
+    }
 
-  if ($toBackup.Count -eq 0) {
-    Write-Host "Nessun file esistente da backuppare (primo deploy?)"
-  }
-  else {
-    if ($DryRun) {
-      Write-Host "[DRY-RUN] Backup in: $backupDir"
-      foreach ($f in $toBackup) { Write-Host "  - $f" }
+    if ($toBackup.Count -eq 0) {
+        Write-Host "No existing files to backup (first deploy?)"
     }
     else {
-      New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-      foreach ($f in $toBackup) {
-        $from = Join-Path $dst $f
-        $to = Join-Path $backupDir $f
-        $parent = Split-Path $to -Parent
-        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
-        Copy-Item $from $to -Force
-        Write-Host "  backup: $f"
-      }
-      Write-Host "Backup salvato in: $backupDir" -ForegroundColor Green
+        if ($DryRun) {
+            Write-Host "[DRY-RUN] Backup to: $backupDir"
+            foreach ($f in $toBackup) { Write-Host "  - $f" }
+        }
+        else {
+            New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+            foreach ($f in $toBackup) {
+                $from = Join-Path $dst $f
+                $to = Join-Path $backupDir $f
+                $parent = Split-Path $to -Parent
+                if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+                Copy-Item $from $to -Force
+                Write-Host "  backup: $f"
+            }
+            Write-Host "Backup saved: $backupDir" -ForegroundColor Green
+        }
     }
-  }
 }
 
-# ── Cartelle runtime ───────────────────────────────────────────────────────────
+# --- Runtime dirs ---
 
-Write-Step "Cartelle runtime"
+Write-Step "Runtime folders"
 
 $runtimeDirs = @(
-    "$dst\logs",
-    "$dst\signals",
-    "$dst\state"
+    (Join-Path $dst "logs"),
+    (Join-Path $dst "signals"),
+    (Join-Path $dst "state"),
+    $eaProdCopyDir
 )
 
 foreach ($dir in $runtimeDirs) {
@@ -189,9 +196,9 @@ foreach ($dir in $runtimeDirs) {
     }
 }
 
-# ── Deploy file ────────────────────────────────────────────────────────────────
+# --- Deploy code files ---
 
-Write-Step "Deploy file codice"
+Write-Step "Deploy code files"
 
 foreach ($f in $deployFiles) {
     $from = Join-Path $src $f
@@ -208,13 +215,13 @@ foreach ($f in $deployFiles) {
     Write-Host "OK $f"
 }
 
-# ── Deploy EA .mq5 (senza compilare) ───────────────────────────────────────────
+# --- Deploy EA mq5 (no compile) ---
 
-Write-Step "Deploy EA MQ5 (copia sorgente, compile MetaEditor manuale)"
+Write-Step "Deploy EA MQ5 (source copy; MetaEditor compile is manual)"
 
 $eaFrom = Join-Path $src $eaSrcRelative
 if (-not (Test-Path $eaFrom)) {
-    Write-Host "WARN: EA non trovato in repo: $eaFrom" -ForegroundColor Yellow
+    Write-Host "WARN: EA not found in repo: $eaFrom" -ForegroundColor Yellow
 }
 else {
     $eaTargets = @()
@@ -224,7 +231,7 @@ else {
             $eaTargets += (Join-Path $expertsDir "TG_TradinGoEA.mq5")
         }
         else {
-            Write-Host "SKIP Experts (cartella assente): $expertsDir" -ForegroundColor Yellow
+            Write-Host "SKIP Experts (missing folder): $expertsDir" -ForegroundColor Yellow
         }
     }
 
@@ -238,87 +245,86 @@ else {
         Copy-Item $eaFrom $eaTo -Force
         Write-Host "OK EA -> $eaTo"
     }
-    Write-Host "NOTA: apri MetaEditor e compila (F7) TG_TradinGoEA.mq5, poi riattacca l'EA." -ForegroundColor Yellow
+    Write-Host "NOTE: open MetaEditor and compile (F7) TG_TradinGoEA.mq5, then reattach EA." -ForegroundColor Yellow
 }
 
-# ── Config (solo se assente) + merge path state ───────────────────────────────
+# --- Config (create only if missing) + merge state path ---
 
-Write-Step "Configurazione"
+Write-Step "Configuration"
 
 $configProd = Join-Path $dst "tradingo_config.json"
 $configExample = Join-Path $src "tradingo_config.example.json"
 
 if (-not (Test-Path $configProd)) {
     if ($DryRun) {
-        Write-Host "[DRY-RUN] Creerei tradingo_config.json da example"
+        Write-Host "[DRY-RUN] Would create tradingo_config.json from example"
     }
     elseif (Test-Path $configExample) {
         Copy-Item $configExample $configProd
-        Write-Host "WARN: creato tradingo_config.json da example — compila api_id/api_hash" -ForegroundColor Yellow
+        Write-Host "WARN: created tradingo_config.json from example - fill api_id/api_hash" -ForegroundColor Yellow
     }
 }
 else {
-    Write-Host "OK tradingo_config.json esistente — NON toccato"
+    Write-Host "OK tradingo_config.json exists - NOT modified"
 }
 
 Ensure-ConfigStatePath -ConfigPath $configProd
 
-# ── Dipendenze Python (solo verifica, non install silenziosa) ─────────────────
+# --- Python deps check ---
 
-Write-Step "Dipendenze Python"
+Write-Step "Python dependencies"
 
 $reqFile = Join-Path $dst "requirements.txt"
 if (Test-Path $reqFile) {
     $pipCheck = & python -c "import telethon" 2>&1
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARN: Telethon non installato." -ForegroundColor Yellow
-        Write-Host "      Esegui: pip install -r `"$reqFile`""
+        Write-Host "WARN: Telethon not installed." -ForegroundColor Yellow
+        Write-Host "      Run: pip install -r `"$reqFile`""
     }
     else {
-        Write-Host "OK Telethon installato"
+        Write-Host "OK Telethon installed"
     }
 }
 else {
-    Write-Host "WARN: requirements.txt non trovato in produzione"
+    Write-Host "WARN: requirements.txt not found in production"
 }
 
-# ── Bridge in esecuzione? ─────────────────────────────────────────────────────
+# --- Bridge running? ---
 
-Write-Step "Stato bridge"
+Write-Step "Bridge status"
 
 if (Test-BridgeRunning) {
-    Write-Host "ATTENZIONE: tradingo_bridge.py sembra in esecuzione." -ForegroundColor Yellow
-    Write-Host "           I file .py sono stati aggiornati ma il processo attivo"
-    Write-Host "           usa ancora il codice caricato in memoria."
+    Write-Host "WARNING: tradingo_bridge.py appears to be running." -ForegroundColor Yellow
+    Write-Host "         .py files were updated but the live process still uses old code."
     Write-Host ""
-    Write-Host "           Per applicare le modifiche, dopo verifica:"
-    Write-Host "           1) Chiudi la finestra del bridge (o Ctrl+C)"
-    Write-Host "           2) Riavvia: C:\TG_TradinGo\start_tradingo.bat"
+    Write-Host "         To apply changes:"
+    Write-Host "         1) Close ALL bridge windows (or Ctrl+C). database-is-locked = 2 instances"
+    Write-Host "         2) Restart: C:\TG_TradinGo\start_tradingo.bat"
 }
 else {
-    Write-Host "Bridge non in esecuzione."
-    Write-Host "Avvio manuale: C:\TG_TradinGo\start_tradingo.bat"
+    Write-Host "Bridge not running."
+    Write-Host "Start manually: C:\TG_TradinGo\start_tradingo.bat"
 }
 
-# ── Riepilogo ─────────────────────────────────────────────────────────────────
+# --- Summary ---
 
-Write-Step "Riepilogo"
+Write-Step "Summary"
 
-Write-Host "Deploy completato in $dst"
+Write-Host "Deploy completed in $dst"
 Write-Host ""
-Write-Host "NON modificati (by design):"
+Write-Host "NOT modified (by design):"
 foreach ($f in $neverOverwrite) {
     Write-Host "  - $f"
 }
 Write-Host ""
-Write-Host "Test parser (opzionale, dalla repo):"
+Write-Host "Optional parser test (from repo):"
 Write-Host "  cd C:\StatArb\tg_tradingo"
 Write-Host "  pip install -r requirements.txt"
 Write-Host "  python -m pytest tests/ -v"
 Write-Host ""
 
 if (-not $DryRun -and -not $SkipBackup -and (Test-Path $backupDir)) {
-    Write-Host "Rollback manuale (se serve):"
+    Write-Host "Manual rollback (if needed):"
     Write-Host "  Copy-Item `"$backupDir\*`" `"$dst`" -Recurse -Force"
-    Write-Host "  (escludi signals/ e state/ se non vuoi ripristinarli)"
+    Write-Host "  (exclude signals/ and state/ if you do not want to restore them)"
 }

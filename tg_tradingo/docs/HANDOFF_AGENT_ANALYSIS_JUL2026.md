@@ -25,7 +25,7 @@ Documento creato il **2026-07-22** per continuare il lavoro **senza intervento m
 | Componente | Versione | Note |
 |------------|----------|------|
 | Bridge | **v2.03** (`tradingo_bridge.py`, `start_tradingo.bat`) | Bump versione a ogni release utente |
-| EA | **v2.06** (`mql5/TG_TradinGoEA.mq5`) | Clear JSON + stops-level + ORO tolerance 250 |
+| EA | **v2.07** (`mql5/TG_TradinGoEA.mq5`) | Clear JSON + stops-level + ORO tol 250 + ignore existing on init |
 | Canali config esempio | CH_GOLD, CH_FOREX, CH_ORO, CH_STARK, CH_IVAN | Parser `ivan_vip` in `tradingo_config.example.json` |
 
 Produzione utente aveva EA **v2.04** poi **v2.05**; bridge **v2.02**; Ivan aggiunto manualmente in `InpChannels` su MT5 prima che il default EA includesse `ivan`.

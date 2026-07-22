@@ -37,7 +37,9 @@ L'EA non richiede Telegram né Python: legge solo i JSON.
 
 Stato iniziale / idle: `{"action": "NONE"}`.
 
-Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + replace). L'EA deduplica con `timestamp` in memoria e, se `InpClearSignalAfterProcess=true` (default), riscrive il file a `{"action":"NONE"}` dopo ogni segnale gestito (esecuzione o scarto range) per evitare replay al riavvio.
+Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + replace). L'EA deduplica con `timestamp` in memoria e, se `InpClearSignalAfterProcess=true` (default), riscrive il file a `{"action":"NONE"}` dopo ogni segnale gestito (esecuzione, scarto range o open fallito) per evitare replay al riavvio.
+
+**v2.07:** con `InpIgnoreExistingOnInit=true` (default), all'attach l'EA **non esegue** i JSON già presenti: marca i `timestamp` come visti e li azzera a `NONE`. Solo segnali nuovi (timestamp diverso) dopo l'init vengono eseguiti.
 
 ---
 
@@ -138,9 +140,11 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 | `InpOroRangeTolerancePoints` | 250 | Tolleranza dedicata CH_ORO (`0` = usa il default globale) |
 | `InpLogCancelledSignals` | true | Scrive `tradingo_signal_stats.csv` (esecuzioni + cancellazioni) |
 | `InpClearSignalAfterProcess` | true | Dopo ogni segnale gestito, riscrive il JSON a `NONE` |
+| `InpIgnoreExistingOnInit` | true | All'attach salta+azzera JSON già presenti (anti-replay) |
 | `InpChannels` | `gold,forex,oro,stark,ivan` | File da monitorare |
 
-**v2.06:** prima di `OrderSend`, l'EA normalizza SL/TP alla distanza minima `SYMBOL_TRADE_STOPS_LEVEL` (evita retcode **10016**).
+**v2.06+:** prima di `OrderSend`, normalizza SL/TP a `SYMBOL_TRADE_STOPS_LEVEL`; se SL/TP restano dal lato sbagliato del prezzo (segnale stale), salta l'open.  
+**v2.07:** `InpIgnoreExistingOnInit` evita di rieseguire OPEN_NOW/OPEN vecchi al riattach EA.
 
 ### Commento ordini MT5
 

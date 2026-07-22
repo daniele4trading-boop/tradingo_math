@@ -48,3 +48,18 @@ C:\TG_TradinGo\start_tradingo.bat
 ## EA
 
 Dopo deploy, MetaEditor → `TG_TradinGoEA.mq5` → **F7** → un solo grafico EA.
+
+**Deve loggare `EA v2.07 started`.** Se vedi `v2.04` / `v2.05`, stai ancora sul `.ex5` vecchio (non compilato).
+
+### Anti-replay (obbligatorio prima di riattaccare un EA vecchio)
+
+Se l'EA non è ancora v2.07, azzera i JSON a mano (altrimenti riesegue OPEN vecchi):
+
+```powershell
+$dir = "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\AE2CC2E013FDE1E3CDF010AA51C60400\MQL5\Files"
+foreach ($f in "gold","forex","oro","stark","ivan") {
+  Set-Content -Path (Join-Path $dir "signal_ch_$f.json") -Value '{"action":"NONE"}' -Encoding UTF8
+}
+```
+
+Con **v2.07** (`InpIgnoreExistingOnInit=true`) lo fa l'EA all'init.

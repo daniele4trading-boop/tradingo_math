@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.06"
+#property version   "2.07"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -27,6 +27,7 @@ input int    InpRangeTolerancePoints = 150;
 input int    InpOroRangeTolerancePoints = 250; // 0 = use InpRangeTolerancePoints
 input bool   InpLogCancelledSignals  = true;
 input bool   InpClearSignalAfterProcess = true;
+input bool   InpIgnoreExistingOnInit = true; // skip+clear JSON already present at attach
 input bool   InpAutoBreakEvenOnTp1 = true;
 input ulong  InpMagicOffset        = 0;
 
@@ -506,6 +507,27 @@ double SignalEntryFromJson(const string json, const double rangeLo, const double
   }
 
 //+------------------------------------------------------------------+
+bool StopsOnCorrectSide(const string direction, const double price,
+                        const double sl, const double tp)
+  {
+   if(direction == "BUY")
+     {
+      if(sl > 0.0 && sl >= price)
+         return false;
+      if(tp > 0.0 && tp <= price)
+         return false;
+     }
+   else
+     {
+      if(sl > 0.0 && sl <= price)
+         return false;
+      if(tp > 0.0 && tp >= price)
+         return false;
+     }
+   return true;
+  }
+
+//+------------------------------------------------------------------+
 bool OpenMarket(const string symbol, const string direction, const double lot,
                 const double sl, const double tp, const ulong magic,
                 const string comment,
@@ -522,6 +544,16 @@ bool OpenMarket(const string symbol, const string direction, const double lot,
    double ntp = tp;
    if(nsl > 0.0 || ntp > 0.0)
       AdjustStopsToMinDistance(symbol, direction, nsl, ntp);
+   double price = (direction == "BUY") ? g_sym.Ask() : g_sym.Bid();
+   if((nsl > 0.0 || ntp > 0.0) && !StopsOnCorrectSide(direction, price, nsl, ntp))
+     {
+      Print("[TradinGo] Open skipped ", symbol, " ", direction,
+            " invalid stop side price=", DoubleToString(price, (int)g_sym.Digits()),
+            " sl=", DoubleToString(nsl, (int)g_sym.Digits()),
+            " tp=", DoubleToString(ntp, (int)g_sym.Digits()),
+            " (stale or incoherent signal)");
+      return false;
+     }
    bool ok = false;
    if(direction == "BUY")
       ok = g_trade.Buy(lot, symbol, 0.0, nsl > 0 ? nsl : 0.0, ntp > 0 ? ntp : 0.0, comment);
@@ -1052,7 +1084,9 @@ bool ProcessSignalJson(const string channelFile, const string json)
    else
       Print("[TradinGo] Unknown action: ", action);
 
-   if(handled && InpClearSignalAfterProcess)
+   // Clear after any recognized action attempt (including cancelled range / failed open)
+   // so a restart cannot replay the same JSON.
+   if(InpClearSignalAfterProcess && action != "" && action != "NONE")
       ClearSignalFile(channelFile);
    return handled;
   }
@@ -1085,18 +1119,42 @@ void ParseChannels()
   }
 
 //+------------------------------------------------------------------+
+void SeedAndClearExistingSignals()
+  {
+   // Critical: on attach/recompile, do NOT execute leftover JSON from hours/days ago.
+   for(int i = 0; i < g_channelCount; i++)
+     {
+      string json;
+      if(!ReadSignalFile(g_channelFile[i], json))
+         continue;
+      string action = JsonGetString(json, "action");
+      string ts = JsonGetString(json, "timestamp");
+      if(ts != "")
+         g_lastTimestamp[i] = ts;
+      if(action == "" || action == "NONE")
+         continue;
+      Print("[TradinGo] Init skip stale ", g_channelFile[i],
+            " action=", action, " ts=", ts, " -> NONE (no exec)");
+      ClearSignalFile(g_channelFile[i]);
+     }
+  }
+
+//+------------------------------------------------------------------+
 int OnInit()
   {
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.06 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.07 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints,
-         " oro_tolerance_pts=", InpOroRangeTolerancePoints);
+         " oro_tolerance_pts=", InpOroRangeTolerancePoints,
+         " ignore_existing_on_init=", InpIgnoreExistingOnInit);
    for(int i = 0; i < g_channelCount; i++)
       Print("[TradinGo]  watch ", g_channelFile[i]);
+   if(InpIgnoreExistingOnInit)
+      SeedAndClearExistingSignals();
    return INIT_SUCCEEDED;
   }
 

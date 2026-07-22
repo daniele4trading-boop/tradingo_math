@@ -191,9 +191,9 @@ Lo script **non** sovrascrive `tradingo_config.json` né `state/*.json`.
 - [x] `pytest tg_tradingo/tests/` (54 passed — GOLD/IVAN/atomic_write Jul 2026)
 - [x] Versioni bridge **v2.03** / EA **v2.06**
 - [x] Report analisi: `docs/ANALYSIS_JUL20_22_2026.md`
-- [ ] PR creata/aggiornata con riepilogo analisi o fix
-- [ ] Istruzioni deploy in PR description (pull + deploy ps1 + riavvio bridge; nota compile EA)
-- [ ] Nessun segreto nel diff
+- [x] PR aggiornata: https://github.com/daniele4trading-boop/tradingo_system/pull/19
+- [x] Istruzioni deploy in PR description (pull + deploy ps1 + riavvio bridge; nota compile EA)
+- [x] Nessun segreto nel diff
 
 ---
 

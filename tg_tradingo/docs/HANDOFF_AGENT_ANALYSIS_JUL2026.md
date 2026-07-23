@@ -1,3 +1,19 @@
+## 0. Sticky — prima di altre modifiche codice
+
+**L’utente deve ancora deployare/compilare EA v2.08 sulla VPS** (stack opens + BE clamp).  
+Ricordaglielo **prima** di altri fix/feature. Comandi:
+
+```powershell
+cd C:\StatArb
+git fetch origin cursor/tg-tradingo-hardening-8e22
+git reset --hard origin/cursor/tg-tradingo-hardening-8e22
+powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_to_vps.ps1
+```
+
+MetaEditor → `TG_TradinGoEA.mq5` → **F7** → log `EA v2.08 started` + `stack_opens=true`.
+
+---
+
 # Handoff per agente — analisi performance e miglioramenti TG TradinGo
 
 Documento creato il **2026-07-22** per continuare il lavoro **senza intervento manuale dell’utente** su codice, test, PR e (ove possibile) deploy. L’utente ha chiesto analisi canale-per-canale su log **20–22 luglio 2026** e fix di sistema.

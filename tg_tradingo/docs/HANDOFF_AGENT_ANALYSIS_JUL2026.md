@@ -1,16 +1,19 @@
 ## 0. Sticky — prima di altre modifiche codice
 
-**L’utente deve ancora deployare/compilare EA v2.08 sulla VPS** (stack opens + BE clamp).  
-Ricordaglielo **prima** di altri fix/feature. Comandi:
+**Deploy pendente utente:**
+1. Bridge **v2.04** (parser GOLD partial/BE fix)
+2. EA **v2.08** (stack opens + BE clamp)
 
 ```powershell
 cd C:\StatArb
 git fetch origin cursor/tg-tradingo-hardening-8e22
 git reset --hard origin/cursor/tg-tradingo-hardening-8e22
 powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_to_vps.ps1
+C:\TG_TradinGo\start_tradingo.bat
 ```
 
-MetaEditor → `TG_TradinGoEA.mq5` → **F7** → log `EA v2.08 started` + `stack_opens=true`.
+MetaEditor → `TG_TradinGoEA.mq5` → **F7** → log `EA v2.08 started` + `stack_opens=true`.  
+Bridge log: `TG TradinGo Bridge v2.04`.
 
 ---
 
@@ -40,8 +43,8 @@ Documento creato il **2026-07-22** per continuare il lavoro **senza intervento m
 
 | Componente | Versione | Note |
 |------------|----------|------|
-| Bridge | **v2.03** (`tradingo_bridge.py`, `start_tradingo.bat`) | Bump versione a ogni release utente |
-| EA | **v2.07** (`mql5/TG_TradinGoEA.mq5`) | Clear JSON + stops-level + ORO tol 250 + ignore existing on init |
+| Bridge | **v2.04** (`tradingo_bridge.py`, `start_tradingo.bat`) | GOLD partial/BE parse hardened |
+| EA | **v2.08** (`mql5/TG_TradinGoEA.mq5`) | anti-replay + stack opens + BE clamp |
 | Canali config esempio | CH_GOLD, CH_FOREX, CH_ORO, CH_STARK, CH_IVAN | Parser `ivan_vip` in `tradingo_config.example.json` |
 
 Produzione utente aveva EA **v2.04** poi **v2.05**; bridge **v2.02**; Ivan aggiunto manualmente in `InpChannels` su MT5 prima che il default EA includesse `ivan`.

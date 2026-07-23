@@ -176,6 +176,25 @@ class TestCH2SalaGold:
         )
         assert sig["action"] == "CHECK_AND_BE"
 
+    def test_partial_close_break_even_plus_pips(self, bridge_state: BridgeState):
+        # Bug 23 Jul: comma before break even was parsed as BE price → crash
+        sig = parser_sala_gold(
+            "Partial close, break even +100 pips", CH2, bridge_state
+        )
+        assert sig is not None
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_this_other_partial_break_even(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "This other partial break even", CH2, bridge_state
+        )
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_break_even_plus_pips_not_price(self, bridge_state: BridgeState):
+        # Must not treat "+100" / lone punctuation as BREAK_EVEN_PRICE
+        sig = parser_sala_gold("break even +100 pips", CH2, bridge_state)
+        assert sig["action"] == "CHECK_AND_BE"
+
     def test_state_persists_across_restart(self, tmp_path: Path):
         state_file = tmp_path / "bridge_state.json"
         s1 = BridgeState(state_file)

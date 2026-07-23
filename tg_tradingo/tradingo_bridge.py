@@ -52,7 +52,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.03"
+BRIDGE_VERSION = "2.04"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGGING
@@ -135,7 +135,10 @@ def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
 
 def pf(s: str) -> float:
     """Parse float pulito: rimuove asterischi, spazi, virgole."""
-    return float(re.sub(r"[^\d.]", "", s.strip().replace(",", ".")))
+    cleaned = re.sub(r"[^\d.]", "", s.strip().replace(",", "."))
+    if cleaned in ("", ".", "..") or cleaned.count(".") > 1:
+        raise ValueError(f"invalid numeric token: {s!r}")
+    return float(cleaned)
 
 def normalize_symbol(raw: str) -> str:
     """Rimuove suffisso 'pm', mappa alias (GOLD -> XAUUSD)."""
@@ -283,21 +286,7 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     raw   = text.strip()
     upper = strip_md(raw).upper()
 
-    # ── BE con prezzo esplicito: "4789 gold break Even" ─────────────────────
-    m_be_price = re.search(r"([\d.,]+)\s+(?:GOLD|XAUUSD)?\s*BREAK\s*EVEN|"
-                           r"BREAK\s*EVEN\s+(?:GOLD|XAUUSD)?\s*([\d.,]+)", upper)
-    if m_be_price:
-        be_price = pf(m_be_price.group(1) or m_be_price.group(2))
-        # Sanity check: prezzo BE deve essere plausibile (>100), non pips
-        if be_price < 100:
-            log.debug(f"[CH2] BE price {be_price} ignorato (sembra pips, non prezzo)")
-        else:
-            log.info(f"[CH2] BE con prezzo esplicito: {be_price}")
-            return {"action": "BREAK_EVEN_PRICE", "be_price": be_price,
-                    "symbol": "XAUUSD", "magic_base": ch["magic_base"], "raw_message": raw}
-
     # ── Chiusura totale CH2 ─────────────────────────────────────────────────
-    # "Close!!!" / "Close all" / "Chiudiamo tutto"
     close_pats = [
         r"^CLOSE\s*!*$", r"^CLOSE\s+ALL", r"CHIUDIAMO\s+TUTTO",
         r"CLOSE\s+ALL\s+POSITIONS", r"EXIT\s+ALL",
@@ -307,17 +296,40 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         return {"action": "CLOSE_ALL_SYMBOL", "symbol": "XAUUSD",
                 "magic_base": ch["magic_base"], "raw_message": raw}
 
-    # ── "Close half / partial close|closure + break even" → metà + BE ──────
+    # ── Partial / half + break even → CLOSE_HALF_BE (prima del BE-prezzo) ──
+    # Deve stare PRIMA del match "N gold break even", altrimenti
+    # "Partial close, break even +100 pips" cattura la virgola come prezzo.
     is_partial = contains_any(
         upper,
         "CLOSE HALF", "PARTIAL CLOSE", "PARTIAL CLOSURE", "HALF CLOSE",
-        "CHIUDI META", "PARZIALE", "CLOSE PART",
+        "CHIUDI META", "PARZIALE", "CLOSE PART", "PARTIAL",
     )
     is_be_msg = contains_any(upper, "BREAK EVEN", "BREAKEVEN")
     if is_partial and is_be_msg:
         log.info(f"[CH2] CLOSE_HALF_BE: {raw[:60]}")
         return {"action": "CLOSE_HALF_BE", "symbol": "XAUUSD",
                 "magic_base": ch["magic_base"], "raw_message": raw}
+
+    # ── BE con prezzo esplicito: "4789 gold break Even" ─────────────────────
+    # Richiede almeno 3 cifre (prezzo XAU), non pips (+100) né virgole isolate.
+    m_be_price = re.search(
+        r"(?<!\d)(\d{3,}(?:[.,]\d+)?)\s+(?:GOLD|XAUUSD)?\s*BREAK\s*EVEN|"
+        r"BREAK\s*EVEN\s+(?:GOLD|XAUUSD)?\s*(?<!\d)(\d{3,}(?:[.,]\d+)?)",
+        upper,
+    )
+    if m_be_price:
+        raw_px = m_be_price.group(1) or m_be_price.group(2)
+        try:
+            be_price = pf(raw_px)
+        except ValueError:
+            log.debug(f"[CH2] BE price token ignorato: {raw_px!r}")
+            be_price = 0.0
+        if be_price < 100:
+            log.debug(f"[CH2] BE price {be_price} ignorato (sembra pips, non prezzo)")
+        else:
+            log.info(f"[CH2] BE con prezzo esplicito: {be_price}")
+            return {"action": "BREAK_EVEN_PRICE", "be_price": be_price,
+                    "symbol": "XAUUSD", "magic_base": ch["magic_base"], "raw_message": raw}
 
     # ── "break even" standalone (dopo trade aperto) → SL a entry ───────────
     # Esempi: "break Even", "TP1 hit gold +90 pips break even"

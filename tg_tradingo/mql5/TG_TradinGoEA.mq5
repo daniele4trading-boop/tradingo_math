@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.07"
+#property version   "2.08"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -28,6 +28,7 @@ input int    InpOroRangeTolerancePoints = 250; // 0 = use InpRangeTolerancePoint
 input bool   InpLogCancelledSignals  = true;
 input bool   InpClearSignalAfterProcess = true;
 input bool   InpIgnoreExistingOnInit = true; // skip+clear JSON already present at attach
+input bool   InpStackOpensIfFlatBusy = true; // if channel already has positions, still OPEN new ones
 input bool   InpAutoBreakEvenOnTp1 = true;
 input ulong  InpMagicOffset        = 0;
 
@@ -377,7 +378,8 @@ int RangeToleranceForChannel(const string channelFile, const string json)
 void AdjustStopsToMinDistance(const string symbol, const string direction,
                               double &sl, double &tp)
   {
-   // Avoid MT5 retcode 10016 (invalid stops) by enforcing SYMBOL_TRADE_STOPS_LEVEL.
+   // Avoid MT5 retcode 10016 (invalid stops) by enforcing SYMBOL_TRADE_STOPS_LEVEL
+   // and forcing SL/TP onto the legal side of the current price.
    g_sym.Name(symbol);
    g_sym.RefreshRates();
    double point = g_sym.Point();
@@ -390,22 +392,68 @@ void AdjustStopsToMinDistance(const string symbol, const string direction,
       minPts = 1;
    double minDist = minPts * point;
    int digits = (int)g_sym.Digits();
-   double price = (direction == "BUY") ? g_sym.Ask() : g_sym.Bid();
+   // For modifying protective SL use the price that MT5 validates against.
+   double price = (direction == "BUY") ? g_sym.Bid() : g_sym.Ask();
 
    if(direction == "BUY")
      {
-      if(sl > 0.0 && (price - sl) < minDist)
+      if(sl > 0.0 && sl > price - minDist)
          sl = NormalizeDouble(price - minDist, digits);
-      if(tp > 0.0 && (tp - price) < minDist)
+      if(tp > 0.0 && tp < price + minDist)
          tp = NormalizeDouble(price + minDist, digits);
      }
    else
      {
-      if(sl > 0.0 && (sl - price) < minDist)
+      if(sl > 0.0 && sl < price + minDist)
          sl = NormalizeDouble(price + minDist, digits);
-      if(tp > 0.0 && (price - tp) < minDist)
+      if(tp > 0.0 && tp > price - minDist)
          tp = NormalizeDouble(price - minDist, digits);
      }
+  }
+
+//+------------------------------------------------------------------+
+bool ModifyPositionSLTP(const ulong ticket, const double sl, const double tp)
+  {
+   if(!g_pos.SelectByTicket(ticket))
+      return false;
+   string symbol = g_pos.Symbol();
+   string direction = (g_pos.PositionType() == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+   double curSl = g_pos.StopLoss();
+   double curTp = g_pos.TakeProfit();
+   double nsl = sl > 0 ? sl : curSl;
+   double ntp = tp > 0 ? tp : curTp;
+   if(nsl > 0.0 || ntp > 0.0)
+      AdjustStopsToMinDistance(symbol, direction, nsl, ntp);
+   if(nsl == curSl && ntp == curTp)
+      return true;
+   bool ok = g_trade.PositionModify(ticket, nsl, ntp);
+   if(!ok)
+      Print("[TradinGo] PositionModify failed ticket=", ticket,
+            " err=", g_trade.ResultRetcode(),
+            " sl=", DoubleToString(nsl, (int)g_sym.Digits()),
+            " tp=", DoubleToString(ntp, (int)g_sym.Digits()));
+   return ok;
+  }
+
+//+------------------------------------------------------------------+
+bool ApplyBreakEvenSL(const ulong ticket)
+  {
+   // Close-half / CHECK_AND_BE: prefer SL=entry; if invalid vs market, clamp to min legal stop.
+   if(!g_pos.SelectByTicket(ticket))
+      return false;
+   string symbol = g_pos.Symbol();
+   string direction = (g_pos.PositionType() == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+   double be = g_pos.PriceOpen();
+   double tpKeep = g_pos.TakeProfit();
+   double nsl = be;
+   double ntp = tpKeep;
+   AdjustStopsToMinDistance(symbol, direction, nsl, ntp);
+   if(MathAbs(nsl - be) > g_sym.Point())
+      Print("[TradinGo] BE clamped ticket=", ticket,
+            " entry=", DoubleToString(be, (int)g_sym.Digits()),
+            " -> sl=", DoubleToString(nsl, (int)g_sym.Digits()),
+            " (", direction, ")");
+   return ModifyPositionSLTP(ticket, nsl, 0);
   }
 
 //+------------------------------------------------------------------+
@@ -576,20 +624,6 @@ bool OpenMarket(const string symbol, const string direction, const double lot,
          " fill=", DoubleToString(fillPrice, (int)g_sym.Digits()),
          " status=", entryStatus);
    return true;
-  }
-
-//+------------------------------------------------------------------+
-bool ModifyPositionSLTP(const ulong ticket, const double sl, const double tp)
-  {
-   if(!g_pos.SelectByTicket(ticket))
-      return false;
-   double curSl = g_pos.StopLoss();
-   double curTp = g_pos.TakeProfit();
-   double nsl = sl > 0 ? sl : curSl;
-   double ntp = tp > 0 ? tp : curTp;
-   if(nsl == curSl && ntp == curTp)
-      return true;
-   return g_trade.PositionModify(ticket, nsl, ntp);
   }
 
 //+------------------------------------------------------------------+
@@ -799,9 +833,14 @@ bool HandleOpen(const string channelFile, const string json)
    int openCnt = CountOurPositions(symbol, magicBase, 5);
    if(openCnt > 0)
      {
-      Print("[TradinGo] OPEN skipped — ", openCnt,
-            " position(s) exist, modifying SL/TP instead");
-      return ModifyExistingTrades(symbol, magicBase, sl, tps);
+      if(!InpStackOpensIfFlatBusy)
+        {
+         Print("[TradinGo] OPEN skipped — ", openCnt,
+               " position(s) exist, modifying SL/TP instead");
+         return ModifyExistingTrades(symbol, magicBase, sl, tps);
+        }
+      Print("[TradinGo] OPEN stack — ", openCnt,
+            " position(s) already open, opening additional trade(s)");
      }
 
    return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
@@ -981,7 +1020,7 @@ bool HandleCloseHalfBe(const string json)
   {
    string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
    int magicBase = JsonGetInt(json, "magic_base");
-   Print("[TradinGo] CLOSE_HALF_BE ", symbol, " — close 50% + SL to entry");
+   Print("[TradinGo] CLOSE_HALF_BE ", symbol, " — close 50% + SL to entry (clamped if needed)");
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       if(!g_pos.SelectByIndex(i))
@@ -990,13 +1029,20 @@ bool HandleCloseHalfBe(const string json)
          continue;
       if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
          continue;
+      ulong ticket = g_pos.Ticket();
       double vol = g_pos.Volume();
       double half = NormalizeLot(symbol, vol / 2.0);
-      if(half < SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN))
-         continue;
-      g_trade.PositionClosePartial(g_pos.Ticket(), half);
-      double be = g_pos.PriceOpen();
-      ModifyPositionSLTP(g_pos.Ticket(), be, 0);
+      if(half >= SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN))
+        {
+         if(!g_trade.PositionClosePartial(ticket, half))
+            Print("[TradinGo] CLOSE_HALF partial failed ticket=", ticket,
+                  " err=", g_trade.ResultRetcode());
+         else
+            Print("[TradinGo] CLOSE_HALF ok ticket=", ticket,
+                  " closed=", DoubleToString(half, 2));
+        }
+      // Re-select: after partial the ticket remains for the leftover volume.
+      ApplyBreakEvenSL(ticket);
      }
    return true;
   }
@@ -1011,8 +1057,7 @@ bool HandleCheckAndBe(const string json)
          continue;
       if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
          continue;
-      double be = g_pos.PriceOpen();
-      ModifyPositionSLTP(g_pos.Ticket(), be, 0);
+      ApplyBreakEvenSL(g_pos.Ticket());
      }
    return true;
   }
@@ -1145,12 +1190,13 @@ int OnInit()
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.07 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.08 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints,
          " oro_tolerance_pts=", InpOroRangeTolerancePoints,
-         " ignore_existing_on_init=", InpIgnoreExistingOnInit);
+         " ignore_existing_on_init=", InpIgnoreExistingOnInit,
+         " stack_opens=", InpStackOpensIfFlatBusy);
    for(int i = 0; i < g_channelCount; i++)
       Print("[TradinGo]  watch ", g_channelFile[i]);
    if(InpIgnoreExistingOnInit)

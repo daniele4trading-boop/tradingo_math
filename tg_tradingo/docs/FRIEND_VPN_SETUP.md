@@ -19,23 +19,69 @@ Serve: **WireGuard UDP** + **SMB** (o copia locale della share).
 
 ---
 
+## Setup automatico (VPS amico)
+
+Script: [`scripts/setup_friend_vps.ps1`](../../scripts/setup_friend_vps.ps1)
+
+Copia lo script (e `TG_TradinGoEA.mq5`) sulla VPS amico, poi **PowerShell Admin**:
+
+```powershell
+# Variante B consigliata: Contabo scrive sui file locali dell'amico via VPN
+powershell -ExecutionPolicy Bypass -File .\setup_friend_vps.ps1 `
+  -Mode WriteShare `
+  -FriendVpnIp 10.8.0.2 `
+  -ContaboEndpoint 144.91.76.28:51820 `
+  -ContaboPublicKey "<PUB_KEY_CONTABO>" `
+  -EaSourcePath "C:\Temp\TG_TradinGoEA.mq5"
+
+# Solo stato / ping / EA presente
+powershell -ExecutionPolicy Bypass -File .\setup_friend_vps.ps1 -Mode Status
+```
+
+Lo script: genera conf WireGuard client, crea `C:\TG_TradinGo_Friend\signals`, share SMB `tradingo`, junction in `MQL5\Files\tradingo`, copia l’EA in `Experts`, scrive `EA_PARAMS.txt` + `measure_signal_lag.ps1`.
+
+---
+
 ## Architettura consigliata per il test
 
-### Variante A — Amico legge i JSON Contabo (quella che hai chiesto)
+### Variante A — Amico legge i JSON Contabo
 
 1. Contabo condivide in sola lettura `C:\TG_TradinGo\signals`
 2. gamehosting si collega in VPN e monta quella share
 3. I file vengono **junction** dentro `MQL5\Files\tradingo` (MT5 legge meglio lì)
 4. EA: `InpUseAbsolutePath=false`, `InpSignalsPath=tradingo\`
 
-### Variante B — Bridge scrive diretto sulla VPS amico (spesso migliore)
+### Variante B — Bridge scrive diretto sulla VPS amico (consigliata)
 
-1. gamehosting condivide in scrittura la sua `MQL5\Files` (o `...\Files\tradingo`)
+1. gamehosting condivide in scrittura la sua cartella segnali (`tradingo` / `MQL5\Files\tradingo`)
 2. Su Contabo, in `tradingo_config.json` → `mt5_instances`, aggiungi:
    `"signals_path": "\\\\10.8.0.2\\tradingo"`
-3. EA amico legge locale (`InpSignalsPath=""` o `tradingo\`)
+3. EA amico legge **locale** (`InpSignalsPath=tradingo\`) — il poll non attraversa la VPN
 
-Per il **primo test di latenza** usa **A**. Se A è scomoda con sandbox MT5, passa a **B**.
+Per il **primo test di latenza** puoi usare A; in produzione peer-to-peer preferisci **B**.
+
+---
+
+## Latenza attesa (Contabo bridge → EA amico)
+
+Componenti tipici (ordine di grandezza, WireGuard Contabo↔EU/PL VPS):
+
+| Componente | Variante B (write remoto) | Variante A (read remoto) |
+|------------|---------------------------|---------------------------|
+| WireGuard RTT | ~15–60 ms | ~15–60 ms |
+| Scrittura JSON ~1–2 KB via SMB | ~10–80 ms (una volta per segnale) | n/a (scrittura locale Contabo) |
+| Ogni poll EA del JSON | **locale** (~0–5 ms) | **SMB remoto** ogni `InpPollMs` |
+| Poll EA (`InpPollMs`, default 500) | 0–500 ms (domina) | 0–500 ms + jitter SMB |
+| **End-to-end tipico** | **~0.2–1.0 s** | **~0.3–1.5 s** (spesso peggio sotto carico) |
+
+Note:
+
+- La VPN **non** aggiunge secondi se è sana: se vedi 3–10 s, problema SMB/DNS/firewall, non “latenza WireGuard”.
+- Per avvicinarti al Contabo locale: abbassa `InpPollMs` a `200` sul amico (più CPU, lag medio più basso).
+- Scostamento **fill** Contabo vs amico = spread broker + questo lag; tipicamente decine/centinaia di ms di prezzo, non secondi.
+- Cloud sync (OneDrive/Dropbox) al posto di SMB: **evitare** (secondi–minuti).
+
+Misura reale: `C:\TG_TradinGo_Friend\measure_signal_lag.ps1` (creato dallo setup) oppure sezione 5 sotto.
 
 ---
 
@@ -180,7 +226,8 @@ while ($true) {
 }
 ```
 
-**Atteso realistico su VPN+SMB:** circa **50–300 ms** (a volte 0.5–1 s).  
+**Atteso realistico su VPN+SMB (variante B write):** ~**0.2–1.0 s** end-to-end (RTT+write decine di ms; il resto è `InpPollMs`).  
+**Variante A (read remoto a ogni poll):** spesso ~**0.3–1.5 s**.  
 Se vedi **molti secondi**, la VPN/SMB non è sana (o stai usando cloud sync per sbaglio).
 
 ### Scostamento fill (Contabo vs amico)

@@ -2,6 +2,8 @@
 
 Guida per installare l'EA su una VPS/PC separata e ricevere i segnali JSON dal bridge principale.
 
+**Test VPN Contabo ↔ VPS amico (path JSON remoti, latenza):** vedi [`FRIEND_VPN_SETUP.md`](FRIEND_VPN_SETUP.md).
+
 ## Cosa serve
 
 - MetaTrader 5 (conto demo o live del broker dell'amico)

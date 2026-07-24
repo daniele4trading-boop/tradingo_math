@@ -2,7 +2,8 @@
 
 Guida per installare l'EA su una VPS/PC separata e ricevere i segnali JSON dal bridge principale.
 
-**Test VPN Contabo ↔ VPS amico (path JSON remoti, latenza):** vedi [`FRIEND_VPN_SETUP.md`](FRIEND_VPN_SETUP.md).
+**Test VPN Contabo ↔ VPS amico (path JSON remoti, latenza):** vedi [`FRIEND_VPN_SETUP.md`](FRIEND_VPN_SETUP.md).  
+**Setup one-shot VPS amico:** [`scripts/setup_friend_vps.ps1`](../../scripts/setup_friend_vps.ps1) (`-Mode WriteShare`).
 
 ## Cosa serve
 

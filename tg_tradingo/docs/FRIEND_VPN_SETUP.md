@@ -146,7 +146,7 @@ Parametri EA:
 | `InpChannels` | `gold,forex,oro,stark,ivan` |
 | `InpLotMultiplier` | basso in demo (es. `0.5` o `1.0`) |
 
-Log atteso: `EA v2.08 started` e poi `signal_ch_*.json action=...`.
+Log atteso: `EA v2.09 started` e poi `signal_ch_*.json action=...`.
 
 ---
 
@@ -202,7 +202,7 @@ Se lo scostamento è grande e sistematico, valuta **variante B** (bridge scrive 
 - [ ] WireGuard Contabo `10.8.0.1` ↔ amico `10.8.0.2`, `ping` ok
 - [ ] `dir \\10.8.0.1\TGSignals` mostra i 5 JSON
 - [ ] Junction `MQL5\Files\tradingo` → share Contabo
-- [ ] EA v2.08 su un solo grafico, AutoTrading ON
+- [ ] EA v2.09 su un solo grafico, AutoTrading ON
 - [ ] Segnale reale → log amico entro &lt; 1 s dal `timestamp`
 - [ ] Confrontare fill Contabo vs fill amico sullo stesso `ts`
 

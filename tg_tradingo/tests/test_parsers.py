@@ -21,6 +21,7 @@ from tradingo_bridge import (
     parser_sala_vip,
     parser_ivan_vip,
     parser_zanni_vip,
+    coerce_edit_open_to_update,
 )
 
 
@@ -435,6 +436,50 @@ class TestCHORO:
         assert sig["tp_levels"] == [4025.0]
         assert sig["sl"] == 4008.0
 
+    def test_jul24_edit_range_not_second_open(self, tmp_path: Path):
+        """Fragment OPEN then complete-form / range EDITs must not stack OPENs."""
+        state = BridgeState(tmp_path / "bridge_state.json")
+        assert parser_sala_oro("Sell 4060", CH_ORO, state) is None
+        assert parser_sala_oro("Sl 4065", CH_ORO, state) is None
+        sig1 = parser_sala_oro("Tp 4053", CH_ORO, state)
+        assert sig1["action"] == "OPEN"
+        assert sig1["entry"] == 4060.0
+
+        # Same levels as complete message → ignore
+        assert (
+            parser_sala_oro(
+                "XAUUSD SELL 4060\nTP 4053\nSL 4065", CH_ORO, state
+            )
+            is None
+        )
+
+        # Range refinement → UPDATE_OPEN (not a second OPEN)
+        sig2 = parser_sala_oro(
+            "XAUUSD SELL 4060-4062\nTP 4053\nSL 4065", CH_ORO, state
+        )
+        assert sig2["action"] == "UPDATE_OPEN"
+        assert sig2["entry_range"] == [4060.0, 4062.0]
+
+        sig3 = parser_sala_oro(
+            "XAUUSD SELL 4060-4063\nTP 4055\nSL 4065", CH_ORO, state
+        )
+        assert sig3["action"] == "UPDATE_OPEN"
+        assert sig3["entry_range"] == [4060.0, 4063.0]
+        assert sig3["tp_levels"] == [4055.0]
+
+    def test_reentry_sets_allow_stack(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        sig1 = parser_sala_oro(
+            "XAUUSD SELL 4060\nTP 4053\nSL 4065", CH_ORO, state
+        )
+        assert sig1["action"] == "OPEN"
+        assert not sig1.get("allow_stack")
+        sig2 = parser_sala_oro(
+            "Rientriamo\nXAUUSD SELL 4055\nTP 4048\nSL 4060", CH_ORO, state
+        )
+        assert sig2["action"] == "OPEN"
+        assert sig2["allow_stack"] is True
+
 
 class TestCHIvan:
     def test_open_sell_four_tp(self):
@@ -463,6 +508,11 @@ class TestCHIvan:
 
     def test_close_now(self):
         sig = parser_ivan_vip("CHIUDERE ORA", CH_IVAN)
+        assert sig["action"] == "CLOSE_ALL_SYMBOL"
+        assert sig["symbol"] == "XAUUSD"
+
+    def test_usciamo_ora(self):
+        sig = parser_ivan_vip("USCIAMO ORA", CH_IVAN)
         assert sig["action"] == "CLOSE_ALL_SYMBOL"
         assert sig["symbol"] == "XAUUSD"
 
@@ -601,3 +651,25 @@ class TestValidation:
         ok, reason = validate_signal(sig)
         assert not ok
         assert "splits" in reason
+
+
+class TestEditOpenCoerce:
+    def test_edit_open_becomes_update(self):
+        sig = {"action": "OPEN", "direction": "SELL", "symbol": "XAUUSD"}
+        out = coerce_edit_open_to_update(sig, is_edit=True)
+        assert out["action"] == "UPDATE_OPEN"
+
+    def test_new_open_unchanged(self):
+        sig = {"action": "OPEN", "direction": "SELL", "symbol": "XAUUSD"}
+        out = coerce_edit_open_to_update(sig, is_edit=False)
+        assert out["action"] == "OPEN"
+
+    def test_allow_stack_edit_keeps_open(self):
+        sig = {
+            "action": "OPEN",
+            "direction": "SELL",
+            "symbol": "XAUUSD",
+            "allow_stack": True,
+        }
+        out = coerce_edit_open_to_update(sig, is_edit=True)
+        assert out["action"] == "OPEN"

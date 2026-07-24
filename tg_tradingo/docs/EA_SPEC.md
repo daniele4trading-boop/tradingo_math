@@ -141,10 +141,14 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 | `InpLogCancelledSignals` | true | Scrive `tradingo_signal_stats.csv` (esecuzioni + cancellazioni) |
 | `InpClearSignalAfterProcess` | true | Dopo ogni segnale gestito, riscrive il JSON a `NONE` |
 | `InpIgnoreExistingOnInit` | true | All'attach salta+azzera JSON già presenti (anti-replay) |
+| `InpStackOpensIfFlatBusy` | true | Se true, onora `allow_stack` nel JSON; senza flag → modifica SL/TP |
+| `InpStopBufferPoints` | 20 | Buffer extra oltre stops/freeze level (anti 10016 su BE) |
 | `InpChannels` | `gold,forex,oro,stark,ivan` | File da monitorare |
 
 **v2.06+:** prima di `OrderSend`, normalizza SL/TP a `SYMBOL_TRADE_STOPS_LEVEL`; se SL/TP restano dal lato sbagliato del prezzo (segnale stale), salta l'open.  
-**v2.07:** `InpIgnoreExistingOnInit` evita di rieseguire OPEN_NOW/OPEN vecchi al riattach EA.
+**v2.07:** `InpIgnoreExistingOnInit` evita di rieseguire OPEN_NOW/OPEN vecchi al riattach EA.  
+**v2.08:** BE clamp + `InpStackOpensIfFlatBusy` (stackava anche MSG+EDIT — troppo aggressivo).  
+**v2.09:** stack solo se JSON `allow_stack:true`; `InpStopBufferPoints` + retry BE su 10016.
 
 ### Commento ordini MT5
 

@@ -1,8 +1,8 @@
 ## 0. Sticky — prima di altre modifiche codice
 
 **Deploy pendente utente:**
-1. Bridge **v2.04** (parser GOLD partial/BE fix)
-2. EA **v2.08** (stack opens + BE clamp)
+1. Bridge **v2.05** (anti-duplicazione OPEN su EDIT + ORO same-setup + IVAN `USCIAMO ORA`)
+2. EA **v2.09** (stack solo con JSON `allow_stack` + BE buffer anti-10016)
 
 ```powershell
 cd C:\StatArb
@@ -12,8 +12,10 @@ powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_t
 C:\TG_TradinGo\start_tradingo.bat
 ```
 
-MetaEditor → `TG_TradinGoEA.mq5` → **F7** → log `EA v2.08 started` + `stack_opens=true`.  
-Bridge log: `TG TradinGo Bridge v2.04`.
+MetaEditor → `TG_TradinGoEA.mq5` → **F7** → log `EA v2.09 started` + `stack_opens=true (requires JSON allow_stack)`.  
+Bridge log: `TG TradinGo Bridge v2.05`.
+
+**Bug 24/07 (risolto in v2.05/v2.09):** `InpStackOpensIfFlatBusy` stackava ogni MSG+EDIT → IVAN 4×4=16, ORO 4 sell, STARK 2 buy. Ora l’EA stacka solo se `allow_stack:true` (ORO “Rientriamo”); gli EDIT OPEN diventano `UPDATE_OPEN`.
 
 ---
 
@@ -43,8 +45,8 @@ Documento creato il **2026-07-22** per continuare il lavoro **senza intervento m
 
 | Componente | Versione | Note |
 |------------|----------|------|
-| Bridge | **v2.04** (`tradingo_bridge.py`, `start_tradingo.bat`) | GOLD partial/BE parse hardened |
-| EA | **v2.08** (`mql5/TG_TradinGoEA.mq5`) | anti-replay + stack opens + BE clamp |
+| Bridge | **v2.05** (`tradingo_bridge.py`, `start_tradingo.bat`) | EDIT→UPDATE_OPEN + ORO same-setup + USCIAMO ORA |
+| EA | **v2.09** (`mql5/TG_TradinGoEA.mq5`) | stack solo con `allow_stack` + BE buffer |
 | Canali config esempio | CH_GOLD, CH_FOREX, CH_ORO, CH_STARK, CH_IVAN | Parser `ivan_vip` in `tradingo_config.example.json` |
 
 Produzione utente aveva EA **v2.04** poi **v2.05**; bridge **v2.02**; Ivan aggiunto manualmente in `InpChannels` su MT5 prima che il default EA includesse `ivan`.

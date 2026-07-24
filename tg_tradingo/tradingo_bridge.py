@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.03
+TG TradinGo Bridge - v2.05
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -52,7 +52,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.04"
+BRIDGE_VERSION = "2.05"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGGING
@@ -132,6 +132,23 @@ def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
             log.error(f"[{channel_cfg['id']}] Errore scrittura {out_file}: {e}")
             return False
     return True
+
+
+def coerce_edit_open_to_update(signal: dict | None, is_edit: bool) -> dict | None:
+    """Avoid MSG+EDIT duplicate OPEN stacking on the EA."""
+    if (
+        signal
+        and is_edit
+        and signal.get("action") == "OPEN"
+        and not signal.get("allow_stack")
+    ):
+        signal["action"] = "UPDATE_OPEN"
+        log.info(
+            f"EDIT OPEN → UPDATE_OPEN (avoid duplicate stack) "
+            f"{signal.get('direction')} {signal.get('symbol')}"
+        )
+    return signal
+
 
 def pf(s: str) -> float:
     """Parse float pulito: rimuove asterischi, spazi, virgole."""
@@ -665,16 +682,45 @@ def _oro_is_close_half_be(upper: str) -> bool:
     )
 
 
-def _oro_same_trade_setup(a: dict, b: dict) -> bool:
+def _oro_is_reentry(upper: str) -> bool:
+    """True when ORO explicitly asks to open again while a trade may still be open."""
+    return bool(
+        re.search(r"\bRIENTRI(?:AMO|RE)?\b", upper)
+        or re.search(r"\bRIENTRO\b", upper)
+        or re.search(r"\bRE[- ]?ENTRY\b", upper)
+    )
+
+
+def _oro_entry_interval(trade: dict) -> tuple[float, float] | None:
+    er = trade.get("entry_range")
+    if er and len(er) >= 2:
+        return min(er[0], er[1]), max(er[0], er[1])
+    entry = trade.get("entry")
+    if entry is not None:
+        return float(entry), float(entry)
+    return None
+
+
+def _oro_same_trade_setup(a: dict, b: dict, *, max_gap: float = 5.0) -> bool:
+    """Same direction and compatible entry (exact, overlapping range, or near).
+
+    Treats refinements like entry 4060 → range 4060-4062 as the same setup so
+    Telegram EDITs do not emit a second OPEN.
+    """
     if a.get("direction") != b.get("direction"):
         return False
-    if a.get("entry_range") and b.get("entry_range"):
-        ar = [min(a["entry_range"]), max(a["entry_range"])]
-        br = [min(b["entry_range"]), max(b["entry_range"])]
-        return ar == br
-    if a.get("entry") is not None and b.get("entry") is not None:
-        return a["entry"] == b["entry"]
-    return False
+    ia = _oro_entry_interval(a)
+    ib = _oro_entry_interval(b)
+    if ia is None or ib is None:
+        return False
+    a_lo, a_hi = ia
+    b_lo, b_hi = ib
+    # Overlap (inclusive)
+    if a_lo <= b_hi and b_lo <= a_hi:
+        return True
+    # Near but non-overlapping (range expansion/contraction within max_gap)
+    gap = max(b_lo - a_hi, a_lo - b_hi)
+    return gap <= max_gap
 
 
 def _oro_resolve_context(state: BridgeState) -> tuple[str | None, float | None, list[float] | None]:
@@ -760,6 +806,7 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
 
     sl, tps = _parse_oro_sl_tp(upper)
     direction, entry, entry_range = _parse_oro_direction_entry(upper)
+    want_stack = _oro_is_reentry(upper)
 
     range_only = _oro_parse_range_only(upper)
     if range_only and state.oro_pending_dir:
@@ -840,12 +887,16 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
     }
 
     last = state.oro_last_trade
-    if last and _oro_same_trade_setup(signal, last):
+    if last and _oro_same_trade_setup(signal, last) and not want_stack:
         last_tps = last.get("tp_levels") or []
         last_sl = last.get("sl")
         tps_changed = tps != last_tps
         sl_changed = sl != last_sl
-        if tps_changed and not sl_changed:
+        entry_changed = _oro_entry_interval(signal) != _oro_entry_interval(last)
+        if not tps_changed and not sl_changed and not entry_changed:
+            log.info(f"[ORO] Duplicate OPEN ignored (same levels) {direction}")
+            return None
+        if tps_changed and not sl_changed and not entry_changed:
             log.info(f"[ORO] UPDATE_TP (edit) XAUUSD {direction} TP={tps}")
             signal = {
                 "action":      "UPDATE_TP",
@@ -856,7 +907,7 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
                 "magic_base":  ch["magic_base"],
                 "raw_message": raw,
             }
-        elif sl_changed and not tps_changed:
+        elif sl_changed and not tps_changed and not entry_changed:
             log.info(f"[ORO] UPDATE_SL (edit) XAUUSD {direction} SL={sl}")
             signal = {
                 "action":      "UPDATE_SL",
@@ -866,13 +917,24 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
                 "magic_base":  ch["magic_base"],
                 "raw_message": raw,
             }
-        elif tps_changed or sl_changed:
-            log.info(f"[ORO] UPDATE_OPEN (edit) XAUUSD {direction} TP={tps} SL={sl}")
+        else:
+            # Range refinement and/or combined SL+TP change → UPDATE_OPEN
+            log.info(
+                f"[ORO] UPDATE_OPEN (edit) XAUUSD {direction} "
+                f"entry={entry} range={entry_range} TP={tps} SL={sl}"
+            )
             signal["action"] = "UPDATE_OPEN"
 
     if signal["action"] == "OPEN":
         entry_log = f"range={entry_range}" if entry_range else f"@{entry}"
-        log.info(f"[ORO] OPEN {direction} XAUUSD {entry_log} TP={tps} SL={sl}")
+        if want_stack:
+            signal["allow_stack"] = True
+            log.info(
+                f"[ORO] OPEN (re-entry/stack) {direction} XAUUSD {entry_log} "
+                f"TP={tps} SL={sl}"
+            )
+        else:
+            log.info(f"[ORO] OPEN {direction} XAUUSD {entry_log} TP={tps} SL={sl}")
 
     if signal["action"] in ("OPEN", "UPDATE_OPEN"):
         state.set_oro_last_trade(signal)
@@ -1075,7 +1137,7 @@ def parser_ivan_vip(text: str, ch: dict) -> dict | None:
             "raw_message": raw,
         }
 
-    if re.search(r"CHIUDERE\s+ORA", upper):
+    if re.search(r"CHIUDERE\s+ORA|USCIAMO\s+ORA|USCITE\s+ORA", upper):
         log.info(f"[IVAN] CLOSE_ALL_SYMBOL XAUUSD: {raw[:60]}")
         return {
             "action":      "CLOSE_ALL_SYMBOL",
@@ -1250,6 +1312,8 @@ async def run_bridge():
                 signal = parser(text, ch_cfg, bridge_state)
             else:
                 signal = parser(text, ch_cfg)
+
+            signal = coerce_edit_open_to_update(signal, is_edit)
 
             if signal:
                 msg_date = getattr(event, "date", None)

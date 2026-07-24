@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.08"
+#property version   "2.09"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -28,7 +28,8 @@ input int    InpOroRangeTolerancePoints = 250; // 0 = use InpRangeTolerancePoint
 input bool   InpLogCancelledSignals  = true;
 input bool   InpClearSignalAfterProcess = true;
 input bool   InpIgnoreExistingOnInit = true; // skip+clear JSON already present at attach
-input bool   InpStackOpensIfFlatBusy = true; // if channel already has positions, still OPEN new ones
+input bool   InpStackOpensIfFlatBusy = true; // honor JSON allow_stack when positions already open
+input int    InpStopBufferPoints   = 20;     // extra pts beyond stops/freeze level (avoid 10016)
 input bool   InpAutoBreakEvenOnTp1 = true;
 input ulong  InpMagicOffset        = 0;
 
@@ -376,7 +377,7 @@ int RangeToleranceForChannel(const string channelFile, const string json)
 
 //+------------------------------------------------------------------+
 void AdjustStopsToMinDistance(const string symbol, const string direction,
-                              double &sl, double &tp)
+                              double &sl, double &tp, const int extraPts = -1)
   {
    // Avoid MT5 retcode 10016 (invalid stops) by enforcing SYMBOL_TRADE_STOPS_LEVEL
    // and forcing SL/TP onto the legal side of the current price.
@@ -387,7 +388,10 @@ void AdjustStopsToMinDistance(const string symbol, const string direction,
       point = _Point;
    int stopsLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL);
    int freezeLevel = (int)SymbolInfoInteger(symbol, SYMBOL_TRADE_FREEZE_LEVEL);
-   int minPts = MathMax(stopsLevel, freezeLevel);
+   int bufferPts = (extraPts >= 0) ? extraPts : InpStopBufferPoints;
+   if(bufferPts < 0)
+      bufferPts = 0;
+   int minPts = MathMax(stopsLevel, freezeLevel) + bufferPts;
    if(minPts < 1)
       minPts = 1;
    double minDist = minPts * point;
@@ -412,7 +416,8 @@ void AdjustStopsToMinDistance(const string symbol, const string direction,
   }
 
 //+------------------------------------------------------------------+
-bool ModifyPositionSLTP(const ulong ticket, const double sl, const double tp)
+bool ModifyPositionSLTP(const ulong ticket, const double sl, const double tp,
+                        const int extraPts = -1)
   {
    if(!g_pos.SelectByTicket(ticket))
       return false;
@@ -423,7 +428,7 @@ bool ModifyPositionSLTP(const ulong ticket, const double sl, const double tp)
    double nsl = sl > 0 ? sl : curSl;
    double ntp = tp > 0 ? tp : curTp;
    if(nsl > 0.0 || ntp > 0.0)
-      AdjustStopsToMinDistance(symbol, direction, nsl, ntp);
+      AdjustStopsToMinDistance(symbol, direction, nsl, ntp, extraPts);
    if(nsl == curSl && ntp == curTp)
       return true;
    bool ok = g_trade.PositionModify(ticket, nsl, ntp);
@@ -439,21 +444,34 @@ bool ModifyPositionSLTP(const ulong ticket, const double sl, const double tp)
 bool ApplyBreakEvenSL(const ulong ticket)
   {
    // Close-half / CHECK_AND_BE: prefer SL=entry; if invalid vs market, clamp to min legal stop.
+   // Retry with a wider buffer on 10016 (spread race after half-close).
    if(!g_pos.SelectByTicket(ticket))
       return false;
    string symbol = g_pos.Symbol();
    string direction = (g_pos.PositionType() == POSITION_TYPE_BUY) ? "BUY" : "SELL";
    double be = g_pos.PriceOpen();
-   double tpKeep = g_pos.TakeProfit();
-   double nsl = be;
-   double ntp = tpKeep;
-   AdjustStopsToMinDistance(symbol, direction, nsl, ntp);
-   if(MathAbs(nsl - be) > g_sym.Point())
-      Print("[TradinGo] BE clamped ticket=", ticket,
-            " entry=", DoubleToString(be, (int)g_sym.Digits()),
-            " -> sl=", DoubleToString(nsl, (int)g_sym.Digits()),
-            " (", direction, ")");
-   return ModifyPositionSLTP(ticket, nsl, 0);
+   int buffers[3];
+   buffers[0] = InpStopBufferPoints;
+   buffers[1] = InpStopBufferPoints + 20;
+   buffers[2] = InpStopBufferPoints + 50;
+   for(int attempt = 0; attempt < 3; attempt++)
+     {
+      if(!g_pos.SelectByTicket(ticket))
+         return false;
+      double nsl = be;
+      double ntp = g_pos.TakeProfit();
+      AdjustStopsToMinDistance(symbol, direction, nsl, ntp, buffers[attempt]);
+      if(MathAbs(nsl - be) > g_sym.Point())
+         Print("[TradinGo] BE clamped ticket=", ticket,
+               " entry=", DoubleToString(be, (int)g_sym.Digits()),
+               " -> sl=", DoubleToString(nsl, (int)g_sym.Digits()),
+               " (", direction, ") bufPts=", buffers[attempt]);
+      if(ModifyPositionSLTP(ticket, nsl, 0, buffers[attempt]))
+         return true;
+      if(g_trade.ResultRetcode() != 10016)
+         return false;
+     }
+   return false;
   }
 
 //+------------------------------------------------------------------+
@@ -833,10 +851,14 @@ bool HandleOpen(const string channelFile, const string json)
    int openCnt = CountOurPositions(symbol, magicBase, 5);
    if(openCnt > 0)
      {
-      if(!InpStackOpensIfFlatBusy)
+      // Stack only when bridge explicitly sets allow_stack (intentional re-entry).
+      // MSG+EDIT of the same Telegram signal must NOT open a second set of trades.
+      bool allowStack = InpStackOpensIfFlatBusy && JsonGetBool(json, "allow_stack");
+      if(!allowStack)
         {
          Print("[TradinGo] OPEN skipped — ", openCnt,
-               " position(s) exist, modifying SL/TP instead");
+               " position(s) exist, modifying SL/TP instead",
+               " (allow_stack=", (JsonGetBool(json, "allow_stack") ? "true" : "false"), ")");
          return ModifyExistingTrades(symbol, magicBase, sl, tps);
         }
       Print("[TradinGo] OPEN stack — ", openCnt,
@@ -1190,13 +1212,15 @@ int OnInit()
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.08 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.09 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints,
          " oro_tolerance_pts=", InpOroRangeTolerancePoints,
          " ignore_existing_on_init=", InpIgnoreExistingOnInit,
-         " stack_opens=", InpStackOpensIfFlatBusy);
+         " stack_opens=", InpStackOpensIfFlatBusy,
+         " (requires JSON allow_stack)",
+         " stop_buffer_pts=", InpStopBufferPoints);
    for(int i = 0; i < g_channelCount; i++)
       Print("[TradinGo]  watch ", g_channelFile[i]);
    if(InpIgnoreExistingOnInit)

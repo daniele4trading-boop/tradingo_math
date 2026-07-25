@@ -1,0 +1,43 @@
+; TG_TradinGoEA — preset Moneta Funded Instant 10k
+; Solo IVAN + STARK. Commenti: IT-T1.. / AS-T1
+; Lotti: Ivan 0.02 per TP (4 TP = 0.08), Stark 0.01
+; Carica da: Inputs EA -> Load -> questo file
+; Richiede EA v2.11+
+
+InpSignalsPath=
+InpUseAbsolutePath=false
+InpChannels=ivan,stark
+InpSymbolSuffix=
+InpLotMultiplier=1.0
+InpAddLotFactor=0.5
+InpLotIvan=0.02
+InpLotStark=0.01
+InpLotGold=0.0
+InpLotOro=0.0
+InpLotForex=0.0
+InpTagIvan=IT
+InpTagStark=AS
+InpTagGold=
+InpTagOro=
+InpTagForex=
+InpCommentUseTgPrefix=false
+InpMaxSlippagePoints=50
+InpPollMs=500
+InpRangeTolerancePoints=150
+InpOroRangeTolerancePoints=250
+InpLogCancelledSignals=true
+InpClearSignalAfterProcess=true
+InpIgnoreExistingOnInit=true
+InpStackOpensIfFlatBusy=true
+InpStopBufferPoints=20
+InpAutoBreakEvenOnTp1=true
+InpMagicOffset=0
+InpMaxFloatingLossUSD=150.0
+InpKillSwitchCooldownMin=60
+InpMaxHoldingMinutes=90
+InpHeartbeatMaxAgeSec=180
+InpHeartbeatFile=tradingo_heartbeat.json
+InpEquitySampleSec=60
+InpJournalPrefix=journal\\
+InpSingleInstanceLock=true
+InpLockStaleSec=120

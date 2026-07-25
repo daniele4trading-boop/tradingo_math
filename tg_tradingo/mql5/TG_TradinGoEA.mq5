@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.10"
+#property version   "2.11"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -21,6 +21,20 @@ input string InpChannels           = "gold,forex,oro,stark,ivan";
 input string InpSymbolSuffix       = "";
 input double InpLotMultiplier      = 1.0;
 input double InpAddLotFactor       = 0.5;
+// Per-channel absolute lot override (0 = use JSON fixed_lot * InpLotMultiplier).
+// Moneta example: Ivan 0.02 / Stark 0.01 with InpChannels=ivan,stark
+input double InpLotIvan            = 0.0;
+input double InpLotStark           = 0.0;
+input double InpLotGold            = 0.0;
+input double InpLotOro             = 0.0;
+input double InpLotForex           = 0.0;
+// Short comment tags (empty = default CHANNEL name). Moneta: IT / AS
+input string InpTagIvan            = "IT";
+input string InpTagStark           = "AS";
+input string InpTagGold            = "";
+input string InpTagOro             = "";
+input string InpTagForex           = "";
+input bool   InpCommentUseTgPrefix = false; // false -> IT-T1 ; true -> TG-IT-T1
 input int    InpMaxSlippagePoints  = 50;
 input int    InpPollMs             = 500;
 input int    InpRangeTolerancePoints = 150;
@@ -487,8 +501,35 @@ bool ApplyBreakEvenSL(const ulong ticket)
   }
 
 //+------------------------------------------------------------------+
+string ChannelKeyFromFile(const string channelFile, const string json)
+  {
+   string f = channelFile;
+   StringToLower(f);
+   StringReplace(f, "signal_ch_", "");
+   StringReplace(f, ".json", "");
+   if(f != "")
+      return f;
+   string cid = JsonGetString(json, "channel_id");
+   StringToLower(cid);
+   StringReplace(cid, "ch_", "");
+   return cid;
+  }
+
+//+------------------------------------------------------------------+
 string ChannelShortTag(const string channelFile, const string json)
   {
+   string key = ChannelKeyFromFile(channelFile, json);
+   if(key == "ivan" && InpTagIvan != "")
+      return InpTagIvan;
+   if(key == "stark" && InpTagStark != "")
+      return InpTagStark;
+   if(key == "gold" && InpTagGold != "")
+      return InpTagGold;
+   if(key == "oro" && InpTagOro != "")
+      return InpTagOro;
+   if(key == "forex" && InpTagForex != "")
+      return InpTagForex;
+
    string cid = JsonGetString(json, "channel_id");
    if(cid != "")
      {
@@ -503,13 +544,41 @@ string ChannelShortTag(const string channelFile, const string json)
   }
 
 //+------------------------------------------------------------------+
+double LotOverrideForChannel(const string channelFile, const string json)
+  {
+   string key = ChannelKeyFromFile(channelFile, json);
+   if(key == "ivan")
+      return InpLotIvan;
+   if(key == "stark")
+      return InpLotStark;
+   if(key == "gold")
+      return InpLotGold;
+   if(key == "oro")
+      return InpLotOro;
+   if(key == "forex")
+      return InpLotForex;
+   return 0.0;
+  }
+
+//+------------------------------------------------------------------+
 string BuildTradeComment(const string channelTag, const int tpIndex, const string json = "")
   {
    string base;
-   if(tpIndex > 0)
-      base = StringFormat("TG-%s-T%d", channelTag, tpIndex);
+   if(InpCommentUseTgPrefix)
+     {
+      if(tpIndex > 0)
+         base = StringFormat("TG-%s-T%d", channelTag, tpIndex);
+      else
+         base = StringFormat("TG-%s", channelTag);
+     }
    else
-      base = StringFormat("TG-%s", channelTag);
+     {
+      // Compact Moneta style: IT-T1 / AS-T1
+      if(tpIndex > 0)
+         base = StringFormat("%s-T%d", channelTag, tpIndex);
+      else
+         base = channelTag;
+     }
    // Append signal_id (truncated to fit MT5's 31-char comment limit) for journal joins.
    string sid = (json == "") ? "" : JsonGetString(json, "signal_id");
    if(sid != "")
@@ -846,6 +915,9 @@ bool HandleOpen(const string channelFile, const string json)
    double fixedLot = JsonGetNumber(json, "fixed_lot");
    if(fixedLot <= 0)
       fixedLot = 0.20;
+   double ov = LotOverrideForChannel(channelFile, json);
+   if(ov > 0.0)
+      fixedLot = ov;
    double lot = NormalizeLot(symbol, fixedLot);
    if(JsonGetBool(json, "is_add_signal"))
       lot = NormalizeLot(symbol, fixedLot * InpAddLotFactor);
@@ -934,6 +1006,9 @@ bool HandleUpdateOpen(const string channelFile, const string json)
    double fixedLot = JsonGetNumber(json, "fixed_lot");
    if(fixedLot <= 0)
       fixedLot = 0.10;
+   double ovUpd = LotOverrideForChannel(channelFile, json);
+   if(ovUpd > 0.0)
+      fixedLot = ovUpd;
    double lot = NormalizeLot(symbol, fixedLot);
 
    int openCnt = CountOurPositions(symbol, magicBase, 5);
@@ -1355,10 +1430,32 @@ string SymbolBucket(const string symbol)
   }
 
 //+------------------------------------------------------------------+
+bool CommentStartsWithTag(const string comment, const string tag)
+  {
+   if(tag == "" || comment == "")
+      return false;
+   string prefix = tag + "-";
+   return (StringFind(comment, prefix) == 0);
+  }
+
+//+------------------------------------------------------------------+
 bool IsTGPositionSelected()
   {
-   // All positions opened by this EA carry a comment starting with "TG-".
-   return (StringFind(g_pos.Comment(), "TG-") == 0);
+   // Positions from this EA: legacy TG-* or compact IT-/AS-/custom tags.
+   string c = g_pos.Comment();
+   if(StringFind(c, "TG-") == 0)
+      return true;
+   if(CommentStartsWithTag(c, InpTagIvan))
+      return true;
+   if(CommentStartsWithTag(c, InpTagStark))
+      return true;
+   if(CommentStartsWithTag(c, InpTagGold))
+      return true;
+   if(CommentStartsWithTag(c, InpTagOro))
+      return true;
+   if(CommentStartsWithTag(c, InpTagForex))
+      return true;
+   return false;
   }
 
 //+------------------------------------------------------------------+
@@ -1686,6 +1783,7 @@ void ParseComment(const string cm, string &tag, int &tpIdx, string &sid)
    string rest = cm;
    if(StringFind(rest, "TG-") == 0)
       rest = StringSubstr(rest, 3);
+   // Compact tags already start with IT-/AS- — leave as-is for split.
    string parts[];
    int n = StringSplit(rest, '-', parts);
    if(n >= 1)
@@ -2249,7 +2347,7 @@ int OnInit()
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.10 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.11 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints,
@@ -2258,7 +2356,11 @@ int OnInit()
          " stack_opens=", InpStackOpensIfFlatBusy,
          " (requires JSON allow_stack)",
          " stop_buffer_pts=", InpStopBufferPoints);
-   Print("[TradinGo] v2.10 hardening | killswitch currency=ACCOUNT_CURRENCY (",
+   Print("[TradinGo] v2.11 lots/tags | ivan=", DoubleToString(InpLotIvan, 2),
+         "/", InpTagIvan,
+         " stark=", DoubleToString(InpLotStark, 2), "/", InpTagStark,
+         " comment_tg_prefix=", InpCommentUseTgPrefix);
+   Print("[TradinGo] v2.11 hardening | killswitch currency=ACCOUNT_CURRENCY (",
          AccountInfoString(ACCOUNT_CURRENCY), ")",
          " max_floating_loss=", DoubleToString(InpMaxFloatingLossUSD, 2),
          " cooldown_min=", InpKillSwitchCooldownMin,

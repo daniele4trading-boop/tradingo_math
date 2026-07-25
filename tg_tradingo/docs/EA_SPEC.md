@@ -158,7 +158,8 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 **v2.07:** `InpIgnoreExistingOnInit` evita di rieseguire OPEN_NOW/OPEN vecchi al riattach EA.  
 **v2.08:** BE clamp + `InpStackOpensIfFlatBusy` (stackava anche MSG+EDIT — troppo aggressivo).  
 **v2.09:** stack solo se JSON `allow_stack:true`; `InpStopBufferPoints` + retry BE su 10016.  
-**v2.10:** kill-switch floating/time, single-instance lock, heartbeat gate, trade journal + MAE/MFE, equity, market context, `signal_id` in commento.
+**v2.10:** kill-switch floating/time, single-instance lock, heartbeat gate, trade journal + MAE/MFE, equity, market context, `signal_id` in commento.  
+**v2.11:** lotti/tag per canale (`InpLotIvan`/`InpLotStark`, `InpTagIvan=IT`, `InpTagStark=AS`); preset Moneta `mql5/presets/TG_TradinGo_Moneta_10k.set` — vedi [`MONETA_FUNDED_SETUP.md`](MONETA_FUNDED_SETUP.md).
 
 `close_reason`: `TP` · `SL` · `BE_SL` · `CLOSE_ALL_SIGNAL` · `CLOSE_HALF` · `KILLSWITCH_FLOATING` · `KILLSWITCH_TIME` · `MANUAL` · `UNKNOWN` — vedi [`JOURNAL_SPEC.md`](JOURNAL_SPEC.md).
 

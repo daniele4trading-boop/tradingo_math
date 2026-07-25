@@ -2,7 +2,7 @@
 
 **Deploy pendente utente:**
 1. Bridge **v2.06** (close-intent condiviso + giornale bridge + heartbeat)
-2. EA **v2.10** (kill-switch, single-instance, journal trades/equity/context)
+2. EA **v2.11** (kill-switch + journal + lotti/tag Moneta IT/AS, preset `.set`)
 
 ```powershell
 cd C:\StatArb

@@ -251,6 +251,31 @@ else {
         Write-Host "OK EA -> $eaTo"
     }
     Write-Host "NOTE: open MetaEditor and compile (F7) TG_TradinGoEA.mq5, then reattach EA." -ForegroundColor Yellow
+
+    # Preset .set files (Moneta etc.)
+    $presetsSrc = Join-Path $src "mql5\presets"
+    if (Test-Path $presetsSrc) {
+        $presetsDst = Join-Path $dst "mql5\presets"
+        if (-not $DryRun) {
+            New-Item -ItemType Directory -Path $presetsDst -Force | Out-Null
+            Copy-Item (Join-Path $presetsSrc "*.set") $presetsDst -Force -ErrorAction SilentlyContinue
+            Write-Host "OK presets -> $presetsDst"
+            foreach ($expertsDir in $eaTerminalExperts) {
+                $termPresets = Join-Path (Split-Path (Split-Path $expertsDir -Parent) -Parent) "Presets"
+                # Experts is ...\MQL5\Experts -> Presets is ...\MQL5\Presets
+                $mql5 = Split-Path $expertsDir -Parent
+                $termPresets = Join-Path $mql5 "Presets"
+                if (Test-Path $mql5) {
+                    New-Item -ItemType Directory -Path $termPresets -Force | Out-Null
+                    Copy-Item (Join-Path $presetsSrc "*.set") $termPresets -Force -ErrorAction SilentlyContinue
+                    Write-Host "OK presets -> $termPresets"
+                }
+            }
+        }
+        else {
+            Write-Host "[DRY-RUN] copy presets *.set"
+        }
+    }
 }
 
 # --- Config (create only if missing) + merge state path ---

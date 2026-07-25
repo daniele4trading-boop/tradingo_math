@@ -23,22 +23,16 @@ Serve: **WireGuard UDP** + **SMB** (o copia locale della share).
 
 Script: [`scripts/setup_friend_vps.ps1`](../../scripts/setup_friend_vps.ps1)
 
-Copia lo script (e `TG_TradinGoEA.mq5`) sulla VPS amico, poi **PowerShell Admin**:
+Copia lo script (e `TG_TradinGoEA.mq5`) sulla VPS amico, poi apri **Windows PowerShell come Amministratore** (non `cmd.exe`).
+
+Incolla **una sola riga** (i backtick multilinea funzionano solo in PowerShell; da `cmd` ogni riga diventa un comando separato e fallisce):
 
 ```powershell
-# Variante B consigliata: Contabo scrive sui file locali dell'amico via VPN
-powershell -ExecutionPolicy Bypass -File .\setup_friend_vps.ps1 `
-  -Mode WriteShare `
-  -FriendVpnIp 10.8.0.2 `
-  -ContaboEndpoint 144.91.76.28:51820 `
-  -ContaboPublicKey "<PUB_KEY_CONTABO>" `
-  -EaSourcePath "C:\Temp\TG_TradinGoEA.mq5"
-
-# Solo stato / ping / EA presente
-powershell -ExecutionPolicy Bypass -File .\setup_friend_vps.ps1 -Mode Status
+# Variante B: Contabo scrive sui file locali dell'amico via VPN
+powershell -ExecutionPolicy Bypass -File C:\Temp\setup_friend_vps.ps1 -Mode WriteShare -FriendVpnIp 10.8.0.2 -ContaboEndpoint 144.91.76.28:51820 -ContaboPublicKey "INCOLLA_QUI_LA_PUBLIC_KEY_CONTABO" -EaSourcePath "C:\Temp\TG_TradinGoEA.mq5"
 ```
 
-Lo script: genera conf WireGuard client, crea `C:\TG_TradinGo_Friend\signals`, share SMB `tradingo`, junction in `MQL5\Files\tradingo`, copia l’EA in `Experts`, scrive `EA_PARAMS.txt` + `measure_signal_lag.ps1`.
+Lo script: installa WireGuard se manca, genera conf client + chiavi, crea share SMB `tradingo` su `C:\TG_TradinGo_Signals`, copia l'EA in `MQL5\Experts`, scrive `NEXT_STEPS.txt` sotto `C:\TG_FriendSetup`.
 
 ---
 

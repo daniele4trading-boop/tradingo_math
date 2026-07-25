@@ -1,475 +1,408 @@
-# Setup TG TradinGo su VPS amico (Windows)
-#
-# Configura (opzionale) WireGuard client, cartella segnali, share SMB per
-# Contabo, copia EA in MQL5\Experts, junction per variante A.
-#
-# Esegui come Administrator sulla VPS amico:
-#   powershell -ExecutionPolicy Bypass -File .\setup_friend_vps.ps1 -Mode WriteShare
-#
-# Varianti:
-#   WriteShare (B, consigliata) — Contabo scrive via VPN su \\amico\tradingo
-#   ReadShare  (A)              — amico legge \\Contabo\TGSignals via junction
-#
-# ASCII-only for Windows PowerShell 5.1 compatibility.
+#requires -Version 5.1
+<#
+.SYNOPSIS
+  Gamehosting / friend VPS: WireGuard client + SMB share + EA copy.
 
-[CmdletBinding()]
+.DESCRIPTION
+  Contabo = WireGuard SERVER (10.8.0.1). This host = CLIENT (default 10.8.0.2).
+
+  Modes:
+    WriteShare  - Contabo writes signals to this PC SMB share (recommended)
+    PullShare   - this PC maps Contabo share and copies signals locally
+
+  Run in Windows PowerShell as Administrator (not cmd.exe).
+
+.EXAMPLE
+  powershell -ExecutionPolicy Bypass -File .\setup_friend_vps.ps1 -Mode WriteShare -FriendVpnIp 10.8.0.2 -ContaboEndpoint 144.91.76.28:51820 -ContaboPublicKey "KEY=" -EaSourcePath "C:\Temp\TG_TradinGoEA.mq5"
+#>
+[CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [ValidateSet("WriteShare", "ReadShare", "EaOnly", "Status")]
+    [ValidateSet("WriteShare", "PullShare")]
     [string]$Mode = "WriteShare",
 
     [string]$FriendVpnIp = "10.8.0.2",
     [string]$ContaboVpnIp = "10.8.0.1",
-    [string]$ContaboEndpoint = "144.91.76.28:51820",
+    [string]$ContaboEndpoint = "",
     [string]$ContaboPublicKey = "",
-    [string]$FriendPrivateKey = "",
+    [int]$ListenPort = 51820,
+
     [string]$ListenShareName = "tradingo",
-    [string]$ContaboShareUnc = "\\10.8.0.1\TGSignals",
+    [string]$ListenSharePath = "C:\TG_TradinGo_Signals",
+    [string]$ListenShareUser = "TradingoShare",
+    [SecureString]$ListenSharePassword,
 
-    # Path to TG_TradinGoEA.mq5 (USB / download / repo copy)
+    [string]$ContaboShareUnc = "",
+    [string]$ContaboShareUser = "",
+    [SecureString]$ContaboSharePassword,
+    [string]$LocalSignalsPath = "C:\TG_TradinGo_Signals",
+    [int]$PollSeconds = 2,
+
+    [string]$WorkRoot = "C:\TG_FriendSetup",
     [string]$EaSourcePath = "",
-
-    # Optional: force terminal hash under %APPDATA%\MetaQuotes\Terminal\<HASH>
     [string]$TerminalHash = "",
-
-    [string]$WorkRoot = "C:\TG_TradinGo_Friend",
-    [switch]$SkipWireGuard,
-    [switch]$SkipFirewall,
-    [switch]$WhatIf
+    [switch]$SkipWireGuardInstall,
+    [switch]$SkipShare,
+    [switch]$SkipEaCopy,
+    [switch]$SkipFirewall
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Write-Step([string]$Message) {
-    Write-Host ""
-    Write-Host "==> $Message" -ForegroundColor Cyan
-}
+function Write-Info([string]$Message) { Write-Host "[INFO]  $Message" -ForegroundColor Cyan }
+function Write-Ok([string]$Message) { Write-Host "[OK]    $Message" -ForegroundColor Green }
+function Write-WarnLine([string]$Message) { Write-Host "[WARN]  $Message" -ForegroundColor Yellow }
+function Write-ErrLine([string]$Message) { Write-Host "[ERROR] $Message" -ForegroundColor Red }
 
-function Write-Ok([string]$Message) {
-    Write-Host "    OK  $Message" -ForegroundColor Green
-}
-
-function Write-Warn([string]$Message) {
-    Write-Host "    !!  $Message" -ForegroundColor Yellow
-}
-
-function Write-Info([string]$Message) {
-    Write-Host "    --  $Message"
-}
-
-function Test-IsAdmin {
+function Assert-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $p = New-Object Security.Principal.WindowsPrincipal($id)
-    return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-}
-
-function Get-Mt5Terminals {
-    $root = Join-Path $env:APPDATA "MetaQuotes\Terminal"
-    if (-not (Test-Path $root)) { return @() }
-    Get-ChildItem $root -Directory | ForEach-Object {
-        $hash = $_.Name
-        # Skip Common / Community helpers if present as odd names; keep 32-hex hashes
-        if ($hash -notmatch '^[A-F0-9]{32}$') { return }
-        [PSCustomObject]@{
-            Hash        = $hash
-            Root        = $_.FullName
-            ExpertsPath = (Join-Path $_.FullName "MQL5\Experts")
-            FilesPath   = (Join-Path $_.FullName "MQL5\Files")
-        }
+    if (-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw "Run this script as Administrator (right-click PowerShell -> Run as administrator)."
     }
-}
-
-function Resolve-Terminal {
-    param([string]$Hash)
-    $all = @(Get-Mt5Terminals)
-    if ($Hash) {
-        $t = $all | Where-Object { $_.Hash -eq $Hash } | Select-Object -First 1
-        if (-not $t) { throw "Terminal hash not found: $Hash" }
-        return $t
-    }
-    if ($all.Count -eq 0) {
-        Write-Warn "No MT5 terminal under $env:APPDATA\MetaQuotes\Terminal"
-        Write-Info "Install/open MetaTrader 5 once, then re-run."
-        return $null
-    }
-    if ($all.Count -gt 1) {
-        Write-Warn "Multiple MT5 terminals found — pick one with -TerminalHash"
-        $all | Format-Table Hash, ExpertsPath -AutoSize | Out-Host
-        throw "Pass -TerminalHash <HASH>"
-    }
-    return $all[0]
 }
 
 function Ensure-Dir([string]$Path) {
-    if ($WhatIf) {
-        Write-Info "WhatIf: mkdir $Path"
-        return
+    if (-not (Test-Path -LiteralPath $Path)) {
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
     }
-    New-Item -ItemType Directory -Path $Path -Force | Out-Null
 }
 
-function Get-WgExe {
+function Get-WireGuardExe {
     $candidates = @(
         "${env:ProgramFiles}\WireGuard\wireguard.exe",
         "${env:ProgramFiles(x86)}\WireGuard\wireguard.exe"
     )
     foreach ($c in $candidates) {
-        if (Test-Path $c) { return $c }
+        if (Test-Path -LiteralPath $c) { return $c }
     }
     return $null
 }
 
-function New-WgKeyPair {
-    $wg = Get-WgExe
-    if (-not $wg) { return $null }
-    $dir = Split-Path $wg -Parent
-    $wgTool = Join-Path $dir "wg.exe"
-    if (-not (Test-Path $wgTool)) { return $null }
-    $priv = (& $wgTool genkey).Trim()
-    $pub = ($priv | & $wgTool pubkey).Trim()
-    return @{ Private = $priv; Public = $pub }
+function Install-WireGuardIfNeeded {
+    if ($SkipWireGuardInstall) {
+        Write-WarnLine "SkipWireGuardInstall set"
+        return
+    }
+    $wg = Get-WireGuardExe
+    if ($wg) {
+        Write-Ok "WireGuard already installed: $wg"
+        return
+    }
+    Write-Info "Downloading WireGuard installer..."
+    $tmp = Join-Path $env:TEMP "WireGuard-installer.exe"
+    $url = "https://download.wireguard.com/windows-client/wireguard-installer.exe"
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
+    Write-Info "Installing WireGuard (silent)..."
+    $p = Start-Process -FilePath $tmp -ArgumentList "/S" -Wait -PassThru
+    if ($p.ExitCode -ne 0 -and $null -eq (Get-WireGuardExe)) {
+        throw "WireGuard installer exit $($p.ExitCode). Install manually from https://www.wireguard.com/install/ then re-run."
+    }
+    Start-Sleep -Seconds 2
+    if (-not (Get-WireGuardExe)) {
+        throw "WireGuard not found after install. Reboot and re-run, or install manually."
+    }
+    Write-Ok "WireGuard installed"
 }
 
-function Install-WireGuardClient {
+function New-WireGuardKeyPair {
+    $wg = Get-WireGuardExe
+    if (-not $wg) { throw "wireguard.exe not found" }
+    $dir = Split-Path -Parent $wg
+    $gen = Join-Path $dir "wg.exe"
+    if (-not (Test-Path -LiteralPath $gen)) {
+        throw "wg.exe not found next to wireguard.exe. Open WireGuard GUI once, then re-run."
+    }
+    $priv = (& $gen genkey).Trim()
+    if ([string]::IsNullOrWhiteSpace($priv)) { throw "wg genkey failed" }
+    $pub = ($priv | & $gen pubkey).Trim()
+    if ([string]::IsNullOrWhiteSpace($pub)) { throw "wg pubkey failed" }
+    return @{ PrivateKey = $priv; PublicKey = $pub }
+}
+
+function Resolve-TerminalCommonFiles {
+    if ($TerminalHash) {
+        $p = Join-Path $env:APPDATA ("MetaQuotes\Terminal\" + $TerminalHash + "\MQL5\Experts")
+        if (-not (Test-Path -LiteralPath $p)) {
+            throw ("TerminalHash folder not found: " + $p)
+        }
+        return $p
+    }
+    $root = Join-Path $env:APPDATA "MetaQuotes\Terminal"
+    if (-not (Test-Path -LiteralPath $root)) {
+        throw "MetaQuotes Terminal folder not found under AppData. Open MT5 once, then re-run."
+    }
+    $dirs = Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "MQL5\Experts") }
+    if (-not $dirs -or $dirs.Count -eq 0) {
+        throw "No MT5 terminal with MQL5\Experts found. Open MT5 once."
+    }
+    if ($dirs.Count -gt 1) {
+        Write-WarnLine "Multiple MT5 terminals found. Pass -TerminalHash with one of:"
+        $dirs | ForEach-Object { Write-Host ("  " + $_.Name) }
+        throw "Pass -TerminalHash HASH (folder name under MetaQuotes\Terminal)."
+    }
+    return (Join-Path $dirs[0].FullName "MQL5\Experts")
+}
+
+function Set-ShareAcl([string]$Path, [string]$UserName) {
+    $acl = Get-Acl -LiteralPath $Path
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $UserName, "Modify", "ContainerInherit,ObjectInherit", "None", "Allow"
+    )
+    $acl.SetAccessRule($rule)
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Ensure-LocalUser([string]$UserName, [SecureString]$Password) {
+    $existing = Get-LocalUser -Name $UserName -ErrorAction SilentlyContinue
+    if ($existing) {
+        Write-Ok ("Local user exists: " + $UserName)
+        if ($Password) {
+            Set-LocalUser -Name $UserName -Password $Password
+            Write-Info "Password updated for share user"
+        }
+        return
+    }
+    if (-not $Password) {
+        $Password = Read-Host ("Create password for local user " + $UserName) -AsSecureString
+    }
+    New-LocalUser -Name $UserName -Password $Password -PasswordNeverExpires -UserMayNotChangePassword -AccountNeverExpires |
+        Out-Null
+    Write-Ok ("Created local user: " + $UserName)
+}
+
+function Ensure-SmbShare {
     param(
+        [string]$Name,
+        [string]$Path,
+        [string]$UserName,
+        [SecureString]$Password
+    )
+    Ensure-Dir $Path
+    Ensure-LocalUser -UserName $UserName -Password $Password
+    Set-ShareAcl -Path $Path -UserName $UserName
+
+    $share = Get-SmbShare -Name $Name -ErrorAction SilentlyContinue
+    if (-not $share) {
+        if ($PSCmdlet.ShouldProcess($Name, "New-SmbShare")) {
+            New-SmbShare -Name $Name -Path $Path -FullAccess $UserName -Description "TG TradinGo signals" | Out-Null
+            Write-Ok ("SMB share created: \\" + $env:COMPUTERNAME + "\" + $Name + " -> " + $Path)
+        }
+    }
+    else {
+        Write-Ok ("SMB share already exists: " + $Name)
+        Grant-SmbShareAccess -Name $Name -AccountName $UserName -AccessRight Full -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+
+    if (-not $SkipFirewall) {
+        $ruleName = "TG-TradinGo-SMB-445"
+        if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
+            New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort 445 |
+                Out-Null
+            Write-Ok "Firewall rule: TCP 445 inbound"
+        }
+    }
+}
+
+function Write-ClientConf {
+    param(
+        [string]$OutConf,
         [string]$PrivateKey,
         [string]$AddressCidr,
         [string]$PeerPublicKey,
         [string]$Endpoint,
-        [string]$OutConf
+        [string]$AllowedIps,
+        [int]$PersistentKeepalive = 25
     )
-    if (-not $PeerPublicKey) {
-        Write-Warn "ContaboPublicKey missing — writing PLACEHOLDER conf; edit before Activate."
-        $PeerPublicKey = "REPLACE_WITH_CONTABO_PUBLIC_KEY"
+    if ([string]::IsNullOrWhiteSpace($Endpoint)) {
+        throw "Pass -ContaboEndpoint HOST:PORT (example: 144.91.76.28:51820)"
     }
-    if (-not $PrivateKey) {
-        $pair = New-WgKeyPair
-        if ($pair) {
-            $PrivateKey = $pair.Private
-            Write-Ok "Generated friend keypair. PublicKey (give to Contabo peer):"
-            Write-Host "         $($pair.Public)" -ForegroundColor Magenta
-        } else {
-            $PrivateKey = "REPLACE_WITH_FRIEND_PRIVATE_KEY"
-            Write-Warn "WireGuard wg.exe not found — conf uses placeholders."
-        }
+    if ([string]::IsNullOrWhiteSpace($PeerPublicKey)) {
+        throw "Pass -ContaboPublicKey with Contabo WireGuard server public key"
     }
-
-    $conf = @"
-[Interface]
-PrivateKey = $PrivateKey
-Address = $AddressCidr
-DNS = 1.1.1.1
-
-[Peer]
-PublicKey = $PeerPublicKey
-Endpoint = $Endpoint
-AllowedIPs = 10.8.0.0/24
-PersistentKeepalive = 25
-"@
-    if ($WhatIf) {
-        Write-Info "WhatIf: write $OutConf"
-        return
+    $lines = @(
+        "[Interface]"
+        ("PrivateKey = " + $PrivateKey)
+        ("Address = " + $AddressCidr)
+        ("ListenPort = " + $ListenPort)
+        ""
+        "[Peer]"
+        ("PublicKey = " + $PeerPublicKey)
+        ("Endpoint = " + $Endpoint)
+        ("AllowedIPs = " + $AllowedIps)
+        ("PersistentKeepalive = " + $PersistentKeepalive)
+    )
+    $text = ($lines -join "`r`n") + "`r`n"
+    if ($PSCmdlet.ShouldProcess($OutConf, "Write WireGuard client config")) {
+        Set-Content -LiteralPath $OutConf -Value $text -Encoding Ascii
+        Write-Ok ("Wrote " + $OutConf)
     }
-    Ensure-Dir (Split-Path $OutConf -Parent)
-    Set-Content -Path $OutConf -Value $conf -Encoding Ascii
-    Write-Ok "WireGuard conf: $OutConf"
-    Write-Info "Import in WireGuard GUI (Import tunnel(s) from file) and Activate."
-    Write-Info "On Contabo add Peer PublicKey + AllowedIPs = $FriendVpnIp/32"
+    else {
+        Write-Info ("WhatIf would write " + $OutConf)
+    }
 }
 
-function Test-VpnPing([string]$Ip) {
-    Write-Step "Ping Contabo VPN $Ip"
-    $r = Test-Connection -ComputerName $Ip -Count 4 -ErrorAction SilentlyContinue
-    if (-not $r) {
-        Write-Warn "Ping failed — activate WireGuard and re-run -Mode Status"
-        return
+function Convert-SecureStringToPlain([SecureString]$Secure) {
+    if (-not $Secure) { return "" }
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
     }
-    $avg = ($r | Measure-Object -Property ResponseTime -Average).Average
-    Write-Ok ("VPN RTT avg ~{0:n0} ms (min={1} max={2})" -f $avg, `
-        ($r | Measure-Object ResponseTime -Minimum).Minimum, `
-        ($r | Measure-Object ResponseTime -Maximum).Maximum)
+    finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    }
 }
 
-function Install-Ea {
-    param([string]$Source, [string]$ExpertsPath)
-    if (-not $Source) {
-        Write-Warn "No -EaSourcePath — skip EA copy. Place TG_TradinGoEA.mq5 manually in:"
-        Write-Info $ExpertsPath
-        return
-    }
-    if (-not (Test-Path $Source)) {
-        throw "EA source not found: $Source"
-    }
-    Ensure-Dir $ExpertsPath
-    $dest = Join-Path $ExpertsPath "TG_TradinGoEA.mq5"
-    if ($WhatIf) {
-        Write-Info "WhatIf: copy $Source -> $dest"
-        return
-    }
-    Copy-Item -Path $Source -Destination $dest -Force
-    Write-Ok "EA copied to $dest"
-    Write-Info "Open MetaEditor -> F7 compile -> attach EA on ONE chart (AutoTrading ON)"
-}
-
-function Ensure-WriteShare {
+function Install-PullJob {
     param(
-        [string]$LocalSignalsDir,
-        [string]$ShareName,
-        [string]$FilesTradingoPath
+        [string]$Unc,
+        [string]$User,
+        [SecureString]$Password,
+        [string]$Dest,
+        [int]$Seconds
     )
-    Ensure-Dir $LocalSignalsDir
+    if ([string]::IsNullOrWhiteSpace($Unc)) {
+        throw 'PullShare mode requires -ContaboShareUnc (example: \\10.8.0.1\tradingo)'
+    }
+    Ensure-Dir $Dest
+    $scripts = Join-Path $WorkRoot "scripts"
+    Ensure-Dir $scripts
+    $pullPs1 = Join-Path $scripts "pull_signals.ps1"
 
-    # Prefer local folder under WorkRoot, then junction into MQL5\Files\tradingo
-    # so Contabo writes UNC and EA reads local relative path.
-    if (-not $WhatIf) {
-        if (Test-Path $FilesTradingoPath) {
-            $item = Get-Item $FilesTradingoPath -Force
-            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-                Write-Info "Junction already present: $FilesTradingoPath"
-            } else {
-                # If non-empty real dir, leave it; else replace with junction
-                $kids = @(Get-ChildItem $FilesTradingoPath -Force -ErrorAction SilentlyContinue)
-                if ($kids.Count -eq 0) {
-                    Remove-Item $FilesTradingoPath -Force
-                    cmd /c mklink /J "$FilesTradingoPath" "$LocalSignalsDir" | Out-Null
-                    Write-Ok "Junction $FilesTradingoPath -> $LocalSignalsDir"
-                } else {
-                    Write-Warn "Files\tradingo exists with content — using it as signals dir"
-                    $LocalSignalsDir = $FilesTradingoPath
-                }
-            }
-        } else {
-            Ensure-Dir (Split-Path $FilesTradingoPath -Parent)
-            cmd /c mklink /J "$FilesTradingoPath" "$LocalSignalsDir" | Out-Null
-            Write-Ok "Junction $FilesTradingoPath -> $LocalSignalsDir"
-        }
+    $plainPass = Convert-SecureStringToPlain $Password
+    $b64 = ""
+    if ($plainPass) {
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($plainPass))
     }
 
-    # SMB share for Contabo bridge write
-    $existing = Get-SmbShare -Name $ShareName -ErrorAction SilentlyContinue
-    if ($WhatIf) {
-        Write-Info "WhatIf: New-SmbShare $ShareName -> $LocalSignalsDir"
-    } elseif ($existing) {
-        Write-Info "Share $ShareName already exists -> $($existing.Path)"
-    } else {
-        New-SmbShare -Name $ShareName -Path $LocalSignalsDir -FullAccess "Everyone" | Out-Null
-        Write-Ok "SMB share \\$env:COMPUTERNAME\$ShareName -> $LocalSignalsDir"
-        Write-Warn "Tighten ACL later (not Everyone). Contabo path: \\$FriendVpnIp\$ShareName"
-    }
+    # Build child script as line array (no here-strings) for Windows PowerShell 5.1 safety
+    $pullLines = @(
+        "param("
+        ("    [string]`$Unc = '" + $Unc.Replace("'", "''") + "',")
+        ("    [string]`$User = '" + $User.Replace("'", "''") + "',")
+        ("    [string]`$PasswordB64 = '" + $b64 + "',")
+        ("    [string]`$Dest = '" + $Dest.Replace("'", "''") + "'")
+        ")"
+        "`$ErrorActionPreference = 'SilentlyContinue'"
+        "if (`$PasswordB64 -and `$User) {"
+        "    `$plain = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String(`$PasswordB64))"
+        "    `$hostOnly = (`$Unc -replace '^\\\\\\\\','').Split('\')[0]"
+        "    cmdkey /add:`$hostOnly /user:`$User /pass:`$plain | Out-Null"
+        "}"
+        "if (-not (Test-Path -LiteralPath `$Dest)) { New-Item -ItemType Directory -Path `$Dest -Force | Out-Null }"
+        "if (Test-Path -LiteralPath `$Unc) {"
+        "    Copy-Item -Path (Join-Path `$Unc '*') -Destination `$Dest -Force -ErrorAction SilentlyContinue"
+        "}"
+    )
+    Set-Content -LiteralPath $pullPs1 -Value (($pullLines -join "`r`n") + "`r`n") -Encoding Ascii
+    Write-Ok ("Wrote pull script: " + $pullPs1)
 
-    if (-not $SkipFirewall -and -not $WhatIf) {
-        # Prefer blocking public SMB; allow local/private. WireGuard usually private.
-        Write-Info "Ensure Windows Firewall does NOT expose SMB to the public Internet."
-        Write-Info "SMB should only work over WireGuard (10.8.0.0/24)."
-    }
-
-    # Seed NONE json stubs
-    $channels = @("gold", "forex", "oro", "stark", "ivan")
-    foreach ($ch in $channels) {
-        $f = Join-Path $LocalSignalsDir ("signal_ch_{0}.json" -f $ch)
-        if (-not (Test-Path $f) -and -not $WhatIf) {
-            Set-Content -Path $f -Value "{`n  `"action`": `"NONE`"`n}`n" -Encoding Ascii
-        }
-    }
-    Write-Ok "Signal stubs ready in $LocalSignalsDir"
+    $taskName = "TG_TradinGo_PullSignals"
+    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$pullPs1`""
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Seconds $Seconds) -RepetitionDuration ([TimeSpan]::MaxValue)
+    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+    Write-Ok ("Scheduled task: " + $taskName + " every " + $Seconds + "s")
 }
 
-function Ensure-ReadShareJunction {
-    param(
-        [string]$ContaboUnc,
-        [string]$FilesTradingoPath
-    )
-    Write-Step "Variant A: junction to Contabo share $ContaboUnc"
-    if (-not (Test-Path $ContaboUnc)) {
-        Write-Warn "Cannot reach $ContaboUnc yet (VPN/share). Junction will still be created."
-    }
-    Ensure-Dir (Split-Path $FilesTradingoPath -Parent)
-    if ($WhatIf) {
-        Write-Info "WhatIf: mklink /J $FilesTradingoPath $ContaboUnc"
+function Copy-EaToTerminal {
+    if ($SkipEaCopy) {
+        Write-WarnLine "SkipEaCopy set"
         return
     }
-    if (Test-Path $FilesTradingoPath) {
-        $item = Get-Item $FilesTradingoPath -Force
-        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-            Write-Info "Junction already exists: $FilesTradingoPath"
-            return
-        }
-        Remove-Item $FilesTradingoPath -Recurse -Force
-    }
-    cmd /c mklink /J "$FilesTradingoPath" "$ContaboUnc" | Out-Null
-    Write-Ok "Junction $FilesTradingoPath -> $ContaboUnc"
-}
-
-function Write-EaParamsFile {
-    param(
-        [string]$OutDir,
-        [string]$ModeName
-    )
-    $path = Join-Path $OutDir "EA_PARAMS.txt"
-    $body = @"
-TG TradinGo EA — friend VPS params ($ModeName)
-
-InpUseAbsolutePath = false
-InpSignalsPath     = tradingo\
-InpChannels        = gold,forex,oro,stark,ivan
-InpLotMultiplier   = 0.5   (start low on demo)
-InpPollMs          = 500
-InpIgnoreExistingOnInit = true
-
-After compile (F7), log must show: EA v2.09 started
-Attach on ONE chart only. AutoTrading ON.
-
-Contabo bridge (variant WriteShare / B) add to mt5_instances:
-  "signals_path": "\\\\$FriendVpnIp\\$ListenShareName"
-
-Latency tip: EA poll ($InpPollMs) dominates; VPN write is usually tens of ms.
-"@
-    if ($WhatIf) {
-        Write-Info "WhatIf: write $path"
+    if ([string]::IsNullOrWhiteSpace($EaSourcePath)) {
+        Write-WarnLine "No -EaSourcePath: skip EA copy. Copy TG_TradinGoEA.mq5 manually into MQL5\Experts."
         return
     }
-    Ensure-Dir $OutDir
-    Set-Content -Path $path -Value $body -Encoding Ascii
-    Write-Ok "Params cheat-sheet: $path"
-}
-
-function Write-LagProbe {
-    param([string]$OutDir, [string]$ProbePath)
-    $script = Join-Path $OutDir "measure_signal_lag.ps1"
-    $content = @"
-# Poll a signal JSON and print lag vs bridge timestamp (UTC)
-param([string]`$Path = "$ProbePath", [int]`$SleepMs = 200)
-`$prev = ""
-Write-Host "Watching `$Path (Ctrl+C to stop)"
-while (`$true) {
-  if (Test-Path `$Path) {
-    `$raw = Get-Content `$Path -Raw -ErrorAction SilentlyContinue
-    if (`$raw -and `$raw -ne `$prev -and `$raw -match '"timestamp"\s*:\s*"([^"]+)"') {
-      `$ts = [datetime]::Parse(`$Matches[1]).ToUniversalTime()
-      `$now = [datetime]::UtcNow
-      `$ms = (`$now - `$ts).TotalMilliseconds
-      `$act = if (`$raw -match '"action"\s*:\s*"([^"]+)"') { `$Matches[1] } else { "?" }
-      Write-Host ("{0:u}  lag={1,6:n0} ms  action={2}" -f `$now, `$ms, `$act)
-      `$prev = `$raw
+    if (-not (Test-Path -LiteralPath $EaSourcePath)) {
+        throw ("EaSourcePath not found: " + $EaSourcePath)
     }
-  }
-  Start-Sleep -Milliseconds `$SleepMs
-}
-"@
-    if ($WhatIf) {
-        Write-Info "WhatIf: write $script"
-        return
-    }
-    Set-Content -Path $script -Value $content -Encoding Ascii
-    Write-Ok "Lag probe: $script"
-}
-
-function Show-Status {
-    Write-Step "Status"
-    $wg = Get-WgExe
-    if ($wg) { Write-Ok "WireGuard installed: $wg" } else { Write-Warn "WireGuard not installed" }
-
-    Test-VpnPing $ContaboVpnIp
-
-    $terms = @(Get-Mt5Terminals)
-    if ($terms.Count -eq 0) {
-        Write-Warn "No MT5 terminals found"
-    } else {
-        Write-Ok ("MT5 terminals: {0}" -f $terms.Count)
-        foreach ($t in $terms) {
-            $ea = Get-ChildItem $t.ExpertsPath -Filter "*TradinGo*" -ErrorAction SilentlyContinue
-            $tr = Join-Path $t.FilesPath "tradingo"
-            $sig = @()
-            if (Test-Path $tr) {
-                $sig = Get-ChildItem $tr -Filter "signal_ch_*.json" -ErrorAction SilentlyContinue
-            }
-            Write-Info ("{0}  EA=[{1}]  tradingo_json={2}" -f $t.Hash, `
-                (($ea | ForEach-Object Name) -join ","), $sig.Count)
-        }
-    }
-
-    $share = Get-SmbShare -Name $ListenShareName -ErrorAction SilentlyContinue
-    if ($share) {
-        Write-Ok "Share $ListenShareName -> $($share.Path)"
-    } else {
-        Write-Info "Share $ListenShareName not present (ok for ReadShare/EaOnly)"
-    }
+    $experts = Resolve-TerminalCommonFiles
+    $dest = Join-Path $experts (Split-Path -Leaf $EaSourcePath)
+    Copy-Item -LiteralPath $EaSourcePath -Destination $dest -Force
+    Write-Ok ("EA copied to: " + $dest)
+    Write-Info "Open MetaEditor, compile with F7, attach EA on one chart (AutoTrading ON)."
 }
 
 # --- main ---
-
-Write-Host "TG TradinGo friend VPS setup" -ForegroundColor Cyan
-Write-Host "Mode=$Mode  FriendVpn=$FriendVpnIp  ContaboVpn=$ContaboVpnIp"
-
-if ($Mode -ne "Status" -and -not (Test-IsAdmin)) {
-    throw "Run elevated (Administrator) for share/firewall/junction steps."
-}
-
+Assert-Admin
 Ensure-Dir $WorkRoot
-$confDir = Join-Path $WorkRoot "wireguard"
-$localSignals = Join-Path $WorkRoot "signals"
+Ensure-Dir (Join-Path $WorkRoot "wireguard")
+Ensure-Dir (Join-Path $WorkRoot "keys")
 
-if ($Mode -eq "Status") {
-    Show-Status
-    exit 0
+Write-Host ""
+Write-Host "=== TG TradinGo friend VPS setup ===" -ForegroundColor Magenta
+Write-Host ("Mode          : " + $Mode)
+Write-Host ("Friend VPN IP : " + $FriendVpnIp)
+Write-Host ("Contabo VPN IP: " + $ContaboVpnIp)
+Write-Host ("Endpoint      : " + $ContaboEndpoint)
+Write-Host ""
+
+Install-WireGuardIfNeeded
+
+$keysDir = Join-Path $WorkRoot "keys"
+$privFile = Join-Path $keysDir "friend_private.key"
+$pubFile = Join-Path $keysDir "friend_public.key"
+
+if ((Test-Path -LiteralPath $privFile) -and (Test-Path -LiteralPath $pubFile)) {
+    $priv = (Get-Content -LiteralPath $privFile -Raw).Trim()
+    $pub = (Get-Content -LiteralPath $pubFile -Raw).Trim()
+    Write-Ok "Reusing existing WireGuard keypair"
+}
+else {
+    $pair = New-WireGuardKeyPair
+    $priv = $pair.PrivateKey
+    $pub = $pair.PublicKey
+    Set-Content -LiteralPath $privFile -Value $priv -Encoding Ascii
+    Set-Content -LiteralPath $pubFile -Value $pub -Encoding Ascii
+    Write-Ok ("Generated keys under " + $keysDir)
 }
 
-$terminal = Resolve-Terminal -Hash $TerminalHash
+Write-Host ""
+Write-Host "=== FRIEND PUBLIC KEY (send to Contabo admin) ===" -ForegroundColor Magenta
+Write-Host $pub -ForegroundColor Yellow
+Write-Host ""
 
-if (-not $SkipWireGuard -and $Mode -ne "EaOnly") {
-    Write-Step "WireGuard client conf"
-    $wgExe = Get-WgExe
-    if (-not $wgExe) {
-        Write-Warn "Install WireGuard for Windows first:"
-        Write-Info "https://www.wireguard.com/install/"
-        Write-Info "Then re-run this script."
-    }
-    $confPath = Join-Path $confDir "tg-friend.conf"
-    Install-WireGuardClient `
-        -PrivateKey $FriendPrivateKey `
-        -AddressCidr "$FriendVpnIp/24" `
-        -PeerPublicKey $ContaboPublicKey `
-        -Endpoint $ContaboEndpoint `
-        -OutConf $confPath
+$confPath = Join-Path $WorkRoot "wireguard\tg-friend.conf"
+# Client tunnels only to Contabo VPN IP (not full tunnel)
+Write-ClientConf -OutConf $confPath -PrivateKey $priv -AddressCidr ($FriendVpnIp + "/32") `
+    -PeerPublicKey $ContaboPublicKey -Endpoint $ContaboEndpoint -AllowedIps ($ContaboVpnIp + "/32")
+
+if ($Mode -eq "WriteShare" -and -not $SkipShare) {
+    Ensure-SmbShare -Name $ListenShareName -Path $ListenSharePath -UserName $ListenShareUser -Password $ListenSharePassword
+    Write-Info ("Contabo must write to: \\" + $FriendVpnIp + "\" + $ListenShareName)
+    Write-Info ("Local folder: " + $ListenSharePath)
+    Write-Info ("Share user: " + $ListenShareUser + " (create/password prompted if new)")
+}
+elseif ($Mode -eq "PullShare" -and -not $SkipShare) {
+    Install-PullJob -Unc $ContaboShareUnc -User $ContaboShareUser -Password $ContaboSharePassword -Dest $LocalSignalsPath -Seconds $PollSeconds
 }
 
-if ($terminal) {
-    Write-Step "MT5 terminal $($terminal.Hash)"
-    Write-Info $terminal.Root
-    Install-Ea -Source $EaSourcePath -ExpertsPath $terminal.ExpertsPath
-    $filesTradingo = Join-Path $terminal.FilesPath "tradingo"
+Copy-EaToTerminal
 
-    if ($Mode -eq "WriteShare") {
-        Write-Step "Variant B: local signals + SMB write share for Contabo"
-        Ensure-WriteShare -LocalSignalsDir $localSignals `
-            -ShareName $ListenShareName `
-            -FilesTradingoPath $filesTradingo
-        Write-LagProbe -OutDir $WorkRoot `
-            -ProbePath (Join-Path $localSignals "signal_ch_oro.json")
-    } elseif ($Mode -eq "ReadShare") {
-        Ensure-ReadShareJunction -ContaboUnc $ContaboShareUnc `
-            -FilesTradingoPath $filesTradingo
-        Write-LagProbe -OutDir $WorkRoot `
-            -ProbePath (Join-Path $filesTradingo "signal_ch_oro.json")
-    }
+$nextPath = Join-Path $WorkRoot "NEXT_STEPS.txt"
+$uncExample = "\\\\" + $FriendVpnIp + "\\" + $ListenShareName
+$nextLines = @(
+    "NEXT STEPS"
+    ""
+    "1) Activate WireGuard tunnel: import " + $WorkRoot + "\wireguard\tg-friend.conf in WireGuard GUI, Activate."
+    "2) On Contabo: add peer PublicKey, AllowedIPs=" + $FriendVpnIp + "/32"
+    "3) ping " + $ContaboVpnIp
+    "4) Compile EA (F7), attach on one chart, AutoTrading ON"
+    "5) Contabo tradingo_config.json mt5_instances (WriteShare):"
+    "     signals_path = " + $uncExample
+    "   Then restart bridge."
+    "6) EA InpSignalsPath should be the local share folder relative path or absolute, e.g. " + $ListenSharePath + "\"
+    ""
+    "Friend PublicKey:"
+    $pub
+)
+Set-Content -LiteralPath $nextPath -Value (($nextLines -join "`r`n") + "`r`n") -Encoding Ascii
 
-    Write-EaParamsFile -OutDir $WorkRoot -ModeName $Mode
-}
-
-Write-Step "Done — next steps"
-Write-Host @"
-
-1) Activate WireGuard tunnel (import $WorkRoot\wireguard\tg-friend.conf)
-2) On Contabo: add peer PublicKey, AllowedIPs=$FriendVpnIp/32
-3) ping $ContaboVpnIp
-4) Compile EA (F7), attach on one chart, AutoTrading ON
-5) Contabo tradingo_config.json mt5_instances (WriteShare):
-     "signals_path": "\\\\$FriendVpnIp\\$ListenShareName"
-6) Measure lag:
-     powershell -ExecutionPolicy Bypass -File $WorkRoot\measure_signal_lag.ps1
-7) Re-check anytime:
-     powershell -ExecutionPolicy Bypass -File $($MyInvocation.MyCommand.Path) -Mode Status
-
-Expected lag (WriteShare): VPN RTT + write (~10-80 ms) + EA poll (upto InpPollMs, default 500).
-Typical end-to-end ~0.2-1.0 s; if many seconds, VPN/SMB is unhealthy.
-
-"@
+Write-Host ""
+Write-Ok ("Setup finished. See " + $nextPath)
+Write-WarnLine "Do NOT commit private keys or share passwords to git."

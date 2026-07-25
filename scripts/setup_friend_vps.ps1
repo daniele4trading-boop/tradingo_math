@@ -319,14 +319,20 @@ function Copy-EaToTerminal {
         Write-WarnLine "No -EaSourcePath: skip EA copy. Copy TG_TradinGoEA.mq5 manually into MQL5\Experts."
         return
     }
-    if (-not (Test-Path -LiteralPath $EaSourcePath)) {
-        throw ("EaSourcePath not found: " + $EaSourcePath)
+    try {
+        if (-not (Test-Path -LiteralPath $EaSourcePath)) {
+            throw ("EaSourcePath not found: " + $EaSourcePath)
+        }
+        $experts = Resolve-TerminalCommonFiles
+        $dest = Join-Path $experts (Split-Path -Leaf $EaSourcePath)
+        Copy-Item -LiteralPath $EaSourcePath -Destination $dest -Force
+        Write-Ok ("EA copied to: " + $dest)
+        Write-Info "Open MetaEditor, compile with F7, attach EA on one chart (AutoTrading ON)."
     }
-    $experts = Resolve-TerminalCommonFiles
-    $dest = Join-Path $experts (Split-Path -Leaf $EaSourcePath)
-    Copy-Item -LiteralPath $EaSourcePath -Destination $dest -Force
-    Write-Ok ("EA copied to: " + $dest)
-    Write-Info "Open MetaEditor, compile with F7, attach EA on one chart (AutoTrading ON)."
+    catch {
+        Write-WarnLine ("EA copy skipped: " + $_.Exception.Message)
+        Write-WarnLine ("Copy manually: copy " + $EaSourcePath + " into AppData\\MetaQuotes\\Terminal\\...\\MQL5\\Experts\\")
+    }
 }
 
 # --- main ---

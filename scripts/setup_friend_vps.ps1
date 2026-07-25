@@ -133,9 +133,10 @@ function Resolve-TerminalCommonFiles {
     if (-not (Test-Path -LiteralPath $root)) {
         throw "MetaQuotes Terminal folder not found under AppData. Open MT5 once, then re-run."
     }
-    $dirs = Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "MQL5\Experts") }
-    if (-not $dirs -or $dirs.Count -eq 0) {
+    # Force array: a single DirectoryInfo has no .Count under Set-StrictMode
+    $dirs = @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "MQL5\Experts") })
+    if ($dirs.Count -eq 0) {
         throw "No MT5 terminal with MQL5\Experts found. Open MT5 once."
     }
     if ($dirs.Count -gt 1) {

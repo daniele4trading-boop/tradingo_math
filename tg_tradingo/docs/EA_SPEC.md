@@ -143,20 +143,32 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 | `InpIgnoreExistingOnInit` | true | All'attach salta+azzera JSON già presenti (anti-replay) |
 | `InpStackOpensIfFlatBusy` | true | Se true, onora `allow_stack` nel JSON; senza flag → modifica SL/TP |
 | `InpStopBufferPoints` | 20 | Buffer extra oltre stops/freeze level (anti 10016 su BE) |
+| `InpMaxFloatingLossUSD` | 150 | Kill-switch floating (valuta **conto**); `0`=off |
+| `InpKillSwitchCooldownMin` | 60 | Cooldown OPEN dopo kill-switch |
+| `InpMaxHoldingMinutes` | 0 | Max holding; `0`=off (suggerito 90) |
+| `InpHeartbeatMaxAgeSec` | 180 | Blocca OPEN se heartbeat stale; `0`=off |
+| `InpHeartbeatFile` | `tradingo_heartbeat.json` | Heartbeat bridge |
+| `InpEquitySampleSec` | 60 | Campione equity; `0`=off |
+| `InpJournalPrefix` | `journal\` | Sotto `MQL5\Files` |
+| `InpSingleInstanceLock` | true | Una sola istanza EA |
+| `InpLockStaleSec` | 120 | Scadenza lock post-crash |
 | `InpChannels` | `gold,forex,oro,stark,ivan` | File da monitorare |
 
 **v2.06+:** prima di `OrderSend`, normalizza SL/TP a `SYMBOL_TRADE_STOPS_LEVEL`; se SL/TP restano dal lato sbagliato del prezzo (segnale stale), salta l'open.  
 **v2.07:** `InpIgnoreExistingOnInit` evita di rieseguire OPEN_NOW/OPEN vecchi al riattach EA.  
 **v2.08:** BE clamp + `InpStackOpensIfFlatBusy` (stackava anche MSG+EDIT — troppo aggressivo).  
-**v2.09:** stack solo se JSON `allow_stack:true`; `InpStopBufferPoints` + retry BE su 10016.
+**v2.09:** stack solo se JSON `allow_stack:true`; `InpStopBufferPoints` + retry BE su 10016.  
+**v2.10:** kill-switch floating/time, single-instance lock, heartbeat gate, trade journal + MAE/MFE, equity, market context, `signal_id` in commento.
+
+`close_reason`: `TP` · `SL` · `BE_SL` · `CLOSE_ALL_SIGNAL` · `CLOSE_HALF` · `KILLSWITCH_FLOATING` · `KILLSWITCH_TIME` · `MANUAL` · `UNKNOWN` — vedi [`JOURNAL_SPEC.md`](JOURNAL_SPEC.md).
 
 ### Commento ordini MT5
 
 Ogni trade aperto dall'EA ha commento:
 
 ```
-TG-GOLD-T1    (canale GOLD, TP 1)
-TG-IVAN-T3    (canale Ivan, TP 3)
+TG-GOLD-T1              (canale GOLD, TP 1)
+TG-IVAN-T3-a1b2c3d4e5   (Ivan TP3 + signal_id, max 31 char)
 TG-STARK-T1
 ```
 

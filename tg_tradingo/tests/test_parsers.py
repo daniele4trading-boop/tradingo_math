@@ -13,7 +13,13 @@ if str(TG_ROOT) not in sys.path:
     sys.path.insert(0, str(TG_ROOT))
 
 # Import parsers without Telethon client startup side effects
-from bridge_core import BridgeState, validate_signal, apply_lot_rules
+from bridge_core import (
+    BridgeState,
+    validate_signal,
+    apply_lot_rules,
+    match_close_all_intent,
+    make_signal_id,
+)
 from tradingo_bridge import (
     parser_sala_gold,
     parser_sala_oro,
@@ -22,6 +28,7 @@ from tradingo_bridge import (
     parser_ivan_vip,
     parser_zanni_vip,
     coerce_edit_open_to_update,
+    pf,
 )
 
 
@@ -516,6 +523,42 @@ class TestCHIvan:
         assert sig["action"] == "CLOSE_ALL_SYMBOL"
         assert sig["symbol"] == "XAUUSD"
 
+    def test_close_coverage_table(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        cases = [
+            ("USCIAMO ORA", None),
+            ("Usciamo qui a 5054 -40 PIPS❌", 5054.0),
+            ("CHIUDERE ORA", None),
+            ("Chiudiamo tutto", None),
+            ("USCITE ORA", None),
+            ("Usciamo a mercato", None),
+            ("chiudete tutto adesso", None),
+            ("Usciamo qui", None),
+        ]
+        for msg, ref in cases:
+            sig = parser_ivan_vip(msg, CH_IVAN, BridgeState(tmp_path / f"st_{hash(msg)}.json"))
+            assert sig is not None, msg
+            assert sig["action"] == "CLOSE_ALL_SYMBOL", msg
+            if ref is None:
+                assert "reference_price" not in sig, msg
+            else:
+                assert sig.get("reference_price") == ref, msg
+
+        # Price follow-up after USCIAMO ORA
+        assert parser_ivan_vip("USCIAMO ORA", CH_IVAN, state)["action"] == "CLOSE_ALL_SYMBOL"
+        follow = parser_ivan_vip("A 4060.5", CH_IVAN, state)
+        assert follow is not None
+        assert follow["action"] == "CLOSE_ALL_SYMBOL"
+        assert follow["reference_price"] == 4060.5
+
+    def test_close_ignore_preparatory(self):
+        assert parser_ivan_vip("Pronti a chiudere se ve lo dico", CH_IVAN) is None
+        assert parser_ivan_vip("Gestiamo a mercato", CH_IVAN) is None
+        assert parser_ivan_vip("Se non li piace chiudete pure", CH_IVAN) is None
+        assert parser_ivan_vip("TP 1 HIT SQUAD✔️", CH_IVAN) is None
+        be = parser_ivan_vip("Spostiamo SL a BE", CH_IVAN)
+        assert be["action"] == "CHECK_AND_BE"
+
     def test_meta_size_half_lot(self):
         text = (
             "XAUUSD BUY 4012\n\n"
@@ -673,3 +716,43 @@ class TestEditOpenCoerce:
         }
         out = coerce_edit_open_to_update(sig, is_edit=True)
         assert out["action"] == "OPEN"
+
+
+class TestGoldBreakEvenHardening:
+    def test_partial_close_plus_pips_no_crash(self):
+        sig = parser_sala_gold("Partial close, break even +100 pips", CH2)
+        assert sig is not None
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_partial_closure_be(self):
+        sig = parser_sala_gold("Partial closure break Even!!!", CH2)
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_bare_break_even(self):
+        sig = parser_sala_gold("break Even", CH2)
+        assert sig["action"] == "CHECK_AND_BE"
+
+    def test_manual_break_even_instruction(self):
+        sig = parser_sala_gold(
+            "MANUALLY SET A BREAK EVEN ON ALL YOUR POSITIONS!", CH2
+        )
+        assert sig["action"] == "CHECK_AND_BE"
+
+    def test_pf_defensive(self):
+        assert pf(".") is None
+        assert pf("") is None
+        assert pf("+100") == 100.0
+        assert pf("5054") == 5054.0
+
+
+class TestCloseIntentHelper:
+    def test_match_close_with_price(self):
+        ok, px = match_close_all_intent("USCIAMO QUI A 5054 -40 PIPS")
+        assert ok is True
+        assert px == 5054.0
+
+    def test_signal_id_stable(self):
+        a = make_signal_id(1, 2, "NEW")
+        b = make_signal_id(1, 2, "NEW")
+        assert a == b
+        assert len(a) == 10

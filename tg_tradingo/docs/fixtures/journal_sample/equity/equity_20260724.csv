@@ -1,0 +1,5 @@
+ts_utc,balance,equity,floating_total,floating_per_symbol_bucket,open_positions_count,total_lots,margin_used,margin_level
+2026-07-24T10:00:00Z,10000,10000,0,METALS:0,0,0,0,0
+2026-07-24T11:00:00Z,10000,9980,-20,METALS:-20,4,0.40,800,1247.5
+2026-07-24T13:05:00Z,9975,9975,0,METALS:0,0,0,0,0
+2026-07-24T22:00:00Z,9975,9975,0,METALS:0,0,0,0,0

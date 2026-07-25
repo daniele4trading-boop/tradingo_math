@@ -30,8 +30,13 @@ tg_tradingo/logs/*
 tg_tradingo/signals/signal_ch*.json
 !tg_tradingo/signals/signal_ch*.json.example
 tg_tradingo/state/
+tg_tradingo/journal/
 tg_tradingo/.pytest_cache/
 tg_tradingo/C:/
+# accidental Windows path copies
+C:\\TG_TradinGo\\logs/
+C:\\TG_TradinGo\\state/
+C:\\TG_TradinGo\\journal/
 
 # accounts MT5 StatArb (credenziali)
 accounts.json

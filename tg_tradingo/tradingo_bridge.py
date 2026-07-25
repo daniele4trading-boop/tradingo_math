@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.05
+TG TradinGo Bridge - v2.06
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -28,8 +28,12 @@ from bridge_core import (
     ProcessedMessageStore,
     atomic_write_text,
     apply_lot_rules,
+    make_signal_id,
+    match_close_all_intent,
+    match_close_price_followup,
     validate_signal,
 )
+from bridge_journal import append_bridge_event, write_heartbeat
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG
@@ -52,7 +56,9 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.05"
+BRIDGE_VERSION = "2.06"
+HEARTBEAT_INTERVAL_SEC = 30
+JOURNAL_RETENTION_DAYS = 90
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGGING
@@ -107,11 +113,18 @@ def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
     signal["timestamp"]    = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     signal["channel_id"]   = channel_cfg["id"]
     signal["channel_name"] = channel_cfg["name"]
+    written_targets: list[str] = []
     if meta:
         signal["message_id"]    = meta.get("message_id")
         signal["chat_id"]       = meta.get("chat_id")
         signal["telegram_date"] = meta.get("telegram_date")
         signal["event_type"]    = meta.get("event_type")
+        if meta.get("chat_id") is not None and meta.get("message_id") is not None:
+            signal["signal_id"] = make_signal_id(
+                meta["chat_id"],
+                meta["message_id"],
+                meta.get("event_type") or "NEW",
+            )
 
     apply_lot_rules(signal, channel_cfg)
 
@@ -125,12 +138,15 @@ def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
         out_file = Path(mt5_path) / channel_cfg["signal_file"]
         try:
             atomic_write_text(out_file, payload)
+            written_targets.append(str(out_file))
             log.info(f"[{channel_cfg['id']}] -> {out_file.name} | "
                      f"action={signal.get('action')} symbol={signal.get('symbol','')} "
-                     f"dir={signal.get('direction','')}")
+                     f"dir={signal.get('direction','')} sid={signal.get('signal_id','')}")
         except Exception as e:
             log.error(f"[{channel_cfg['id']}] Errore scrittura {out_file}: {e}")
             return False
+    if meta is not None:
+        meta["written_targets"] = written_targets
     return True
 
 
@@ -150,12 +166,62 @@ def coerce_edit_open_to_update(signal: dict | None, is_edit: bool) -> dict | Non
     return signal
 
 
-def pf(s: str) -> float:
-    """Parse float pulito: rimuove asterischi, spazi, virgole."""
-    cleaned = re.sub(r"[^\d.]", "", s.strip().replace(",", "."))
+def pf(s: str | None) -> float | None:
+    """Parse float; return None on empty/invalid tokens (never raise)."""
+    if s is None:
+        return None
+    cleaned = re.sub(r"[^\d.]", "", str(s).strip().replace(",", "."))
     if cleaned in ("", ".", "..") or cleaned.count(".") > 1:
-        raise ValueError(f"invalid numeric token: {s!r}")
-    return float(cleaned)
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
+
+
+def _close_signal(
+    ch: dict,
+    raw: str,
+    reference_price: float | None = None,
+    *,
+    symbol: str | None = "XAUUSD",
+) -> dict:
+    sig: dict = {
+        "action": "CLOSE_ALL_SYMBOL",
+        "magic_base": ch["magic_base"],
+        "raw_message": raw,
+    }
+    if symbol:
+        sig["symbol"] = symbol
+    if reference_price is not None:
+        sig["reference_price"] = reference_price
+    return sig
+
+
+def _maybe_close_from_text(
+    upper: str,
+    ch: dict,
+    raw: str,
+    state: BridgeState | None = None,
+    *,
+    symbol: str | None = "XAUUSD",
+) -> dict | None:
+    """Shared close intent + optional price follow-up (after ignore_pats)."""
+    matched, ref = match_close_all_intent(upper)
+    if matched:
+        if state is not None and ref is None:
+            state.set_close_price_pending(ch["id"])
+        elif state is not None and ref is not None:
+            state.pop_close_price_pending(ch["id"])
+        log.info(f"[{ch['id']}] CLOSE_ALL_SYMBOL ref={ref}: {raw[:60]}")
+        return _close_signal(ch, raw, ref, symbol=symbol)
+
+    if state is not None:
+        follow = match_close_price_followup(upper)
+        if follow is not None and state.pop_close_price_pending(ch["id"]):
+            log.info(f"[{ch['id']}] CLOSE_ALL_SYMBOL follow-up price={follow}: {raw[:60]}")
+            return _close_signal(ch, raw, follow, symbol=symbol)
+    return None
 
 def normalize_symbol(raw: str) -> str:
     """Rimuove suffisso 'pm', mappa alias (GOLD -> XAUUSD)."""
@@ -229,16 +295,13 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
         log.info(f"[CH1] CHECK_AND_CLOSE_TP{tp_n}: {raw[:60]}")
         return {"action": "CHECK_AND_CLOSE_TP", "tp_index": tp_n, "raw_message": raw}
 
-    # ── 2a. Chiusura generica senza menzione TP ──────────────────────────────
-    # "cambio di trend, chiudiamo ora" — solo se NON c'è un numero TP
-    close_generic = [
-        r"CAMBIO\s+DI\s+TREND", r"CHIUDIAMO\s+ORA", r"CHIUDO\s+ORA",
-        r"CLOSING\s+NOW", r"CLOSE\s+NOW", r"CHIUDO\s+TUTTO",
-        r"CHIUDIAMO\s+TUTTO", r"USCIAMO", r"USCITE\s+TUTTI",
-    ]
-    if any(re.search(p, upper) for p in close_generic):
-        log.info(f"[CH1] CLOSE_ALL_SYMBOL (generic): {raw[:60]}")
-        return {"action": "CLOSE_ALL_SYMBOL", "raw_message": raw}
+    # ── 2a. Chiusura generica (shared recognizer) ────────────────────────────
+    if re.search(r"CAMBIO\s+DI\s+TREND", upper):
+        log.info(f"[CH1] CLOSE_ALL_SYMBOL (trend): {raw[:60]}")
+        return _close_signal(ch, raw, symbol="XAUUSD")
+    close_sig = _maybe_close_from_text(upper, ch, raw, symbol="XAUUSD")
+    if close_sig:
+        return close_sig
 
     # ── 3. Segnale di apertura ───────────────────────────────────────────────
     # Gestisce sia "BUY XAUUSD 4819" che "EURJPY BUY 186.942"
@@ -256,13 +319,17 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
     if not symbol:
         return None
     entry = pf(price_str)
+    if entry is None:
+        return None
 
     tps, sl = [], None
     for line in raw.splitlines():
         lu = strip_md(line).upper().strip()
         m_tp = re.match(r"TP\s*\d\s*[:\s]\s*([\d.,]+)", lu)
         if m_tp:
-            tps.append(pf(m_tp.group(1)))
+            v = pf(m_tp.group(1))
+            if v is not None:
+                tps.append(v)
             continue
         m_sl = re.match(r"SL\s*[:\s]\s*([\d.,]+)", lu)
         if m_sl:
@@ -303,15 +370,10 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     raw   = text.strip()
     upper = strip_md(raw).upper()
 
-    # ── Chiusura totale CH2 ─────────────────────────────────────────────────
-    close_pats = [
-        r"^CLOSE\s*!*$", r"^CLOSE\s+ALL", r"CHIUDIAMO\s+TUTTO",
-        r"CLOSE\s+ALL\s+POSITIONS", r"EXIT\s+ALL",
-    ]
-    if any(re.search(p, upper.strip()) for p in close_pats):
-        log.info(f"[CH2] CLOSE_ALL_SYMBOL: {raw[:60]}")
-        return {"action": "CLOSE_ALL_SYMBOL", "symbol": "XAUUSD",
-                "magic_base": ch["magic_base"], "raw_message": raw}
+    # ── Chiusura totale CH2 (shared recognizer) ─────────────────────────────
+    close_sig = _maybe_close_from_text(upper, ch, raw, state)
+    if close_sig:
+        return close_sig
 
     # ── Partial / half + break even → CLOSE_HALF_BE (prima del BE-prezzo) ──
     # Deve stare PRIMA del match "N gold break even", altrimenti
@@ -321,7 +383,9 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         "CLOSE HALF", "PARTIAL CLOSE", "PARTIAL CLOSURE", "HALF CLOSE",
         "CHIUDI META", "PARZIALE", "CLOSE PART", "PARTIAL",
     )
-    is_be_msg = contains_any(upper, "BREAK EVEN", "BREAKEVEN")
+    is_be_msg = contains_any(
+        upper, "BREAK EVEN", "BREAKEVEN", "BREAK-EVEN",
+    ) or re.search(r"\bBREAK\s+EVEN\b", upper)
     if is_partial and is_be_msg:
         log.info(f"[CH2] CLOSE_HALF_BE: {raw[:60]}")
         return {"action": "CLOSE_HALF_BE", "symbol": "XAUUSD",
@@ -336,21 +400,24 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     )
     if m_be_price:
         raw_px = m_be_price.group(1) or m_be_price.group(2)
-        try:
-            be_price = pf(raw_px)
-        except ValueError:
-            log.debug(f"[CH2] BE price token ignorato: {raw_px!r}")
-            be_price = 0.0
-        if be_price < 100:
-            log.debug(f"[CH2] BE price {be_price} ignorato (sembra pips, non prezzo)")
-        else:
-            log.info(f"[CH2] BE con prezzo esplicito: {be_price}")
-            return {"action": "BREAK_EVEN_PRICE", "be_price": be_price,
-                    "symbol": "XAUUSD", "magic_base": ch["magic_base"], "raw_message": raw}
+        be_price = pf(raw_px)
+        if be_price is None or be_price < 100:
+            log.debug(f"[CH2] BE price token ignorato: {raw_px!r} -> CHECK_AND_BE")
+            log.info(f"[CH2] CHECK_AND_BE (break even, no usable price): {raw[:60]}")
+            return {
+                "action": "CHECK_AND_BE",
+                "symbol": "XAUUSD",
+                "tp_index": 1,
+                "magic_base": ch["magic_base"],
+                "raw_message": raw,
+            }
+        log.info(f"[CH2] BE con prezzo esplicito: {be_price}")
+        return {"action": "BREAK_EVEN_PRICE", "be_price": be_price,
+                "symbol": "XAUUSD", "magic_base": ch["magic_base"], "raw_message": raw}
 
-    # ── "break even" standalone (dopo trade aperto) → SL a entry ───────────
-    # Esempi: "break Even", "TP1 hit gold +90 pips break even"
-    if is_be_msg:
+    # ── "break even" standalone / manual BE instruction → SL a entry ───────
+    # Esempi: "break Even", "MANUALLY SET A BREAK EVEN ON ALL YOUR POSITIONS!"
+    if is_be_msg or re.search(r"MANUALLY\s+SET\s+A\s+BREAK\s*EVEN", upper):
         log.info(f"[CH2] CHECK_AND_BE (break even): {raw[:60]}")
         return {
             "action": "CHECK_AND_BE",
@@ -1091,13 +1158,16 @@ def parser_sala_stark(text: str, ch: dict) -> dict | None:
 #   CHIUDERE ORA       -> CLOSE_ALL_SYMBOL (XAUUSD)
 #   Meta size / METÀ SIZE / MEZZA SIZE -> lot_factor 0.5
 
-def parser_ivan_vip(text: str, ch: dict) -> dict | None:
+def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
+    if state is None:
+        state, _ = _ensure_runtime()
     raw = text.strip()
     if not raw:
         return None
 
     upper = strip_md(raw).upper()
 
+    # ignore_pats MUST run before close recognizer (preparatory phrases).
     ignore_pats = [
         r"^SL$",
         r"^PECCATO$",
@@ -1137,14 +1207,9 @@ def parser_ivan_vip(text: str, ch: dict) -> dict | None:
             "raw_message": raw,
         }
 
-    if re.search(r"CHIUDERE\s+ORA|USCIAMO\s+ORA|USCITE\s+ORA", upper):
-        log.info(f"[IVAN] CLOSE_ALL_SYMBOL XAUUSD: {raw[:60]}")
-        return {
-            "action":      "CLOSE_ALL_SYMBOL",
-            "symbol":      "XAUUSD",
-            "magic_base":  ch["magic_base"],
-            "raw_message": raw,
-        }
+    close_sig = _maybe_close_from_text(upper, ch, raw, state)
+    if close_sig:
+        return close_sig
 
     m_open = re.search(
         r"(XAUUSD|GOLD)\s+(BUY|SELL)\s+(\d+(?:[.,]\d+)?)",
@@ -1156,6 +1221,8 @@ def parser_ivan_vip(text: str, ch: dict) -> dict | None:
     symbol = normalize_symbol(m_open.group(1))
     direction = m_open.group(2)
     entry = pf(m_open.group(3))
+    if entry is None:
+        return None
 
     tps: list[float] = []
     sl = None
@@ -1163,7 +1230,9 @@ def parser_ivan_vip(text: str, ch: dict) -> dict | None:
         lu = strip_md(line).upper().strip()
         m_tp = re.match(r"TP\s*\d+\s+([\d.,]+)", lu)
         if m_tp:
-            tps.append(pf(m_tp.group(1)))
+            v = pf(m_tp.group(1))
+            if v is not None:
+                tps.append(v)
             continue
         m_sl = re.match(r"SL\s*@?\s*([\d.,]+)", lu)
         if m_sl:
@@ -1285,6 +1354,15 @@ async def run_bridge():
                 log.debug(
                     f"[{ch_cfg['id']}] Duplicato ignorato {event_type} id={message_id}"
                 )
+                append_bridge_event(CONFIG, {
+                    "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "channel_id": ch_cfg["id"],
+                    "chat_id": int(chat_id),
+                    "message_id": int(message_id),
+                    "event_type": event_type,
+                    "raw_text": text,
+                    "outcome": "DUPLICATE",
+                })
                 return
 
             prefix = "EDIT" if is_edit else "MSG"
@@ -1308,10 +1386,36 @@ async def run_bridge():
                         bridge_state.set_ch2_pending(direction)
                         log.info(f"[CH2] EDIT con dati completi → forzo UPDATE_OPEN {direction}")
 
-            if ch_cfg["parser"] in ("sala_gold", "sala_oro", "sala_vip"):
-                signal = parser(text, ch_cfg, bridge_state)
-            else:
-                signal = parser(text, ch_cfg)
+            matched_ignore = None
+            upper_for_ignore = strip_md(text).upper()
+            if ch_cfg["parser"] == "ivan_vip":
+                for pat in (
+                    r"PRONTI\s+A\s+CHIUDERE",
+                    r"GESTIAMO\s+A\s+MERCATO",
+                    r"SE\s+NON\s+LI\s+PIACE",
+                    r"TP\s*\d+\s+HIT",
+                ):
+                    if re.search(pat, upper_for_ignore):
+                        matched_ignore = pat
+                        break
+
+            try:
+                if ch_cfg["parser"] in ("sala_gold", "sala_oro", "sala_vip", "ivan_vip"):
+                    signal = parser(text, ch_cfg, bridge_state)
+                else:
+                    signal = parser(text, ch_cfg)
+            except Exception as parse_exc:
+                append_bridge_event(CONFIG, {
+                    "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "channel_id": ch_cfg["id"],
+                    "chat_id": int(chat_id),
+                    "message_id": int(message_id),
+                    "event_type": event_type,
+                    "raw_text": text,
+                    "outcome": "PARSE_ERROR",
+                    "error": f"{type(parse_exc).__name__}: {parse_exc}",
+                })
+                raise
 
             signal = coerce_edit_open_to_update(signal, is_edit)
 
@@ -1330,7 +1434,31 @@ async def run_bridge():
                 }
                 if write_signal(ch_cfg, signal, meta):
                     processed_messages.mark_processed(dedup_key)
+                    append_bridge_event(CONFIG, {
+                        "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "channel_id": ch_cfg["id"],
+                        "chat_id": int(chat_id),
+                        "message_id": int(message_id),
+                        "event_type": event_type,
+                        "raw_text": text,
+                        "outcome": "EMITTED",
+                        "signal_id": signal.get("signal_id"),
+                        "action": signal.get("action"),
+                        "payload": signal,
+                        "targets": meta.get("written_targets") or [],
+                    })
             else:
+                outcome = "IGNORED_PATTERN" if matched_ignore else "UNPARSED"
+                append_bridge_event(CONFIG, {
+                    "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "channel_id": ch_cfg["id"],
+                    "chat_id": int(chat_id),
+                    "message_id": int(message_id),
+                    "event_type": event_type,
+                    "raw_text": text,
+                    "outcome": outcome,
+                    "matched_pattern": matched_ignore,
+                })
                 log.debug(f"[{ch_cfg['id']}] Ignorato")
 
         except Exception as e:
@@ -1395,7 +1523,17 @@ async def run_bridge():
         ban_handler.setLevel(_logging.WARNING)
         _logging.getLogger("telethon").addHandler(ban_handler)
 
-        await client.run_until_disconnected()
+        async def _heartbeat_loop():
+            while True:
+                write_heartbeat(CONFIG, HEARTBEAT_INTERVAL_SEC)
+                await asyncio.sleep(HEARTBEAT_INTERVAL_SEC)
+
+        hb_task = asyncio.create_task(_heartbeat_loop())
+        try:
+            write_heartbeat(CONFIG, HEARTBEAT_INTERVAL_SEC)
+            await client.run_until_disconnected()
+        finally:
+            hb_task.cancel()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ENTRY POINT CON AUTO-RESTART

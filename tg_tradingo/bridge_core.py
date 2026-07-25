@@ -9,6 +9,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -94,6 +95,80 @@ ACTIONS_REQUIRING_SYMBOL = frozenset({
     "BREAK_EVEN_PRICE",
     "CLOSE_HALF_BE",
 })
+
+def make_signal_id(chat_id: int | str, message_id: int | str, event_type: str) -> str:
+    """Short deterministic id for JSON + MT5 comment (fits in 31-char budget)."""
+    raw = f"{chat_id}:{message_id}:{event_type}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:10]
+
+
+def match_close_all_intent(upper: str) -> tuple[bool, float | None]:
+    """Detect explicit close-all / exit intent.
+
+    Returns (matched, reference_price). ``reference_price`` is informational only;
+    the EA always closes at market. Callers MUST run channel ignore_pats *before*
+    this helper so preparatory phrases (PRONTI A CHIUDERE, GESTIAMO A MERCATO, …)
+    never reach here.
+    """
+    if not upper or not upper.strip():
+        return False, None
+
+    # Imperative / 1st-person plural exit verbs + optional complement.
+    # Avoid bare CHIUDERE/CLOSE alone (too ambiguous without ora/tutto/…).
+    verb = (
+        r"(?:"
+        r"USCIAMO|USCITE|"
+        r"CHIUDIAMO|CHIUDETE|CHIUDERE|"
+        r"CHIUDO|"
+        r"CLOSING|CLOSE|EXIT|"
+        r"CLOSA(?:RE|TE|MO)?"
+        r")"
+    )
+    complement = (
+        r"(?:"
+        r"ORA|QUI|TUTTO|TUTTI|ADESSO|SUBITO|"
+        r"A\s+MERCATO|NOW|ALL(?:\s+POSITIONS)?"
+        r")"
+    )
+    # Require verb + complement, OR known standalone forms (USCIAMO alone OK for CH1).
+    close_re = re.compile(
+        rf"(?:^|[^\w])({verb})\s+({complement})\b|"
+        rf"(?:^|[^\w])(USCIAMO|USCITE\s+TUTTI|CHIUDIAMO\s+TUTTO|CHIUDO\s+TUTTO|"
+        rf"CLOSE\s*!*$|EXIT\s+ALL)\b",
+        re.IGNORECASE,
+    )
+    if not close_re.search(upper):
+        return False, None
+
+    # Optional reference price: "a 5054", "@4060.5", "a 4060.5 -40 PIPS"
+    price: float | None = None
+    m_px = re.search(
+        r"(?:^|\s)(?:A|@)\s*(\d{3,5}(?:[.,]\d+)?)\b",
+        upper,
+    )
+    if m_px:
+        token = m_px.group(1).replace(",", ".")
+        try:
+            cand = float(token)
+            # Gold-like absolute price, not tiny pip counts
+            if cand >= 100:
+                price = cand
+        except ValueError:
+            price = None
+    return True, price
+
+
+def match_close_price_followup(upper: str) -> float | None:
+    """Price-only follow-up after a close signal without price ('A 4060.5')."""
+    m = re.match(r"^(?:A|@)?\s*(\d{3,5}(?:[.,]\d+)?)\s*$", upper.strip())
+    if not m:
+        return None
+    try:
+        val = float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+    return val if val >= 100 else None
+
 
 ACTIONS_WITH_SL_TP = frozenset({
     "OPEN",
@@ -192,6 +267,8 @@ class BridgeState:
         self.forex_pending_dir: str | None = None
         self.forex_pending_entry: float | None = None
         self.forex_last_trade: dict | None = None
+        # channel_id -> unix expiry: await price-only follow-up after CLOSE without price
+        self.close_price_pending: dict[str, float] = {}
         self.load()
 
     def load(self) -> None:
@@ -216,6 +293,10 @@ class BridgeState:
             self.forex_pending_dir = fx_p.get("direction")
             self.forex_pending_entry = fx_p.get("entry")
             self.forex_last_trade = data.get("forex_last_trade")
+            cpp = data.get("close_price_pending") or {}
+            self.close_price_pending = {
+                str(k): float(v) for k, v in cpp.items() if v is not None
+            }
             log.info(
                 "Bridge state loaded: ch2_pending_open=%s dir=%s oro_pending=%s forex_pending=%s",
                 self.ch2_pending_open,
@@ -246,9 +327,22 @@ class BridgeState:
                 "entry": self.forex_pending_entry,
             },
             "forex_last_trade": self.forex_last_trade,
+            "close_price_pending": self.close_price_pending,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         atomic_write_json(self.state_file, payload)
+
+    def set_close_price_pending(self, channel_id: str, ttl_sec: float = 120.0) -> None:
+        self.close_price_pending[channel_id] = time.time() + ttl_sec
+        self.save()
+
+    def pop_close_price_pending(self, channel_id: str) -> bool:
+        """Return True if a non-expired pending close-price wait existed."""
+        exp = self.close_price_pending.pop(channel_id, None)
+        if exp is None:
+            return False
+        self.save()
+        return time.time() <= float(exp)
 
     def set_ch2_pending(self, direction: str) -> None:
         self.ch2_pending_dir = direction
@@ -347,6 +441,7 @@ class EphemeralBridgeState(BridgeState):
         self.forex_pending_dir: str | None = None
         self.forex_pending_entry: float | None = None
         self.forex_last_trade: dict | None = None
+        self.close_price_pending: dict[str, float] = {}
 
     def load(self) -> None:
         return

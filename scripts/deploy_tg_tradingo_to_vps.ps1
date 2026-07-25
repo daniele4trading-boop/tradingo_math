@@ -32,12 +32,14 @@ $backupDir = Join-Path $backupRoot "backup_$timestamp"
 $deployFiles = @(
     "tradingo_bridge.py",
     "bridge_core.py",
+    "bridge_journal.py",
     "dump_channels.py",
     "sample_channels.py",
     "sample_last_24h.py",
     "fetch_apr21.py",
     "fetch_date_range.py",
     "analyze_signal_stats.py",
+    "analyze_journal.py",
     "resolve_channels.py",
     "start_tradingo.bat",
     "requirements.txt",
@@ -183,8 +185,11 @@ $runtimeDirs = @(
     (Join-Path $dst "logs"),
     (Join-Path $dst "signals"),
     (Join-Path $dst "state"),
+    (Join-Path $dst "journal"),
+    (Join-Path $dst "journal\bridge_events"),
     $eaProdCopyDir
 )
+# Never wipe existing journal files — only ensure folders exist.
 
 foreach ($dir in $runtimeDirs) {
     if ($DryRun) {

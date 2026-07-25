@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.09"
+#property version   "2.10"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -32,6 +32,18 @@ input bool   InpStackOpensIfFlatBusy = true; // honor JSON allow_stack when posi
 input int    InpStopBufferPoints   = 20;     // extra pts beyond stops/freeze level (avoid 10016)
 input bool   InpAutoBreakEvenOnTp1 = true;
 input ulong  InpMagicOffset        = 0;
+
+//--- v2.10 hardening / journal inputs
+// Floating-loss killswitch. Compared in ACCOUNT_CURRENCY (see OnInit print). 0 = off.
+input double InpMaxFloatingLossUSD   = 150.0;
+input int    InpKillSwitchCooldownMin = 60;   // block re-opens on a bucket after killswitch
+input int    InpMaxHoldingMinutes    = 0;     // 0 = off (90 suggested): stale-position exit
+input int    InpHeartbeatMaxAgeSec   = 180;   // 0 = off: block opens if bridge heartbeat stale
+input string InpHeartbeatFile        = "tradingo_heartbeat.json";
+input int    InpEquitySampleSec      = 60;    // 0 = off: equity curve sampling period
+input string InpJournalPrefix        = "journal\\"; // relative under MQL5\\Files unless absolute
+input bool   InpSingleInstanceLock   = true;  // one running EA instance per terminal
+input int    InpLockStaleSec         = 120;   // lock expiry after a crash (no clean OnDeinit)
 
 //--- trade objects
 CTrade         g_trade;
@@ -491,11 +503,23 @@ string ChannelShortTag(const string channelFile, const string json)
   }
 
 //+------------------------------------------------------------------+
-string BuildTradeComment(const string channelTag, const int tpIndex)
+string BuildTradeComment(const string channelTag, const int tpIndex, const string json = "")
   {
+   string base;
    if(tpIndex > 0)
-      return StringFormat("TG-%s-T%d", channelTag, tpIndex);
-   return StringFormat("TG-%s", channelTag);
+      base = StringFormat("TG-%s-T%d", channelTag, tpIndex);
+   else
+      base = StringFormat("TG-%s", channelTag);
+   // Append signal_id (truncated to fit MT5's 31-char comment limit) for journal joins.
+   string sid = (json == "") ? "" : JsonGetString(json, "signal_id");
+   if(sid != "")
+     {
+      string cand = base + "-" + sid;
+      if(StringLen(cand) > 31)
+         cand = StringSubstr(cand, 0, 31);
+      return cand;
+     }
+   return base;
   }
 
 //+------------------------------------------------------------------+
@@ -641,6 +665,29 @@ bool OpenMarket(const string symbol, const string direction, const double lot,
          " lot=", DoubleToString(lot, 2),
          " fill=", DoubleToString(fillPrice, (int)g_sym.Digits()),
          " status=", entryStatus);
+   // --- Artefact B/C: trade journal tracking + market context on first fill ---
+   double point = g_sym.Point();
+   if(point <= 0.0)
+      point = _Point;
+   double slipPts = 0.0;
+   if(signalEntry > 0.0 && fillPrice > 0.0)
+     {
+      slipPts = (fillPrice - signalEntry) / point;
+      if(direction == "SELL")
+         slipPts = -slipPts;
+     }
+   ulong posId = 0;
+   ulong deal = g_trade.ResultDeal();
+   if(deal > 0 && HistoryDealSelect(deal))
+      posId = (ulong)HistoryDealGetInteger(deal, DEAL_POSITION_ID);
+   if(posId == 0)
+      posId = g_trade.ResultOrder();
+   string sid = JsonGetString(json, "signal_id");
+   string chTag = ChannelShortTag(channelFile, json);
+   TrackAddOpen(posId, sid, chTag, tpIndex, magic, symbol, direction,
+                signalEntry, rangeLo, rangeHi, sl, tp, lot, fillPrice, slipPts,
+                (datetime)TimeCurrent());
+   WriteMarketContext(symbol, sid);
    return true;
   }
 
@@ -749,7 +796,7 @@ bool OpenSplitTrades(const string symbol, const string direction,
      {
       double tp = (i < ArraySize(tps)) ? tps[i] : 0.0;
       ulong magic = TradeMagic(magicBase, i + 1);
-      string comment = BuildTradeComment(channelTag, i + 1);
+      string comment = BuildTradeComment(channelTag, i + 1, json);
       if(OpenMarket(symbol, direction, lot, sl, tp, magic, comment,
                     channelFile, json, entryStatus, rangeLo, rangeHi,
                     distancePoints, i + 1))
@@ -786,6 +833,9 @@ bool HandleOpen(const string channelFile, const string json)
    string action = JsonGetString(json, "action");
    string direction = JsonGetString(json, "direction");
    string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
+   // Block new opens when bridge heartbeat is stale or the bucket is in killswitch cooldown.
+   if(IsOpenBlocked(symbol))
+      return false;
    int magicBase = JsonGetInt(json, "magic_base");
    double sl = JsonGetNumber(json, "sl");
    double tps[];
@@ -843,7 +893,7 @@ bool HandleOpen(const string channelFile, const string json)
    if(action == "OPEN_NOW")
      {
       return OpenMarket(symbol, direction, lot, 0, 0, TradeMagic(magicBase, 1),
-                        BuildTradeComment(channelTag, 1),
+                        BuildTradeComment(channelTag, 1, json),
                         channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
                         distPoints, 1);
      }
@@ -901,6 +951,8 @@ bool HandleUpdateOpen(const string channelFile, const string json)
                                       entryStatus, distPoints))
             return true;
         }
+      if(IsOpenBlocked(symbol))
+         return false;
       Print("[TradinGo] UPDATE_OPEN but no positions — opening fresh");
       return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
                              channelFile, json, entryStatus, rangeLo, rangeHi, distPoints);
@@ -1206,13 +1258,998 @@ void SeedAndClearExistingSignals()
      }
   }
 
+//+==================================================================+
+//| v2.10 hardening / journaling                                     |
+//+==================================================================+
+#define TG_LOCK_NAME "TG_TRADINGO_EA_LOCK"
+#define TG_JOURNAL_HEADER "event,ts_utc,signal_id,channel,tp_index,ticket,magic,symbol,direction,req_entry,range_lo,range_hi,req_sl,req_tp,volume,fill,slippage_pts,open_time_utc,close_time_utc,close_price,close_reason,realized_profit,mae_price,mfe_price,mae_ccy,mfe_ccy,balance,equity,margin\n"
+
+//--- killswitch cooldown per bucket
+string   g_ksBucket[];
+datetime g_ksUntil[];
+
+//--- bridge heartbeat state
+bool     g_bridgeStale = false;
+
+//--- equity sampling
+datetime g_lastEquitySample = 0;
+
+//--- market context: signal_ids already written
+string   g_ctxDone[];
+
+//--- open-trade tracking (parallel arrays)
+ulong    g_trkTicket[];
+string   g_trkSignalId[];
+string   g_trkChannel[];
+int      g_trkTpIndex[];
+ulong    g_trkMagic[];
+string   g_trkSymbol[];
+string   g_trkDir[];
+double   g_trkReqEntry[];
+double   g_trkRangeLo[];
+double   g_trkRangeHi[];
+double   g_trkReqSl[];
+double   g_trkReqTp[];
+double   g_trkVolume[];
+double   g_trkFill[];
+double   g_trkSlippage[];
+datetime g_trkOpenTime[];
+double   g_trkMinPrice[];
+double   g_trkMaxPrice[];
+double   g_trkMaeCcy[];
+double   g_trkMfeCcy[];
+string   g_trkCloseReason[];
+
+//+------------------------------------------------------------------+
+string IsoUtc(const datetime t)
+  {
+   MqlDateTime dt;
+   TimeToStruct(t, dt);
+   return StringFormat("%04d-%02d-%02dT%02d:%02d:%02dZ",
+                       dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
+  }
+
+//+------------------------------------------------------------------+
+string YmdUtc(const datetime t)
+  {
+   MqlDateTime dt;
+   TimeToStruct(t, dt);
+   return StringFormat("%04d%02d%02d", dt.year, dt.mon, dt.day);
+  }
+
+//+------------------------------------------------------------------+
+datetime ParseIso8601(const string s)
+  {
+   // Expect YYYY-MM-DDTHH:MM:SS (T or space separator); ignore trailing fraction/zone.
+   if(StringLen(s) < 19)
+      return 0;
+   MqlDateTime dt;
+   dt.year = (int)StringToInteger(StringSubstr(s, 0, 4));
+   dt.mon  = (int)StringToInteger(StringSubstr(s, 5, 2));
+   dt.day  = (int)StringToInteger(StringSubstr(s, 8, 2));
+   dt.hour = (int)StringToInteger(StringSubstr(s, 11, 2));
+   dt.min  = (int)StringToInteger(StringSubstr(s, 14, 2));
+   dt.sec  = (int)StringToInteger(StringSubstr(s, 17, 2));
+   if(dt.year < 1970 || dt.mon < 1 || dt.day < 1)
+      return 0;
+   return StructToTime(dt);
+  }
+
+//+------------------------------------------------------------------+
+string SymbolBucket(const string symbol)
+  {
+   string up = symbol;
+   StringToUpper(up);
+   if(StringFind(up, "XAU") >= 0 || StringFind(up, "XAG") >= 0)
+      return "METALS";
+   // base name without configured suffix
+   string base = symbol;
+   if(StringLen(InpSymbolSuffix) > 0)
+     {
+      int p = StringFind(base, InpSymbolSuffix);
+      if(p >= 0)
+         base = StringSubstr(base, 0, p);
+     }
+   StringToUpper(base);
+   return base;
+  }
+
+//+------------------------------------------------------------------+
+bool IsTGPositionSelected()
+  {
+   // All positions opened by this EA carry a comment starting with "TG-".
+   return (StringFind(g_pos.Comment(), "TG-") == 0);
+  }
+
+//+------------------------------------------------------------------+
+string JournalPath(const string sub)
+  {
+   string b = InpJournalPrefix;
+   if(StringLen(b) > 0)
+     {
+      ushort last = StringGetCharacter(b, StringLen(b) - 1);
+      if(last != '\\' && last != '/')
+         b += "\\";
+     }
+   return b + sub;
+  }
+
+//+------------------------------------------------------------------+
+string SanitizeName(const string s)
+  {
+   string o = "";
+   for(int i = 0; i < StringLen(s); i++)
+     {
+      ushort c = StringGetCharacter(s, i);
+      bool ok = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                (c >= 'a' && c <= 'z') || c == '_' || c == '-';
+      o += ok ? ShortToString(c) : "_";
+     }
+   if(o == "")
+      o = "unknown";
+   return o;
+  }
+
+//+------------------------------------------------------------------+
+string JoinCsv(const string &f[])
+  {
+   string o = "";
+   for(int k = 0; k < ArraySize(f); k++)
+     {
+      if(k > 0)
+         o += ",";
+      o += f[k];
+     }
+   return o + "\n";
+  }
+
+//+------------------------------------------------------------------+
+void AppendCsvLine(const string path, const string header, const string line)
+  {
+   // FileOpen auto-creates sub-directories under MQL5\\Files.
+   bool isNew = false;
+   ResetLastError();
+   int h = FileOpen(path, FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_READ | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE)
+     {
+      ResetLastError();
+      h = FileOpen(path, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_READ | FILE_SHARE_WRITE);
+      isNew = true;
+     }
+   if(h == INVALID_HANDLE)
+     {
+      Print("[TradinGo] journal open failed path=", path, " err=", GetLastError());
+      return;
+     }
+   if(isNew || FileSize(h) == 0)
+      FileWriteString(h, header);
+   FileSeek(h, 0, SEEK_END);
+   FileWriteString(h, line);
+   FileClose(h);
+  }
+
+//+------------------------------------------------------------------+
+bool ReadJsonFileQuiet(const string fileName, string &content)
+  {
+   // Same candidate paths as ReadSignalFile, but silent (used for heartbeat polling).
+   string candidates[];
+   int n = 0;
+   if(InpUseAbsolutePath && StringLen(InpSignalsPath) > 0)
+     {
+      ArrayResize(candidates, n + 1);
+      candidates[n++] = BuildAbsoluteSignalPath(fileName);
+     }
+   ArrayResize(candidates, n + 1);
+   candidates[n++] = BuildRelativeSignalPath(fileName);
+   ArrayResize(candidates, n + 1);
+   candidates[n++] = fileName;
+   for(int i = 0; i < n; i++)
+      if(ReadTextFileContent(candidates[i], content))
+         return true;
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Killswitch cooldown helpers                                      |
+//+------------------------------------------------------------------+
+datetime KsCooldownGet(const string bucket)
+  {
+   for(int i = 0; i < ArraySize(g_ksBucket); i++)
+      if(g_ksBucket[i] == bucket)
+         return g_ksUntil[i];
+   return 0;
+  }
+
+//+------------------------------------------------------------------+
+bool KsCooldownActive(const string bucket)
+  {
+   datetime u = KsCooldownGet(bucket);
+   return (u > 0 && TimeCurrent() < u);
+  }
+
+//+------------------------------------------------------------------+
+void KsSetCooldown(const string bucket)
+  {
+   datetime until = TimeCurrent() + (datetime)InpKillSwitchCooldownMin * 60;
+   for(int i = 0; i < ArraySize(g_ksBucket); i++)
+      if(g_ksBucket[i] == bucket)
+        {
+         g_ksUntil[i] = until;
+         return;
+        }
+   int n = ArraySize(g_ksBucket);
+   ArrayResize(g_ksBucket, n + 1);
+   ArrayResize(g_ksUntil, n + 1);
+   g_ksBucket[n] = bucket;
+   g_ksUntil[n] = until;
+  }
+
+//+------------------------------------------------------------------+
+bool IsOpenBlocked(const string symbol)
+  {
+   if(g_bridgeStale)
+     {
+      Print("[TradinGo] OPEN blocked — bridge heartbeat STALE (opens suspended; updates/closes still allowed)");
+      return true;
+     }
+   string b = SymbolBucket(symbol);
+   if(KsCooldownActive(b))
+     {
+      Print("[TradinGo] OPEN blocked — killswitch cooldown active bucket=", b,
+            " until=", TimeToString(KsCooldownGet(b), TIME_DATE | TIME_SECONDS));
+      return true;
+     }
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Trade tracking                                                   |
+//+------------------------------------------------------------------+
+int TrackFind(const ulong ticket)
+  {
+   for(int i = 0; i < ArraySize(g_trkTicket); i++)
+      if(g_trkTicket[i] == ticket)
+         return i;
+   return -1;
+  }
+
+//+------------------------------------------------------------------+
+void TrackRemoveAt(const int i)
+  {
+   int n = ArraySize(g_trkTicket);
+   if(i < 0 || i >= n)
+      return;
+   int last = n - 1;
+   g_trkTicket[i]      = g_trkTicket[last];
+   g_trkSignalId[i]    = g_trkSignalId[last];
+   g_trkChannel[i]     = g_trkChannel[last];
+   g_trkTpIndex[i]     = g_trkTpIndex[last];
+   g_trkMagic[i]       = g_trkMagic[last];
+   g_trkSymbol[i]      = g_trkSymbol[last];
+   g_trkDir[i]         = g_trkDir[last];
+   g_trkReqEntry[i]    = g_trkReqEntry[last];
+   g_trkRangeLo[i]     = g_trkRangeLo[last];
+   g_trkRangeHi[i]     = g_trkRangeHi[last];
+   g_trkReqSl[i]       = g_trkReqSl[last];
+   g_trkReqTp[i]       = g_trkReqTp[last];
+   g_trkVolume[i]      = g_trkVolume[last];
+   g_trkFill[i]        = g_trkFill[last];
+   g_trkSlippage[i]    = g_trkSlippage[last];
+   g_trkOpenTime[i]    = g_trkOpenTime[last];
+   g_trkMinPrice[i]    = g_trkMinPrice[last];
+   g_trkMaxPrice[i]    = g_trkMaxPrice[last];
+   g_trkMaeCcy[i]      = g_trkMaeCcy[last];
+   g_trkMfeCcy[i]      = g_trkMfeCcy[last];
+   g_trkCloseReason[i] = g_trkCloseReason[last];
+   ArrayResize(g_trkTicket, last);
+   ArrayResize(g_trkSignalId, last);
+   ArrayResize(g_trkChannel, last);
+   ArrayResize(g_trkTpIndex, last);
+   ArrayResize(g_trkMagic, last);
+   ArrayResize(g_trkSymbol, last);
+   ArrayResize(g_trkDir, last);
+   ArrayResize(g_trkReqEntry, last);
+   ArrayResize(g_trkRangeLo, last);
+   ArrayResize(g_trkRangeHi, last);
+   ArrayResize(g_trkReqSl, last);
+   ArrayResize(g_trkReqTp, last);
+   ArrayResize(g_trkVolume, last);
+   ArrayResize(g_trkFill, last);
+   ArrayResize(g_trkSlippage, last);
+   ArrayResize(g_trkOpenTime, last);
+   ArrayResize(g_trkMinPrice, last);
+   ArrayResize(g_trkMaxPrice, last);
+   ArrayResize(g_trkMaeCcy, last);
+   ArrayResize(g_trkMfeCcy, last);
+   ArrayResize(g_trkCloseReason, last);
+  }
+
+//+------------------------------------------------------------------+
+void SetTrackReason(const ulong ticket, const string reason)
+  {
+   int i = TrackFind(ticket);
+   if(i >= 0)
+      g_trkCloseReason[i] = reason;
+  }
+
+//+------------------------------------------------------------------+
+int TrackAppendSlot()
+  {
+   int n = ArraySize(g_trkTicket);
+   ArrayResize(g_trkTicket, n + 1);
+   ArrayResize(g_trkSignalId, n + 1);
+   ArrayResize(g_trkChannel, n + 1);
+   ArrayResize(g_trkTpIndex, n + 1);
+   ArrayResize(g_trkMagic, n + 1);
+   ArrayResize(g_trkSymbol, n + 1);
+   ArrayResize(g_trkDir, n + 1);
+   ArrayResize(g_trkReqEntry, n + 1);
+   ArrayResize(g_trkRangeLo, n + 1);
+   ArrayResize(g_trkRangeHi, n + 1);
+   ArrayResize(g_trkReqSl, n + 1);
+   ArrayResize(g_trkReqTp, n + 1);
+   ArrayResize(g_trkVolume, n + 1);
+   ArrayResize(g_trkFill, n + 1);
+   ArrayResize(g_trkSlippage, n + 1);
+   ArrayResize(g_trkOpenTime, n + 1);
+   ArrayResize(g_trkMinPrice, n + 1);
+   ArrayResize(g_trkMaxPrice, n + 1);
+   ArrayResize(g_trkMaeCcy, n + 1);
+   ArrayResize(g_trkMfeCcy, n + 1);
+   ArrayResize(g_trkCloseReason, n + 1);
+   return n;
+  }
+
+//+------------------------------------------------------------------+
+void WriteJournalOpen(const int i)
+  {
+   int dg = (int)SymbolInfoInteger(g_trkSymbol[i], SYMBOL_DIGITS);
+   if(dg <= 0)
+      dg = 5;
+   string f[29];
+   f[0]  = "OPEN";
+   f[1]  = IsoUtc(TimeGMT());
+   f[2]  = g_trkSignalId[i];
+   f[3]  = g_trkChannel[i];
+   f[4]  = IntegerToString(g_trkTpIndex[i]);
+   f[5]  = IntegerToString((long)g_trkTicket[i]);
+   f[6]  = IntegerToString((long)g_trkMagic[i]);
+   f[7]  = g_trkSymbol[i];
+   f[8]  = g_trkDir[i];
+   f[9]  = DoubleToString(g_trkReqEntry[i], dg);
+   f[10] = DoubleToString(g_trkRangeLo[i], dg);
+   f[11] = DoubleToString(g_trkRangeHi[i], dg);
+   f[12] = DoubleToString(g_trkReqSl[i], dg);
+   f[13] = DoubleToString(g_trkReqTp[i], dg);
+   f[14] = DoubleToString(g_trkVolume[i], 2);
+   f[15] = DoubleToString(g_trkFill[i], dg);
+   f[16] = DoubleToString(g_trkSlippage[i], 1);
+   f[17] = IsoUtc(g_trkOpenTime[i]);
+   f[18] = "";  // close_time_utc
+   f[19] = "";  // close_price
+   f[20] = "";  // close_reason
+   f[21] = "";  // realized_profit
+   f[22] = "";  // mae_price
+   f[23] = "";  // mfe_price
+   f[24] = "";  // mae_ccy
+   f[25] = "";  // mfe_ccy
+   f[26] = DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2);
+   f[27] = DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2);
+   f[28] = DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN), 2);
+   AppendCsvLine(JournalPath("trades\\trades_" + YmdUtc(TimeGMT()) + ".csv"),
+                 TG_JOURNAL_HEADER, JoinCsv(f));
+  }
+
+//+------------------------------------------------------------------+
+void TrackAddOpen(const ulong ticket, const string sid, const string channel,
+                  const int tpIndex, const ulong magic, const string symbol,
+                  const string dir, const double reqEntry,
+                  const double rangeLo, const double rangeHi,
+                  const double reqSl, const double reqTp, const double vol,
+                  const double fill, const double slip, const datetime otime)
+  {
+   if(ticket == 0)
+      return;
+   int i = TrackFind(ticket);
+   if(i < 0)
+      i = TrackAppendSlot();
+   g_trkTicket[i]      = ticket;
+   g_trkSignalId[i]    = sid;
+   g_trkChannel[i]     = channel;
+   g_trkTpIndex[i]     = tpIndex;
+   g_trkMagic[i]       = magic;
+   g_trkSymbol[i]      = symbol;
+   g_trkDir[i]         = dir;
+   g_trkReqEntry[i]    = reqEntry;
+   g_trkRangeLo[i]     = rangeLo;
+   g_trkRangeHi[i]     = rangeHi;
+   g_trkReqSl[i]       = reqSl;
+   g_trkReqTp[i]       = reqTp;
+   g_trkVolume[i]      = vol;
+   g_trkFill[i]        = fill;
+   g_trkSlippage[i]    = slip;
+   g_trkOpenTime[i]    = otime;
+   g_trkMinPrice[i]    = (fill > 0.0) ? fill : 0.0;
+   g_trkMaxPrice[i]    = (fill > 0.0) ? fill : 0.0;
+   g_trkMaeCcy[i]      = 0.0;
+   g_trkMfeCcy[i]      = 0.0;
+   g_trkCloseReason[i] = "";
+   WriteJournalOpen(i);
+  }
+
+//+------------------------------------------------------------------+
+void ParseComment(const string cm, string &tag, int &tpIdx, string &sid)
+  {
+   tag = "";
+   tpIdx = 0;
+   sid = "";
+   string rest = cm;
+   if(StringFind(rest, "TG-") == 0)
+      rest = StringSubstr(rest, 3);
+   string parts[];
+   int n = StringSplit(rest, '-', parts);
+   if(n >= 1)
+      tag = parts[0];
+   int idx = 1;
+   if(n >= 2)
+     {
+      string p1 = parts[1];
+      if(StringLen(p1) >= 2 && StringGetCharacter(p1, 0) == 'T')
+        {
+         string num = StringSubstr(p1, 1);
+         bool isnum = (StringLen(num) > 0);
+         for(int c = 0; c < StringLen(num); c++)
+           {
+            ushort ch = StringGetCharacter(num, c);
+            if(ch < '0' || ch > '9')
+              {
+               isnum = false;
+               break;
+              }
+           }
+         if(isnum)
+           {
+            tpIdx = (int)StringToInteger(num);
+            idx = 2;
+           }
+        }
+     }
+   for(int j = idx; j < n; j++)
+     {
+      if(j > idx)
+         sid += "-";
+      sid += parts[j];
+     }
+  }
+
+//+------------------------------------------------------------------+
+void RetrackOpenPositions()
+  {
+   // On (re)attach, re-add any live TG- positions so close journaling/MAE-MFE resume.
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(!IsTGPositionSelected())
+         continue;
+      ulong tk = g_pos.Ticket();
+      if(TrackFind(tk) >= 0)
+         continue;
+      string tag, sid;
+      int tpIdx;
+      ParseComment(g_pos.Comment(), tag, tpIdx, sid);
+      string symbol = g_pos.Symbol();
+      string dir = (g_pos.PositionType() == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+      double open = g_pos.PriceOpen();
+      int j = TrackAppendSlot();
+      g_trkTicket[j]      = tk;
+      g_trkSignalId[j]    = sid;
+      g_trkChannel[j]     = tag;
+      g_trkTpIndex[j]     = tpIdx;
+      g_trkMagic[j]       = (ulong)g_pos.Magic();
+      g_trkSymbol[j]      = symbol;
+      g_trkDir[j]         = dir;
+      g_trkReqEntry[j]    = open;
+      g_trkRangeLo[j]     = 0.0;
+      g_trkRangeHi[j]     = 0.0;
+      g_trkReqSl[j]       = g_pos.StopLoss();
+      g_trkReqTp[j]       = g_pos.TakeProfit();
+      g_trkVolume[j]      = g_pos.Volume();
+      g_trkFill[j]        = open;
+      g_trkSlippage[j]    = 0.0;
+      g_trkOpenTime[j]    = (datetime)g_pos.Time();
+      g_trkMinPrice[j]    = open;
+      g_trkMaxPrice[j]    = open;
+      g_trkMaeCcy[j]      = 0.0;
+      g_trkMfeCcy[j]      = 0.0;
+      g_trkCloseReason[j] = "";
+      Print("[TradinGo] retrack ticket=", tk, " ", symbol, " ", dir,
+            " sid=", sid, " tp_index=", tpIdx);
+     }
+  }
+
+//+------------------------------------------------------------------+
+void UpdateExcursions()
+  {
+   for(int i = 0; i < ArraySize(g_trkTicket); i++)
+     {
+      if(!PositionSelectByTicket(g_trkTicket[i]))
+         continue;
+      string sym = g_trkSymbol[i];
+      double mark = (g_trkDir[i] == "BUY") ? SymbolInfoDouble(sym, SYMBOL_BID)
+                                           : SymbolInfoDouble(sym, SYMBOL_ASK);
+      if(mark > 0.0)
+        {
+         if(g_trkMinPrice[i] <= 0.0 || mark < g_trkMinPrice[i])
+            g_trkMinPrice[i] = mark;
+         if(mark > g_trkMaxPrice[i])
+            g_trkMaxPrice[i] = mark;
+        }
+      double fl = PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+      if(fl < g_trkMaeCcy[i])
+         g_trkMaeCcy[i] = fl;
+      if(fl > g_trkMfeCcy[i])
+         g_trkMfeCcy[i] = fl;
+     }
+  }
+
+//+------------------------------------------------------------------+
+void WriteJournalClose(const int i)
+  {
+   string symbol = g_trkSymbol[i];
+   int dg = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   if(dg <= 0)
+      dg = 5;
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   if(point <= 0.0)
+      point = _Point;
+   ulong posId = g_trkTicket[i];
+   double closePrice = 0.0, realized = 0.0;
+   datetime closeTime = 0;
+   if(HistorySelectByPosition(posId))
+     {
+      int total = HistoryDealsTotal();
+      for(int d = 0; d < total; d++)
+        {
+         ulong dl = HistoryDealGetTicket(d);
+         if(dl == 0)
+            continue;
+         long entry = HistoryDealGetInteger(dl, DEAL_ENTRY);
+         if(entry == DEAL_ENTRY_OUT || entry == DEAL_ENTRY_OUT_BY || entry == DEAL_ENTRY_INOUT)
+           {
+            realized += HistoryDealGetDouble(dl, DEAL_PROFIT)
+                      + HistoryDealGetDouble(dl, DEAL_SWAP)
+                      + HistoryDealGetDouble(dl, DEAL_COMMISSION);
+            datetime tt = (datetime)HistoryDealGetInteger(dl, DEAL_TIME);
+            if(tt >= closeTime)
+              {
+               closeTime = tt;
+               closePrice = HistoryDealGetDouble(dl, DEAL_PRICE);
+              }
+           }
+        }
+     }
+   // close_reason: preset by killswitch, else price heuristic vs requested tp/sl/entry.
+   string reason = g_trkCloseReason[i];
+   if(reason == "")
+     {
+      double tol = (double)InpRangeTolerancePoints * point;
+      if(tol <= 0.0)
+         tol = 50.0 * point;
+      if(g_trkReqTp[i] > 0.0 && MathAbs(closePrice - g_trkReqTp[i]) <= tol)
+         reason = "TP";
+      else if(g_trkReqSl[i] > 0.0 && MathAbs(closePrice - g_trkReqSl[i]) <= tol)
+        {
+         if(g_trkReqEntry[i] > 0.0 && MathAbs(g_trkReqSl[i] - g_trkReqEntry[i]) <= tol)
+            reason = "BE_SL";
+         else
+            reason = "SL";
+        }
+      else
+         reason = "UNKNOWN";
+     }
+   double maePrice = (g_trkDir[i] == "BUY") ? g_trkMinPrice[i] : g_trkMaxPrice[i];
+   double mfePrice = (g_trkDir[i] == "BUY") ? g_trkMaxPrice[i] : g_trkMinPrice[i];
+   string f[29];
+   f[0]  = "CLOSE";
+   f[1]  = IsoUtc(TimeGMT());
+   f[2]  = g_trkSignalId[i];
+   f[3]  = g_trkChannel[i];
+   f[4]  = IntegerToString(g_trkTpIndex[i]);
+   f[5]  = IntegerToString((long)g_trkTicket[i]);
+   f[6]  = IntegerToString((long)g_trkMagic[i]);
+   f[7]  = symbol;
+   f[8]  = g_trkDir[i];
+   f[9]  = DoubleToString(g_trkReqEntry[i], dg);
+   f[10] = DoubleToString(g_trkRangeLo[i], dg);
+   f[11] = DoubleToString(g_trkRangeHi[i], dg);
+   f[12] = DoubleToString(g_trkReqSl[i], dg);
+   f[13] = DoubleToString(g_trkReqTp[i], dg);
+   f[14] = DoubleToString(g_trkVolume[i], 2);
+   f[15] = DoubleToString(g_trkFill[i], dg);
+   f[16] = DoubleToString(g_trkSlippage[i], 1);
+   f[17] = IsoUtc(g_trkOpenTime[i]);
+   f[18] = (closeTime > 0) ? IsoUtc(closeTime) : IsoUtc(TimeGMT());
+   f[19] = DoubleToString(closePrice, dg);
+   f[20] = reason;
+   f[21] = DoubleToString(realized, 2);
+   f[22] = DoubleToString(maePrice, dg);
+   f[23] = DoubleToString(mfePrice, dg);
+   f[24] = DoubleToString(g_trkMaeCcy[i], 2);
+   f[25] = DoubleToString(g_trkMfeCcy[i], 2);
+   f[26] = DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2);
+   f[27] = DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2);
+   f[28] = DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN), 2);
+   AppendCsvLine(JournalPath("trades\\trades_" + YmdUtc(TimeGMT()) + ".csv"),
+                 TG_JOURNAL_HEADER, JoinCsv(f));
+   Print("[TradinGo] JOURNAL_CLOSE ticket=", g_trkTicket[i], " ", symbol,
+         " reason=", reason, " pnl=", DoubleToString(realized, 2));
+  }
+
+//+------------------------------------------------------------------+
+void DetectClosedPositions()
+  {
+   for(int i = ArraySize(g_trkTicket) - 1; i >= 0; i--)
+     {
+      if(PositionSelectByTicket(g_trkTicket[i]))
+         continue; // still open
+      WriteJournalClose(i);
+      TrackRemoveAt(i);
+     }
+  }
+
+//+------------------------------------------------------------------+
+void CloseBucketPositions(const string bucket, const string reason)
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(!IsTGPositionSelected())
+         continue;
+      if(SymbolBucket(g_pos.Symbol()) != bucket)
+         continue;
+      ulong tk = g_pos.Ticket();
+      SetTrackReason(tk, reason);
+      g_trade.PositionClose(tk);
+     }
+  }
+
+//+------------------------------------------------------------------+
+void CheckFloatingKillSwitch()
+  {
+   if(InpMaxFloatingLossUSD <= 0.0)
+      return;
+   string bks[];
+   double sums[];
+   int nb = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(!IsTGPositionSelected())
+         continue;
+      string b = SymbolBucket(g_pos.Symbol());
+      double v = g_pos.Profit() + g_pos.Swap();
+      int idx = -1;
+      for(int k = 0; k < nb; k++)
+         if(bks[k] == b)
+           {
+            idx = k;
+            break;
+           }
+      if(idx < 0)
+        {
+         ArrayResize(bks, nb + 1);
+         ArrayResize(sums, nb + 1);
+         bks[nb] = b;
+         sums[nb] = 0.0;
+         idx = nb;
+         nb++;
+        }
+      sums[idx] += v;
+     }
+   for(int k = 0; k < nb; k++)
+     {
+      if(sums[k] >= -InpMaxFloatingLossUSD)
+         continue;
+      if(KsCooldownActive(bks[k]))
+         continue;
+      Print("[TradinGo] KILLSWITCH_FLOATING bucket=", bks[k],
+            " floating=", DoubleToString(sums[k], 2),
+            " limit=", DoubleToString(-InpMaxFloatingLossUSD, 2),
+            " ccy=", AccountInfoString(ACCOUNT_CURRENCY),
+            " -> closing bucket, cooldown=", InpKillSwitchCooldownMin, "m");
+      CloseBucketPositions(bks[k], "KILLSWITCH_FLOATING");
+      KsSetCooldown(bks[k]);
+     }
+  }
+
+//+------------------------------------------------------------------+
+void CheckMaxHolding()
+  {
+   if(InpMaxHoldingMinutes <= 0)
+      return;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(!IsTGPositionSelected())
+         continue;
+      double mins = (double)(TimeCurrent() - (datetime)g_pos.Time()) / 60.0;
+      if(mins < (double)InpMaxHoldingMinutes)
+         continue;
+      ulong tk = g_pos.Ticket();
+      double profit = g_pos.Profit() + g_pos.Swap();
+      Print("[TradinGo] KILLSWITCH_TIME ticket=", tk, " held=", DoubleToString(mins, 1),
+            "m >= ", InpMaxHoldingMinutes, "m profit=", DoubleToString(profit, 2),
+            (profit > 0.0 ? " -> BE" : " -> close"));
+      if(profit > 0.0)
+         ApplyBreakEvenSL(tk);
+      else
+        {
+         SetTrackReason(tk, "KILLSWITCH_TIME");
+         g_trade.PositionClose(tk);
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
+void CheckHeartbeat()
+  {
+   if(InpHeartbeatMaxAgeSec <= 0)
+      return;
+   string content;
+   if(!ReadJsonFileQuiet(InpHeartbeatFile, content))
+     {
+      if(!g_bridgeStale)
+         Print("[TradinGo] HEARTBEAT missing file=", InpHeartbeatFile,
+               " -> bridge STALE, opens blocked");
+      g_bridgeStale = true;
+      return;
+     }
+   datetime hb = ParseIso8601(JsonGetString(content, "ts_utc"));
+   if(hb <= 0)
+     {
+      if(!g_bridgeStale)
+         Print("[TradinGo] HEARTBEAT unparseable ts_utc -> bridge STALE, opens blocked");
+      g_bridgeStale = true;
+      return;
+     }
+   long age = (long)(TimeGMT() - hb);
+   if(age > InpHeartbeatMaxAgeSec)
+     {
+      if(!g_bridgeStale)
+         Print("[TradinGo] HEARTBEAT stale age=", age, "s > ", InpHeartbeatMaxAgeSec,
+               "s -> opens blocked");
+      g_bridgeStale = true;
+     }
+   else
+     {
+      if(g_bridgeStale)
+         Print("[TradinGo] HEARTBEAT fresh age=", age, "s -> bridge OK, opens allowed");
+      g_bridgeStale = false;
+     }
+  }
+
+//+------------------------------------------------------------------+
+void SampleEquity()
+  {
+   if(InpEquitySampleSec <= 0)
+      return;
+   datetime now = TimeGMT();
+   if(g_lastEquitySample != 0 && (now - g_lastEquitySample) < InpEquitySampleSec)
+      return;
+   g_lastEquitySample = now;
+   double flTotal = 0.0, flMetals = 0.0, lots = 0.0;
+   int cnt = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(!IsTGPositionSelected())
+         continue;
+      double v = g_pos.Profit() + g_pos.Swap();
+      flTotal += v;
+      lots += g_pos.Volume();
+      cnt++;
+      if(SymbolBucket(g_pos.Symbol()) == "METALS")
+         flMetals += v;
+     }
+   string f[9];
+   f[0] = IsoUtc(now);
+   f[1] = DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2);
+   f[2] = DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2);
+   f[3] = DoubleToString(flTotal, 2);
+   f[4] = DoubleToString(flMetals, 2);
+   f[5] = IntegerToString(cnt);
+   f[6] = DoubleToString(lots, 2);
+   f[7] = DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN), 2);
+   f[8] = DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_LEVEL), 2);
+   AppendCsvLine(JournalPath("equity\\equity_" + YmdUtc(now) + ".csv"),
+                 "ts_utc,balance,equity,floating_total,floating_metals,open_positions_count,total_lots,margin_used,margin_level\n",
+                 JoinCsv(f));
+  }
+
+//+------------------------------------------------------------------+
+double ComputeATR(const string symbol, const ENUM_TIMEFRAMES tf, const int period)
+  {
+   MqlRates r[];
+   int n = CopyRates(symbol, tf, 0, period + 1, r);
+   if(n < 2)
+      return 0.0;
+   double sum = 0.0;
+   int cnt = 0;
+   for(int i = 1; i < n; i++)
+     {
+      double tr = MathMax(r[i].high - r[i].low,
+                          MathMax(MathAbs(r[i].high - r[i - 1].close),
+                                  MathAbs(r[i].low - r[i - 1].close)));
+      sum += tr;
+      cnt++;
+     }
+   return (cnt > 0) ? sum / cnt : 0.0;
+  }
+
+//+------------------------------------------------------------------+
+string RatesToJson(const MqlRates &r[], const int cnt, const int dg)
+  {
+   string s = "[";
+   for(int i = 0; i < cnt; i++)
+     {
+      if(i > 0)
+         s += ",";
+      s += "{\"t\":\"" + IsoUtc(r[i].time) + "\",\"o\":" + DoubleToString(r[i].open, dg) +
+           ",\"h\":" + DoubleToString(r[i].high, dg) + ",\"l\":" + DoubleToString(r[i].low, dg) +
+           ",\"c\":" + DoubleToString(r[i].close, dg) +
+           ",\"tick_volume\":" + IntegerToString((long)r[i].tick_volume) + "}";
+     }
+   return s + "]";
+  }
+
+//+------------------------------------------------------------------+
+string SessionByGmtHour(const int h)
+  {
+   bool london = (h >= 7 && h < 16);
+   bool ny = (h >= 12 && h < 21);
+   bool asia = (h >= 23 || h < 8);
+   if(london && ny)
+      return "LONDON_NY_OVERLAP";
+   if(london)
+      return "LONDON";
+   if(ny)
+      return "NY";
+   if(asia)
+      return "ASIA";
+   return "OFF";
+  }
+
+//+------------------------------------------------------------------+
+void WriteMarketContext(const string symbol, const string sid)
+  {
+   if(sid == "")
+      return;
+   for(int k = 0; k < ArraySize(g_ctxDone); k++)
+      if(g_ctxDone[k] == sid)
+         return;
+   int nc = ArraySize(g_ctxDone);
+   ArrayResize(g_ctxDone, nc + 1);
+   g_ctxDone[nc] = sid;
+
+   MqlRates m1[], m15[], h1[], d1[];
+   int n1  = CopyRates(symbol, PERIOD_M1, 0, 60, m1);
+   int n15 = CopyRates(symbol, PERIOD_M15, 0, 20, m15);
+   int nh1 = CopyRates(symbol, PERIOD_H1, 0, 10, h1);
+   int nd  = CopyRates(symbol, PERIOD_D1, 0, 2, d1);
+   if(n1 < 0)
+      n1 = 0;
+   if(n15 < 0)
+      n15 = 0;
+   if(nh1 < 0)
+      nh1 = 0;
+
+   int dg = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   if(dg <= 0)
+      dg = 5;
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   if(point <= 0.0)
+      point = _Point;
+   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+   double mid = (bid + ask) / 2.0;
+   double spreadPts = (point > 0.0) ? (ask - bid) / point : 0.0;
+   double atr15 = ComputeATR(symbol, PERIOD_M15, 14);
+   double atr1h = ComputeATR(symbol, PERIOD_H1, 14);
+
+   double dayHi = 0, dayLo = 0, prevHi = 0, prevLo = 0, prevClose = 0;
+   if(nd >= 1)
+     {
+      dayHi = d1[nd - 1].high;
+      dayLo = d1[nd - 1].low;
+     }
+   if(nd >= 2)
+     {
+      prevHi = d1[nd - 2].high;
+      prevLo = d1[nd - 2].low;
+      prevClose = d1[nd - 2].close;
+     }
+
+   MqlDateTime g;
+   TimeToStruct(TimeGMT(), g);
+   string session = SessionByGmtHour(g.hour);
+
+   string js = "{";
+   js += "\"signal_id\":\"" + sid + "\",";
+   js += "\"symbol\":\"" + symbol + "\",";
+   js += "\"ts_utc\":\"" + IsoUtc(TimeGMT()) + "\",";
+   js += "\"session\":\"" + session + "\",";
+   js += "\"gmt_hour\":" + IntegerToString(g.hour) + ",";
+   js += "\"bid\":" + DoubleToString(bid, dg) + ",";
+   js += "\"ask\":" + DoubleToString(ask, dg) + ",";
+   js += "\"spread_points\":" + DoubleToString(spreadPts, 1) + ",";
+   js += "\"atr14_m15\":" + DoubleToString(atr15, dg) + ",";
+   js += "\"atr14_h1\":" + DoubleToString(atr1h, dg) + ",";
+   js += "\"day_high\":" + DoubleToString(dayHi, dg) + ",";
+   js += "\"day_low\":" + DoubleToString(dayLo, dg) + ",";
+   js += "\"prev_day_high\":" + DoubleToString(prevHi, dg) + ",";
+   js += "\"prev_day_low\":" + DoubleToString(prevLo, dg) + ",";
+   js += "\"prev_day_close\":" + DoubleToString(prevClose, dg) + ",";
+   js += "\"dist_points\":{";
+   js += "\"day_high\":" + DoubleToString((dayHi - mid) / point, 1) + ",";
+   js += "\"day_low\":" + DoubleToString((mid - dayLo) / point, 1) + ",";
+   js += "\"prev_day_high\":" + DoubleToString((prevHi - mid) / point, 1) + ",";
+   js += "\"prev_day_low\":" + DoubleToString((mid - prevLo) / point, 1) + ",";
+   js += "\"prev_day_close\":" + DoubleToString((mid - prevClose) / point, 1);
+   js += "},";
+   js += "\"bars_m1\":" + RatesToJson(m1, n1, dg) + ",";
+   js += "\"bars_m15\":" + RatesToJson(m15, n15, dg) + ",";
+   js += "\"bars_h1\":" + RatesToJson(h1, nh1, dg);
+   js += "}\n";
+
+   string path = JournalPath("context\\ctx_" + SanitizeName(sid) + ".json");
+   int h = FileOpen(path, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_READ | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE)
+     {
+      Print("[TradinGo] context write failed path=", path, " err=", GetLastError());
+      return;
+     }
+   FileWriteString(h, js);
+   FileClose(h);
+   Print("[TradinGo] CONTEXT written ", path);
+  }
+
+//+------------------------------------------------------------------+
+void RefreshInstanceLock()
+  {
+   if(InpSingleInstanceLock)
+      GlobalVariableSet(TG_LOCK_NAME, (double)TimeCurrent());
+  }
+
 //+------------------------------------------------------------------+
 int OnInit()
   {
+   // Single-instance lock: refuse to start if another live instance holds the lock.
+   if(InpSingleInstanceLock && GlobalVariableCheck(TG_LOCK_NAME))
+     {
+      double ts = GlobalVariableGet(TG_LOCK_NAME);
+      long age = (long)(TimeCurrent() - (datetime)ts);
+      if(age < InpLockStaleSec)
+        {
+         Print("[TradinGo] INIT_FAILED single-instance lock held (age=", age,
+               "s < stale=", InpLockStaleSec, "s). Another TG_TradinGoEA is running. ",
+               "If this is stale, delete GlobalVariable '", TG_LOCK_NAME, "'.");
+         return INIT_FAILED;
+        }
+      Print("[TradinGo] stale lock detected (age=", age, "s >= ", InpLockStaleSec,
+            "s) -> reclaiming");
+     }
+   if(InpSingleInstanceLock)
+      GlobalVariableSet(TG_LOCK_NAME, (double)TimeCurrent());
+
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
-   Print("[TradinGo] EA v2.09 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.10 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints,
@@ -1221,10 +2258,22 @@ int OnInit()
          " stack_opens=", InpStackOpensIfFlatBusy,
          " (requires JSON allow_stack)",
          " stop_buffer_pts=", InpStopBufferPoints);
+   Print("[TradinGo] v2.10 hardening | killswitch currency=ACCOUNT_CURRENCY (",
+         AccountInfoString(ACCOUNT_CURRENCY), ")",
+         " max_floating_loss=", DoubleToString(InpMaxFloatingLossUSD, 2),
+         " cooldown_min=", InpKillSwitchCooldownMin,
+         " max_holding_min=", InpMaxHoldingMinutes,
+         " heartbeat_max_age_sec=", InpHeartbeatMaxAgeSec,
+         " hb_file=", InpHeartbeatFile,
+         " equity_sample_sec=", InpEquitySampleSec,
+         " journal_prefix=", InpJournalPrefix,
+         " single_instance_lock=", InpSingleInstanceLock,
+         " lock_stale_sec=", InpLockStaleSec);
    for(int i = 0; i < g_channelCount; i++)
       Print("[TradinGo]  watch ", g_channelFile[i]);
    if(InpIgnoreExistingOnInit)
       SeedAndClearExistingSignals();
+   RetrackOpenPositions();
    return INIT_SUCCEEDED;
   }
 
@@ -1232,18 +2281,26 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   if(InpSingleInstanceLock)
+      GlobalVariableDel(TG_LOCK_NAME);
   }
 
 //+------------------------------------------------------------------+
 void OnTimer()
   {
+   RefreshInstanceLock();
+   CheckHeartbeat();
    for(int i = 0; i < g_channelCount; i++)
       PollChannel(i);
+   DetectClosedPositions();
+   SampleEquity();
   }
 
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   // timer-driven; tick hook for future BE-on-TP1 monitor
+   CheckFloatingKillSwitch();
+   CheckMaxHolding();
+   UpdateExcursions();
   }
 //+------------------------------------------------------------------+

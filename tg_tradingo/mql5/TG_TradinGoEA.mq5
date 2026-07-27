@@ -14,7 +14,9 @@
 
 //--- inputs
 // Default: read signal_ch_*.json from MQL5\\Files (where the bridge writes).
-// Set InpUseAbsolutePath=true only for a custom folder outside MQL5\\Files.
+// InpUseAbsolutePath: MT5 FileOpen is sandboxed to MQL5\\Files (and Common\\Files).
+// Drive-letter paths like C:\\TG_TradinGo_Signals will fail with err=5004.
+// Prefer a junction: MQL5\\Files\\tradingo -> share folder, then InpSignalsPath=tradingo\\
 input string InpSignalsPath        = "";
 input bool   InpUseAbsolutePath    = false;
 input string InpChannels           = "gold,forex,oro,stark,ivan";
@@ -2347,6 +2349,13 @@ int OnInit()
    ParseChannels();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
+   if(InpUseAbsolutePath && StringLen(InpSignalsPath) >= 2 &&
+      StringGetCharacter(InpSignalsPath, 1) == ':')
+     {
+      Print("[TradinGo] WARNING: InpUseAbsolutePath with drive-letter path will fail ",
+            "FileOpen (MT5 sandbox, err=5004). Use junction under MQL5\\Files ",
+            "and set InpUseAbsolutePath=false, InpSignalsPath=tradingo\\");
+     }
    Print("[TradinGo] EA v2.11 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,

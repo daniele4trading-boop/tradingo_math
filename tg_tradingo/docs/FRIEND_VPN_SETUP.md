@@ -170,10 +170,14 @@ MT5 spesso **non** apre bene UNC arbitrari. Metodo pratico:
 Trova l’HASH del terminal amico (cartella sotto `%APPDATA%\MetaQuotes\Terminal\`).
 
 ```powershell
-$files = "$env:APPDATA\MetaQuotes\Terminal\<HASH>\MQL5\Files"
+# Gamehosting / WriteShare locale (Tailscale SMB -> C:\TG_TradinGo_Signals)
+$term = (Get-ChildItem "$env:APPDATA\MetaQuotes\Terminal" -Directory |
+  Where-Object { Test-Path "$($_.FullName)\MQL5\Files" } |
+  Select-Object -First 1).FullName
+$files = Join-Path $term "MQL5\Files"
 New-Item -ItemType Directory -Path $files -Force | Out-Null
-# Rimuovi tradingo se esiste già come cartella normale
-cmd /c mklink /J "$files\tradingo" "\\10.8.0.1\TGSignals"
+if (Test-Path "$files\tradingo") { cmd /c rmdir "$files\tradingo" }
+cmd /c mklink /J "$files\tradingo" "C:\TG_TradinGo_Signals"
 dir "$files\tradingo"
 ```
 
@@ -186,7 +190,9 @@ Parametri EA:
 | `InpChannels` | `gold,forex,oro,stark,ivan` |
 | `InpLotMultiplier` | basso in demo (es. `0.5` o `1.0`) |
 
-Log atteso: `EA v2.09 started` e poi `signal_ch_*.json action=...`.
+**Non** usare `InpUseAbsolutePath=true` con `C:\TG_TradinGo_Signals\` — MT5 sandbox → `FileOpen` err=5004.
+
+Log atteso: `EA v2.11 started` e poi `signal_ch_*.json action=...`.
 
 ---
 

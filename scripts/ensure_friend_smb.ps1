@@ -76,12 +76,19 @@ if (-not (Test-Path -LiteralPath '$ShareUnc')) {
 }
 "@
     Set-Content -LiteralPath $ps1 -Value $logonBody -Encoding Ascii
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ps1`""
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
-    Write-Ok "Logon task registered: $taskName (uses cmdkey; no password in the task file)"
+    try {
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$ps1`""
+        $trigger = New-ScheduledTaskTrigger -AtLogOn
+        $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+        Write-Ok "Logon task registered: $taskName (uses cmdkey; no password in the task file)"
+    }
+    catch {
+        Write-Host "[WARN] Logon task NOT registered (Access denied). Run this script once in Admin PowerShell if you want auto-remap at logon." -ForegroundColor Yellow
+        Write-Host ("       Detail: " + $_.Exception.Message) -ForegroundColor Yellow
+        Write-Info "cmdkey + persistent net use are already saved for this Windows user — usually enough."
+    }
 }
 
 Write-Host ""

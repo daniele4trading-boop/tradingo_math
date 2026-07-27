@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.08
+TG TradinGo Bridge - v2.09
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -58,7 +58,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.08"
+BRIDGE_VERSION = "2.09"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -1336,14 +1336,20 @@ async def run_bridge():
     for cid, cfg in channel_map.items():
         log.info(f"  {cfg['id']} [{cid}] {cfg['name']} (parser: {cfg['parser']})")
 
-    # Inizializza file segnale vuoti
+    # Inizializza file segnale vuoti (never crash the bridge if a UNC share is down)
     for mt5_path in get_mt5_paths():
         for cfg in channel_map.values():
             f = Path(mt5_path) / cfg["signal_file"]
-            if not f.exists():
-                f.parent.mkdir(parents=True, exist_ok=True)
-                atomic_write_text(f, json.dumps({"action": "NONE"}, indent=2))
+            try:
+                if f.exists():
+                    continue
+                # Do not mkdir UNC roots (\\host\share) — share must already exist.
+                if not is_unc_path(f):
+                    f.parent.mkdir(parents=True, exist_ok=True)
+                atomic_write_text_timed(f, json.dumps({"action": "NONE"}, indent=2))
                 log.info(f"Init: {f}")
+            except Exception as exc:
+                log.error(f"Init skipped {f}: {exc}")
 
     client = TelegramClient(tg_cfg["session_file"], tg_cfg["api_id"], tg_cfg["api_hash"])
 

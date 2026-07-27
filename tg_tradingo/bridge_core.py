@@ -118,7 +118,8 @@ def match_close_all_intent(upper: str) -> tuple[bool, float | None]:
     verb = (
         r"(?:"
         r"USCIAMO|USCITE|"
-        r"CHIUDIAMO|CHIUDETE|CHIUDERE|"
+        # CHIDUAMO/CHIUDAMO = common mobile typos for CHIUDIAMO
+        r"CHIUDIAMO|CHIDUAMO|CHIUDAMO|CHIUDETE|CHIUDERE|"
         r"CHIUDO|"
         r"CLOSING|CLOSE|EXIT|"
         r"CLOSA(?:RE|TE|MO)?"

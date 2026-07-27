@@ -751,6 +751,11 @@ class TestCloseIntentHelper:
         assert ok is True
         assert px == 5054.0
 
+    def test_match_chiudiamo_typos(self):
+        for text in ("CHIDUAMO ORA", "Chiduamo ora !", "CHIUDAMO ORA"):
+            ok, _ = match_close_all_intent(text.upper())
+            assert ok is True, text
+
     def test_signal_id_stable(self):
         a = make_signal_id(1, 2, "NEW")
         b = make_signal_id(1, 2, "NEW")

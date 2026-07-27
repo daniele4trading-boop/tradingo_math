@@ -1,0 +1,43 @@
+; TG_TradinGoEA — preset Gamehosting / VPS amico (demo)
+; Path: junction MQL5\Files\tradingo -> C:\TG_TradinGo_Signals (Tailscale SMB)
+; Canali: tutti. Lotti: 0 = usa fixed_lot dal JSON bridge (tipico 0.10/TP, 0.20 single)
+; Richiede EA v2.11+ e junction tradingo gia' creata
+; Carica da: Inputs EA -> Load -> questo file
+
+InpSignalsPath=tradingo\\
+InpUseAbsolutePath=false
+InpChannels=gold,forex,oro,stark,ivan
+InpSymbolSuffix=
+InpLotMultiplier=1.0
+InpAddLotFactor=0.5
+InpLotIvan=0.0
+InpLotStark=0.0
+InpLotGold=0.0
+InpLotOro=0.0
+InpLotForex=0.0
+InpTagIvan=IT
+InpTagStark=AS
+InpTagGold=
+InpTagOro=
+InpTagForex=
+InpCommentUseTgPrefix=false
+InpMaxSlippagePoints=50
+InpPollMs=500
+InpRangeTolerancePoints=150
+InpOroRangeTolerancePoints=250
+InpLogCancelledSignals=true
+InpClearSignalAfterProcess=true
+InpIgnoreExistingOnInit=true
+InpStackOpensIfFlatBusy=true
+InpStopBufferPoints=20
+InpAutoBreakEvenOnTp1=true
+InpMagicOffset=0
+InpMaxFloatingLossUSD=150.0
+InpKillSwitchCooldownMin=60
+InpMaxHoldingMinutes=0
+InpHeartbeatMaxAgeSec=180
+InpHeartbeatFile=tradingo_heartbeat.json
+InpEquitySampleSec=60
+InpJournalPrefix=journal\\
+InpSingleInstanceLock=true
+InpLockStaleSec=120

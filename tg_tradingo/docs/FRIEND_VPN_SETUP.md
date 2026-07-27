@@ -181,16 +181,22 @@ cmd /c mklink /J "$files\tradingo" "C:\TG_TradinGo_Signals"
 dir "$files\tradingo"
 ```
 
-Parametri EA:
+Parametri EA (o carica il preset):
+
+**Preset:** [`mql5/presets/TG_TradinGo_Gamehosting_Demo.set`](../mql5/presets/TG_TradinGo_Gamehosting_Demo.set)  
+→ Inputs EA → **Load** (path `tradingo\`, tutti i canali, lotti dal JSON bridge).
 
 | Input | Valore |
 |-------|--------|
 | `InpUseAbsolutePath` | `false` |
 | `InpSignalsPath` | `tradingo\` |
 | `InpChannels` | `gold,forex,oro,stark,ivan` |
-| `InpLotMultiplier` | basso in demo (es. `0.5` o `1.0`) |
+| `InpLot*` | `0` = lotti dal bridge (`fixed_lot`) |
+| `InpLotMultiplier` | `1.0` (o `0.5` per dimezzare in demo) |
 
 **Non** usare `InpUseAbsolutePath=true` con `C:\TG_TradinGo_Signals\` — MT5 sandbox → `FileOpen` err=5004.
+
+Per **Moneta** (solo Ivan/Stark, lotti fissi) usa invece `TG_TradinGo_Moneta_10k.set`.
 
 Log atteso: `EA v2.11 started` e poi `signal_ch_*.json action=...`.
 

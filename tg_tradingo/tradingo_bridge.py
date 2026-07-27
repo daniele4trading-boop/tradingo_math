@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.06
+TG TradinGo Bridge - v2.07
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:

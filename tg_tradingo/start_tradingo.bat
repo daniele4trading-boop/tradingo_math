@@ -3,7 +3,7 @@ title TG TradinGo Bridge
 cd /d C:\TG_TradinGo
 
 echo ============================================
-echo  TG TradinGo Bridge v2.06 - Avvio
+echo  TG TradinGo Bridge v2.07 - Avvio
 echo ============================================
 echo.
 

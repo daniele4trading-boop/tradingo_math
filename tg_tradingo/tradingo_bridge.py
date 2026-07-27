@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.07
+TG TradinGo Bridge - v2.08
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -26,8 +26,10 @@ from telethon import TelegramClient, events
 from bridge_core import (
     BridgeState,
     ProcessedMessageStore,
-    atomic_write_text,
     apply_lot_rules,
+    atomic_write_text,
+    atomic_write_text_timed,
+    is_unc_path,
     make_signal_id,
     match_close_all_intent,
     match_close_price_followup,
@@ -56,7 +58,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.07"
+BRIDGE_VERSION = "2.08"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -134,19 +136,33 @@ def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
         return False
 
     payload = json.dumps(signal, indent=2)
-    for mt5_path in get_mt5_paths():
+    # Local disks first; UNC/Tailscale shares last so a hung SMB cannot delay Contabo.
+    paths = sorted(
+        get_mt5_paths(),
+        key=lambda p: (1 if is_unc_path(p) else 0, str(p).lower()),
+    )
+    for mt5_path in paths:
         out_file = Path(mt5_path) / channel_cfg["signal_file"]
         try:
-            atomic_write_text(out_file, payload)
+            # Short timeout on UNC so Telethon event loop never freezes for minutes.
+            atomic_write_text_timed(
+                out_file,
+                payload,
+                retries=3 if is_unc_path(out_file) else 5,
+            )
             written_targets.append(str(out_file))
             log.info(f"[{channel_cfg['id']}] -> {out_file.name} | "
                      f"action={signal.get('action')} symbol={signal.get('symbol','')} "
                      f"dir={signal.get('direction','')} sid={signal.get('signal_id','')}")
         except Exception as e:
             log.error(f"[{channel_cfg['id']}] Errore scrittura {out_file}: {e}")
-            return False
+            # Keep going: Contabo local must succeed even if Gamehosting share hangs.
+            continue
     if meta is not None:
         meta["written_targets"] = written_targets
+    if not written_targets:
+        log.error(f"[{channel_cfg['id']}] Nessun target mt5_instances scritto")
+        return False
     return True
 
 

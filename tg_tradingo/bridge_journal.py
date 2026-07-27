@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from bridge_core import atomic_write_text_timed, is_unc_path
+
 log = logging.getLogger("TradinGo")
 
 
@@ -36,11 +38,14 @@ def append_bridge_event(config: dict, row: dict[str, Any]) -> None:
 
 
 def write_heartbeat(config: dict, interval_hint_sec: int = 30) -> None:
-    """Rewrite heartbeat file for the EA (UTC timestamp)."""
+    """Rewrite heartbeat file for the EA (UTC timestamp).
+
+    Uses atomic replace so the EA does not briefly see a missing file (SMB race).
+    UNC targets are timed out so a hung Tailscale share cannot freeze Telethon.
+    """
     try:
         signals = Path(config["paths"]["signals"])
         signals.mkdir(parents=True, exist_ok=True)
-        # Also write under each mt5_instances signals_path
         targets = [signals]
         for inst in config.get("mt5_instances", []) or []:
             if not inst.get("enabled", True):
@@ -48,17 +53,30 @@ def write_heartbeat(config: dict, interval_hint_sec: int = 30) -> None:
             p = inst.get("signals_path")
             if p:
                 targets.append(Path(p))
+        # De-dupe while preserving order (local first)
+        seen: set[str] = set()
+        ordered: list[Path] = []
+        for t in sorted(targets, key=lambda x: (1 if is_unc_path(x) else 0, str(x).lower())):
+            key = str(t).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append(t)
         payload = {
             "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "interval_sec": interval_hint_sec,
             "source": "tradingo_bridge",
         }
         text = json.dumps(payload, indent=2)
-        for t in targets:
+        for t in ordered:
             try:
                 t.mkdir(parents=True, exist_ok=True)
-                (t / "tradingo_heartbeat.json").write_text(text, encoding="utf-8")
+                atomic_write_text_timed(
+                    t / "tradingo_heartbeat.json",
+                    text,
+                    retries=2 if is_unc_path(t) else 3,
+                )
             except Exception as exc:
-                log.debug("heartbeat write %s: %s", t, exc)
+                log.warning("heartbeat write %s: %s", t, exc)
     except Exception as exc:
         log.warning("heartbeat failed: %s", exc)

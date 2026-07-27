@@ -12,6 +12,8 @@ import os
 import re
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -245,6 +247,44 @@ def atomic_write_text(
 
     if last_err is not None:
         raise last_err
+
+
+_WRITE_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="tg_write")
+
+
+def is_unc_path(path: Path | str) -> bool:
+    s = str(path).replace("/", "\\")
+    return s.startswith("\\\\")
+
+
+def atomic_write_text_timed(
+    path: Path,
+    payload: str,
+    *,
+    timeout_sec: float | None = None,
+    retries: int = 5,
+    backoff_ms: float = 40.0,
+) -> None:
+    """Like atomic_write_text but never block the caller forever on hung SMB/UNC.
+
+    Default timeout: 4s for UNC shares, 20s for local disks.
+    """
+    path = Path(path)
+    if timeout_sec is None:
+        timeout_sec = 4.0 if is_unc_path(path) else 20.0
+    fut = _WRITE_POOL.submit(
+        atomic_write_text,
+        path,
+        payload,
+        retries=retries,
+        backoff_ms=backoff_ms,
+    )
+    try:
+        fut.result(timeout=timeout_sec)
+    except FuturesTimeout as exc:
+        raise TimeoutError(
+            f"atomic_write timeout after {timeout_sec:.1f}s path={path}"
+        ) from exc
 
 
 def atomic_write_json(path: Path, data: dict) -> None:

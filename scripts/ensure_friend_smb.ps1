@@ -49,8 +49,11 @@ if ($p.ExitCode -ne 0) {
 Write-Ok "cmdkey stored for $hostName"
 
 Write-Info "Mapping share (persistent)"
-net use $ShareUnc /delete /y 2>$null | Out-Null
-net use $ShareUnc /user:$User $plain /persistent:yes | Out-Null
+cmd /c "net use $ShareUnc /delete /y >nul 2>&1"
+$map = cmd /c "net use $ShareUnc /user:$User $plain /persistent:yes"
+if ($LASTEXITCODE -ne 0) {
+    throw "net use map failed: $map"
+}
 Write-Ok "net use ok: $ShareUnc"
 
 $dir = Get-ChildItem -LiteralPath $ShareUnc -ErrorAction Stop

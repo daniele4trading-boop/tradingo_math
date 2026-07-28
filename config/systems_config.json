@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "global": {
+    "dashboard_port": 8502,
+    "backup_target": "C:\\Users\\danie\\OneDrive\\DANIELE\\TRADINGO 2026",
+    "logs_dir": "logs",
+    "pid_dir": "logs"
+  },
+  "risk_limits": {
+    "prop_daily_drawdown_max_pct": 3.0,
+    "prop_total_drawdown_max_pct": 10.0
+  },
+  "systems": {
+    "tradingo_math_prop": {
+      "enabled": true,
+      "symbol": "XAUUSD",
+      "lot": 1.0,
+      "max_spread_points": 65,
+      "notes": "Parametri operativi reali restano nel codice/config legacy finche' non viene completata la migrazione."
+    },
+    "tradingo_math_hedge": {
+      "enabled": true,
+      "symbol": "XAUUSD",
+      "lot": 0.14,
+      "hedge_floor_equity": 9400.0
+    },
+    "tradingo_main": {
+      "enabled": true,
+      "notes": "Da verificare prima di rendere modificabili i parametri."
+    },
+    "tradingold_h1_tsentrygold": {
+      "enabled": true,
+      "timeframe": "H1",
+      "broker_timezone": "UTC+3",
+      "notes": "TradinGOld H1: confermare magic e parametri EA."
+    },
+    "telegram_bridge": {
+      "enabled": false
+    },
+    "mt4_bridge": {
+      "enabled": false
+    },
+    "tradingo_platform_dashboard": {
+      "enabled": true,
+      "port": 8502
+    }
+  },
+  "manual_trading": {
+    "orders_db": "data/manual_orders.sqlite",
+    "default_tenant_id": "daniele",
+    "default_symbol": "XAUUSD",
+    "default_reference_price": 0.0,
+    "default_sl_distance": 10.0,
+    "default_tp_distance": 20.0,
+    "default_prop_balance": 100000.0,
+    "default_hedge_balance": 10000.0,
+    "default_prop_risk_pct": 0.5,
+    "contract_size": 100.0,
+    "hedge_lot_multiplier": 1.4,
+    "max_prop_lot": 10.0,
+    "max_hedge_lot": 10.0,
+    "execution_enabled": true,
+    "setup_scanner_enabled": false,
+    "notes": "Fase 2: esecuzione demo abilitata. Hedge first, prop second; equity floor hedge chiude posizioni hedge; fase2 protegge/rimuove TP.",
+    "executor_daemon_enabled": true,
+    "executor_loop_interval_sec": 2.0,
+    "prop_terminal": "C:\\Program Files\\STARTRADER Financial MetaTrader 5\\terminal64.exe",
+    "hedge_terminal": "C:\\Program Files\\Ultima Markets MT5 Terminal\\terminal64.exe",
+    "prop_magic": 20260001,
+    "hedge_magic": 20260002,
+    "prop_deviation": 30,
+    "hedge_deviation": 30,
+    "hedge_equity_floor": 0.0,
+    "hedge_close_scope": "all",
+    "phase2_enabled": true,
+    "phase2_trigger_sl_fraction": 0.5,
+    "prop_contract_size": 100.0,
+    "hedge_contract_size": 100.0
+  }
+}

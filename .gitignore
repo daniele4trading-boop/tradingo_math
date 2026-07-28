@@ -1,18 +1,27 @@
 .venv/
+venv/
 __pycache__/
 *.py[cod]
 *.pyo
 .Python
 .env
 .env.*
+*.log
+*.pid
+*.sqlite
+*.db
 
 # Runtime logs (keep folder)
 state/statarb_logs/*.log
 state/statarb_logs/*.txt
 !state/statarb_logs/.gitkeep
+logs/*
+!logs/.gitkeep
 
 # Runtime data cache (Modulo 2) — non versionare CSV MT5
 state/data/**/*.csv
+data/*
+!data/.gitkeep
 
 # Runtime snapshots
 state/risk/*.json
@@ -22,8 +31,14 @@ state/backtest/*.json
 # Streamlit
 .streamlit/secrets.toml
 
+# Backtest artefacts (platform control plane)
+backtest/data/*
+!backtest/data/.gitkeep
+backtest/output/
+
 # TG TradinGo — runtime VPS (non versionare)
 tg_tradingo/tradingo_config.json
+tg_tradingo/webapp_config.json
 C:/TG_TradinGo/tradingo_config.json
 tg_tradingo/logs/*
 !tg_tradingo/logs/.gitkeep

@@ -50,7 +50,8 @@ def load_config() -> dict:
         example = _BASE_DIR / "webapp_config.example.json"
         if example.exists():
             path = str(example)
-    with open(path, "r", encoding="utf-8") as fh:
+    # utf-8-sig: Windows PowerShell Set-Content -Encoding UTF8 often writes a BOM
+    with open(path, "r", encoding="utf-8-sig") as fh:
         return json.load(fh)
 
 

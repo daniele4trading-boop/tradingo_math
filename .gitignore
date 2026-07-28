@@ -15,13 +15,9 @@ __pycache__/
 state/statarb_logs/*.log
 state/statarb_logs/*.txt
 !state/statarb_logs/.gitkeep
-logs/*
-!logs/.gitkeep
 
 # Runtime data cache (Modulo 2) — non versionare CSV MT5
 state/data/**/*.csv
-data/*
-!data/.gitkeep
 
 # Runtime snapshots
 state/risk/*.json
@@ -30,11 +26,6 @@ state/backtest/*.json
 
 # Streamlit
 .streamlit/secrets.toml
-
-# Backtest artefacts (platform control plane)
-backtest/data/*
-!backtest/data/.gitkeep
-backtest/output/
 
 # TG TradinGo — runtime VPS (non versionare)
 tg_tradingo/tradingo_config.json

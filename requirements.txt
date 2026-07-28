@@ -6,7 +6,6 @@ statsmodels
 pandas-stubs
 openpyxl
 streamlit
-matplotlib
 requests
 APScheduler
 python-dateutil

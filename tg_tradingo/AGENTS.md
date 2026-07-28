@@ -62,12 +62,15 @@ TG_TradinGoEA.mq5  (legge JSON, esegue ordini MT5)
 - `sample_last_24h.py` — ultimi N ore + dry-run parser + canali sconosciuti attivi
 - `fetch_apr21.py` — estrazione messaggi per data
 - `start_tradingo.bat` — avvio bridge
+- `webapp/` — dashboard monitor mobile (FastAPI, porta 8600 via Tailscale) — vedi `docs/WEBAPP.md`
+- `start_webapp.bat` — avvio webapp monitor
 - `README.md` — guida operativa
 
 ### Config (NON versionare segreti)
 
 - `tradingo_config.json` — `api_id`, `api_hash`, path, canali, `mt5_instances`
-- Template in repo: `tradingo_config.example.json`
+- `webapp_config.json` — utenti (hash), secret, check semafori (solo VPS)
+- Template in repo: `tradingo_config.example.json`, `webapp_config.example.json`
 
 ### Runtime (NON versionare)
 

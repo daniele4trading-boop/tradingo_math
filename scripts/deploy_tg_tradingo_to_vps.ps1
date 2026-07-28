@@ -42,10 +42,17 @@ $deployFiles = @(
     "analyze_journal.py",
     "resolve_channels.py",
     "start_tradingo.bat",
+    "start_webapp.bat",
+    "webapp_config.example.json",
     "requirements.txt",
     "README.md",
     "AGENTS.md",
     "INVENTORY.md"
+)
+
+# Folders copied recursively (code only, never runtime data)
+$deployDirs = @(
+    "webapp"
 )
 
 # EA source (copy only; MetaEditor F7 remains manual on VPS)
@@ -58,6 +65,7 @@ $eaTerminalExperts = @(
 # Never overwrite these in production
 $neverOverwrite = @(
     "tradingo_config.json",
+    "webapp_config.json",
     "signals\signal_ch_gold.json",
     "signals\signal_ch_forex.json",
     "signals\signal_ch_oro.json",
@@ -218,6 +226,22 @@ foreach ($f in $deployFiles) {
     if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
     Copy-Item $from $to -Force
     Write-Host "OK $f"
+}
+
+foreach ($d in $deployDirs) {
+    $fromDir = Join-Path $src $d
+    $toDir = Join-Path $dst $d
+    if (-not (Test-Path $fromDir)) {
+        Write-Host "SKIP folder (missing in repo): $d" -ForegroundColor Yellow
+        continue
+    }
+    if ($DryRun) {
+        Write-Host "[DRY-RUN] copy folder $d\ (recursive)"
+        continue
+    }
+    New-Item -ItemType Directory -Path $toDir -Force | Out-Null
+    Copy-Item (Join-Path $fromDir "*") $toDir -Recurse -Force
+    Write-Host "OK $d\ (folder)"
 }
 
 # --- Deploy EA mq5 (no compile) ---

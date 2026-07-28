@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>TG TradinGo — Accesso</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="login-wrap">
+  <form class="login-box" method="post" action="/login" autocomplete="off">
+    <h1>TG TradinGo</h1>
+    <label for="username">Utente</label>
+    <input id="username" name="username" type="text" required autofocus autocapitalize="none">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required>
+    <!-- honeypot antibot: gli umani non lo vedono, i bot lo compilano -->
+    <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
+    <button type="submit">Entra</button>
+    <div class="login-error" id="err"></div>
+  </form>
+</div>
+<script>
+const p = new URLSearchParams(location.search);
+const err = document.getElementById("err");
+if (p.get("err")) err.textContent = "Credenziali non valide.";
+if (p.get("locked")) err.textContent =
+  "Troppi tentativi. Riprova tra " + Math.ceil(parseInt(p.get("locked"), 10) / 60) + " min.";
+</script>
+</body>
+</html>

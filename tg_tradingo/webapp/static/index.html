@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>TG TradinGo — Monitor</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>TG TradinGo</h1>
+  <div class="meta">
+    <span class="overall-dot dot off" id="overall"></span>
+    <span id="updated">—</span>
+    <a href="/logout">Esci</a>
+  </div>
+</header>
+
+<main>
+  <h2>Infrastruttura</h2>
+  <div class="grid" id="lights"></div>
+
+  <h2>Canali (oggi)</h2>
+  <div class="grid" id="channels"></div>
+
+  <h2>Ultimi eventi</h2>
+  <div class="card" style="overflow-x:auto">
+    <table class="events"><tbody id="events"></tbody></table>
+  </div>
+</main>
+
+<footer>TG TradinGo Monitor — Fase 1 (sola lettura)</footer>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

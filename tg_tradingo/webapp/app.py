@@ -1,0 +1,182 @@
+"""TG TradinGo monitoring webapp (FastAPI).
+
+Fase 1: dashboard read-only con semafori. Fase 3 (ordini) predisposta ma
+disabilitata via config (`orders_enabled: false`).
+
+Avvio (da C:\\TG_TradinGo):
+    python -m webapp.app
+Config: webapp_config.json accanto a tradingo_config.json
+(override con env TRADINGO_WEBAPP_CONFIG).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import sys
+from pathlib import Path
+
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+)
+from fastapi.staticfiles import StaticFiles
+
+_PKG_DIR = Path(__file__).resolve().parent
+_BASE_DIR = _PKG_DIR.parent
+if str(_BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(_BASE_DIR))
+
+from webapp.auth import RateLimiter, SessionManager, verify_password  # noqa: E402
+from webapp.collector import Collector  # noqa: E402
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+log = logging.getLogger("TradinGoWeb")
+
+CONFIG_FILE = os.environ.get(
+    "TRADINGO_WEBAPP_CONFIG",
+    str(_BASE_DIR / "webapp_config.json"),
+)
+
+COOKIE_NAME = "tg_session"
+
+
+def load_config() -> dict:
+    path = CONFIG_FILE
+    if not os.path.exists(path):
+        example = _BASE_DIR / "webapp_config.example.json"
+        if example.exists():
+            path = str(example)
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+CONFIG = load_config()
+
+sessions = SessionManager(
+    CONFIG.get("secret_key", ""),
+    hours=float(CONFIG.get("session_hours", 12)),
+)
+limiter = RateLimiter(
+    max_attempts=int(CONFIG.get("login_max_attempts", 5)),
+    window_sec=int(CONFIG.get("login_lockout_minutes", 15)) * 60,
+)
+collector = Collector(CONFIG)
+
+app = FastAPI(title="TG TradinGo Monitor", docs_url=None, redoc_url=None, openapi_url=None)
+app.mount("/static", StaticFiles(directory=str(_PKG_DIR / "static")), name="static")
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    collector.start()
+    log.info("TG TradinGo webapp avviata (Fase 1 monitor)")
+
+
+def current_user(request: Request) -> str | None:
+    return sessions.verify(request.cookies.get(COOKIE_NAME))
+
+
+@app.get("/")
+def index(request: Request):
+    if not current_user(request):
+        return RedirectResponse("/login", status_code=302)
+    return FileResponse(_PKG_DIR / "static" / "index.html")
+
+
+@app.get("/login")
+def login_page(request: Request):
+    if current_user(request):
+        return RedirectResponse("/", status_code=302)
+    return FileResponse(_PKG_DIR / "static" / "login.html")
+
+
+@app.post("/login")
+def login(request: Request, username: str = Form(""), password: str = Form(""), website: str = Form("")):
+    ip = request.client.host if request.client else "?"
+    keys = [f"ip:{ip}", f"user:{username.lower()}"]
+
+    # Honeypot: bots fill the hidden "website" field -> treat as failure.
+    if website:
+        for k in keys:
+            limiter.record_failure(k)
+        return RedirectResponse("/login?err=1", status_code=302)
+
+    for k in keys:
+        if limiter.is_locked(k):
+            retry = max(limiter.retry_after_sec(k), 1)
+            log.warning("login lockout %s (retry in %ss)", k, retry)
+            return RedirectResponse(f"/login?locked={retry}", status_code=302)
+
+    user_cfg = next(
+        (u for u in CONFIG.get("users", []) if u.get("username", "").lower() == username.lower()),
+        None,
+    )
+    ok = bool(user_cfg) and verify_password(password, user_cfg.get("password_hash", ""))
+    if not ok:
+        for k in keys:
+            limiter.record_failure(k)
+        log.warning("login fallito user=%r ip=%s", username, ip)
+        return RedirectResponse("/login?err=1", status_code=302)
+
+    for k in keys:
+        limiter.reset(k)
+    token = sessions.create(user_cfg["username"])
+    resp = RedirectResponse("/", status_code=302)
+    resp.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=sessions.ttl_sec,
+        httponly=True,
+        samesite="lax",
+    )
+    log.info("login ok user=%s ip=%s", user_cfg["username"], ip)
+    return resp
+
+
+@app.get("/logout")
+def logout():
+    resp = RedirectResponse("/login", status_code=302)
+    resp.delete_cookie(COOKIE_NAME)
+    return resp
+
+
+@app.get("/api/status")
+def api_status(request: Request):
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "non autenticato"}, status_code=401)
+    snap = collector.snapshot()
+    snap["user"] = user
+    return JSONResponse(snap)
+
+
+@app.post("/api/order")
+def api_order(request: Request):
+    """Fase 3 (inserimento ordini): predisposta, disabilitata da config."""
+    user = current_user(request)
+    if not user:
+        return JSONResponse({"error": "non autenticato"}, status_code=401)
+    if not CONFIG.get("orders_enabled", False):
+        return JSONResponse(
+            {"error": "ordini disabilitati (fase 3 non attiva)"}, status_code=403
+        )
+    return JSONResponse({"error": "non implementato"}, status_code=501)
+
+
+def main() -> None:
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host=CONFIG.get("host", "127.0.0.1"),
+        port=int(CONFIG.get("port", 8600)),
+        log_level="info",
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -135,5 +135,6 @@ Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -li
 
 Write-Host ""
 Write-WarnLine "Vantage: leave chart + EA attached, AutoTrading ON, save profile (default)."
-Write-WarnLine "After reboot expect: Tailscale -> user logon -> SMB task -> MT5 (~20s) -> bridge (~45s)."
-Write-Info "Today WITHOUT these tasks: bridge does NOT auto-start. Run setup before relying on reboot."
+Write-WarnLine "After reboot expect: Tailscale -> user logon -> SMB task -> MT5 (~20s) -> bridge (~90s)."
+Write-WarnLine "Enable Windows auto-logon on Contabo or AtLogOn tasks only run after RDP login."
+Write-Info "Re-run this script after changing delays; EnsureFriendSmb must stay Ready."

@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.09
+TG TradinGo Bridge - v2.10
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -58,7 +58,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.09"
+BRIDGE_VERSION = "2.10"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -741,11 +741,19 @@ def _parse_oro_direction_entry(upper: str) -> tuple[str | None, float | None, li
             return direction, None, [min(entry1, entry2), max(entry1, entry2)]
         return direction, entry1, None
 
+    # "Buy now 4042" / "SELL NOW @4038" — NOW must not block BUY/SELL + price
+    m = re.search(r"\b(BUY|SELL)\s+NOW\s*@?\s*([\d.,]+)", upper)
+    if m:
+        return m.group(1), pf(m.group(2)), None
+    m = re.search(r"\bNOW\s+(BUY|SELL)\s*@?\s*([\d.,]+)", upper)
+    if m:
+        return m.group(1), pf(m.group(2)), None
+
     m = re.search(r"([\d.,]+)\s+(BUY|SELL)\b", upper)
     if m:
         return m.group(2), pf(m.group(1)), None
 
-    m = re.search(r"\b(BUY|SELL)\s+([\d.,]+)", upper)
+    m = re.search(r"\b(BUY|SELL)\s+@?\s*([\d.,]+)", upper)
     if m:
         return m.group(1), pf(m.group(2)), None
 
@@ -948,11 +956,32 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
                 "magic_base":  ch["magic_base"],
                 "raw_message": raw,
             }
+        # Combined SL+TP without pending: never inherit stale oro_last_trade
+        # entry/range (07:51 bug — "Buy now 4042" missed → OPEN on [4061,4063]).
+        if sl is not None and tps:
+            log.info(
+                f"[ORO] SL+TP senza pending entry (ignorato, no reuse last_trade): "
+                f"{raw[:60]}"
+            )
+            return None
 
     if direction is None:
         return None
 
     if not tps and sl is None:
+        # New entry far from last setup → drop stale last_trade so later
+        # fragments cannot UPDATE_OPEN against the overnight range.
+        last = state.oro_last_trade
+        if last and not _oro_same_trade_setup(
+            {"direction": direction, "entry": entry, "entry_range": entry_range},
+            last,
+        ):
+            log.info(
+                f"[ORO] New entry resets last_trade "
+                f"(was {last.get('direction')} "
+                f"entry={last.get('entry')} range={last.get('entry_range')})"
+            )
+            state.oro_last_trade = None
         state.set_oro_pending(direction, entry, entry_range)
         log.info(f"[ORO] Pending {direction} XAUUSD entry={entry} range={entry_range}")
         return None

@@ -487,6 +487,53 @@ class TestCHORO:
         assert sig2["action"] == "OPEN"
         assert sig2["allow_stack"] is True
 
+    def test_buy_now_price_sets_pending(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        assert parser_sala_oro("Buy now 4042", CH_ORO, state) is None
+        assert state.oro_pending_dir == "BUY"
+        assert state.oro_pending_entry == 4042.0
+
+    def test_buy_now_after_stale_range_opens_clean(self, tmp_path: Path):
+        """07:51 regression: Buy now 4042 + Sl/Tp must not reuse overnight range."""
+        state = BridgeState(tmp_path / "bridge_state.json")
+        state.set_oro_last_trade({
+            "direction": "BUY",
+            "entry": None,
+            "entry_range": [4061.0, 4063.0],
+            "sl": 4058.0,
+            "tp_levels": [4070.0],
+        })
+        state.save()
+
+        assert parser_sala_oro("Buy now 4042", CH_ORO, state) is None
+        assert state.oro_pending_entry == 4042.0
+        assert state.oro_last_trade is None
+
+        sig = parser_sala_oro("Sl 4038 | Tp 4048", CH_ORO, state)
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["entry"] == 4042.0
+        assert sig["entry_range"] is None
+        assert sig["sl"] == 4038.0
+        assert sig["tp_levels"] == [4048.0]
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+
+    def test_combined_sl_tp_without_pending_does_not_reuse_last(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "bridge_state.json")
+        state.set_oro_last_trade({
+            "direction": "BUY",
+            "entry": None,
+            "entry_range": [4061.0, 4063.0],
+            "sl": 4058.0,
+            "tp_levels": [4070.0],
+        })
+        state.save()
+        assert parser_sala_oro("Sl 4038 | Tp 4048", CH_ORO, state) is None
+        assert state.oro_last_trade["entry_range"] == [4061.0, 4063.0]
+        assert state.oro_last_trade["sl"] == 4058.0
+
 
 class TestCHIvan:
     def test_open_sell_four_tp(self):

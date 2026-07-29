@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from contextlib import asynccontextmanager
@@ -77,6 +78,33 @@ limiter = RateLimiter(
     window_sec=int(CONFIG.get("login_lockout_minutes", 15)) * 60,
 )
 collector = Collector(CONFIG)
+
+
+def _is_https(request: Request) -> bool:
+    if request.url.scheme == "https":
+        return True
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    if proto == "https":
+        return True
+    # Tailscale Serve terminates TLS; backend sees HTTP. Trust ts.net Host.
+    host = (request.headers.get("host") or request.url.hostname or "").lower()
+    return host.endswith(".ts.net")
+
+
+def _set_session_cookie(resp, request: Request, token: str) -> None:
+    """Persist session on iOS Safari (esp. via Tailscale HTTPS Serve)."""
+    secure = _is_https(request)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=sessions.ttl_sec)
+    resp.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=sessions.ttl_sec,
+        expires=expires_at,
+        httponly=True,
+        samesite="lax",
+        path="/",
+        secure=secure,
+    )
 
 
 @asynccontextmanager
@@ -163,27 +191,25 @@ def login(request: Request, username: str = Form(""), password: str = Form(""), 
         "</body></html>"
     )
     resp = HTMLResponse(content=html, status_code=200)
-    resp.set_cookie(
-        COOKIE_NAME,
-        token,
-        max_age=sessions.ttl_sec,
-        httponly=True,
-        samesite="lax",
-        path="/",
-    )
+    _set_session_cookie(resp, request, token)
     log.info(
-        "login ok user=%s ip=%s session_days≈%.0f",
+        "login ok user=%s ip=%s session_days≈%.0f secure=%s",
         user_cfg["username"],
         ip,
         sessions.ttl_sec / 86400.0,
+        _is_https(request),
     )
     return resp
 
 
 @app.get("/logout")
-def logout():
+def logout(request: Request):
     resp = RedirectResponse("/login", status_code=302)
-    resp.delete_cookie(COOKIE_NAME, path="/")
+    resp.delete_cookie(
+        COOKIE_NAME,
+        path="/",
+        secure=_is_https(request),
+    )
     return resp
 
 

@@ -9,12 +9,14 @@
 </head>
 <body>
 <div class="login-wrap">
-  <form class="login-box" method="post" action="/login" autocomplete="off">
+  <form class="login-box" method="post" action="/login" autocomplete="on">
     <h1>TG TradinGo</h1>
     <label for="username">Utente</label>
-    <input id="username" name="username" type="text" required autofocus autocapitalize="none">
+    <input id="username" name="username" type="text" required autofocus
+           autocapitalize="none" autocomplete="username" spellcheck="false">
     <label for="password">Password</label>
-    <input id="password" name="password" type="password" required>
+    <input id="password" name="password" type="password" required
+           autocomplete="current-password">
     <!-- honeypot antibot: gli umani non lo vedono, i bot lo compilano -->
     <input class="hp" type="text" name="website" tabindex="-1" autocomplete="off">
     <button type="submit">Entra</button>

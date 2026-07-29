@@ -59,9 +59,17 @@ def load_config() -> dict:
 
 CONFIG = load_config()
 
+
+def _session_hours(cfg: dict) -> float:
+    """Prefer session_days (default 180 ≈ 6 months); fall back to session_hours."""
+    if cfg.get("session_days") is not None:
+        return float(cfg["session_days"]) * 24.0
+    return float(cfg.get("session_hours", 180 * 24))
+
+
 sessions = SessionManager(
     CONFIG.get("secret_key", ""),
-    hours=float(CONFIG.get("session_hours", 12)),
+    hours=_session_hours(CONFIG),
 )
 limiter = RateLimiter(
     max_attempts=int(CONFIG.get("login_max_attempts", 5)),
@@ -144,6 +152,7 @@ def login(request: Request, username: str = Form(""), password: str = Form(""), 
         max_age=sessions.ttl_sec,
         httponly=True,
         samesite="lax",
+        path="/",
     )
     log.info("login ok user=%s ip=%s", user_cfg["username"], ip)
     return resp
@@ -152,7 +161,7 @@ def login(request: Request, username: str = Form(""), password: str = Form(""), 
 @app.get("/logout")
 def logout():
     resp = RedirectResponse("/login", status_code=302)
-    resp.delete_cookie(COOKIE_NAME)
+    resp.delete_cookie(COOKIE_NAME, path="/")
     return resp
 
 

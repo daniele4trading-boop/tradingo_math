@@ -1099,3 +1099,42 @@ class TestIvanReentry:
         assert sig["sl"] is None
         ok, reason = validate_signal(sig)
         assert ok, reason
+
+
+class TestStateWriteFailureDoesNotLoseSignal:
+    """CH_ORO 29/07: PermissionError su bridge_state.json abortiva il segnale."""
+
+    def test_oro_open_emitted_when_state_write_fails(self, bridge_state, monkeypatch):
+        import bridge_core
+
+        def boom(*args, **kwargs):
+            raise PermissionError(5, "Access is denied")
+
+        monkeypatch.setattr(bridge_core, "atomic_write_json", boom)
+        sig = parser_sala_oro(
+            "XAUUSD SELL 4047-4049\nTP 4040\nSL 4051", CH_ORO, bridge_state
+        )
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry_range"] == [4047.0, 4049.0]
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+        # lo stato resta comunque coerente in memoria
+        assert bridge_state.oro_last_trade is not None
+
+    def test_save_state_json_returns_false_instead_of_raising(self, tmp_path, monkeypatch):
+        import bridge_core
+
+        def boom(*args, **kwargs):
+            raise PermissionError(5, "Access is denied")
+
+        monkeypatch.setattr(bridge_core, "atomic_write_json", boom)
+        assert bridge_core.save_state_json(tmp_path / "s.json", {"a": 1}, "test") is False
+
+    def test_save_state_json_writes_file(self, tmp_path):
+        import bridge_core
+
+        path = tmp_path / "s.json"
+        assert bridge_core.save_state_json(path, {"a": 1}, "test") is True
+        assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1}

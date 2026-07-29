@@ -287,8 +287,40 @@ def atomic_write_text_timed(
         ) from exc
 
 
-def atomic_write_json(path: Path, data: dict) -> None:
-    atomic_write_text(path, json.dumps(data, indent=2))
+def atomic_write_json(
+    path: Path,
+    data: dict,
+    *,
+    retries: int = 5,
+    backoff_ms: float = 40.0,
+) -> None:
+    atomic_write_text(
+        path,
+        json.dumps(data, indent=2),
+        retries=retries,
+        backoff_ms=backoff_ms,
+    )
+
+
+# Lo stato non è mai sulla strada critica del segnale: un lock del filesystem
+# (antivirus, EA, backup) non deve impedire la scrittura del JSON per l'EA.
+STATE_WRITE_RETRIES = 8
+STATE_WRITE_BACKOFF_MS = 60.0
+
+
+def save_state_json(path: Path, data: dict, label: str) -> bool:
+    """Persist internal state best-effort; log and continue on failure."""
+    try:
+        atomic_write_json(
+            path,
+            data,
+            retries=STATE_WRITE_RETRIES,
+            backoff_ms=STATE_WRITE_BACKOFF_MS,
+        )
+        return True
+    except (OSError, TimeoutError) as exc:
+        log.error("Could not save %s %s: %s (stato solo in memoria)", label, path, exc)
+        return False
 
 
 class BridgeState:
@@ -380,7 +412,7 @@ class BridgeState:
             "close_price_pending": self.close_price_pending,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        atomic_write_json(self.state_file, payload)
+        save_state_json(self.state_file, payload, "bridge state")
 
     def set_close_price_pending(self, channel_id: str, ttl_sec: float = 120.0) -> None:
         self.close_price_pending[channel_id] = time.time() + ttl_sec
@@ -565,9 +597,10 @@ class ProcessedMessageStore:
         if len(self._keys) > self.max_entries:
             self._keys = self._keys[-self.max_entries :]
             self._seen = set(self._keys)
-        atomic_write_json(
+        save_state_json(
             self.store_file,
             {"keys": self._keys, "updated_at": datetime.now(timezone.utc).isoformat()},
+            "processed messages",
         )
 
     @staticmethod

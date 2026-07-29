@@ -7,7 +7,7 @@
 | Tailscale | Windows **service** (Automatic) |
 | SMB → Gamehosting `\\100.74.9.8\tradingo` | Task `TG_TradinGo_EnsureFriendSmb` at logon + `cmdkey` |
 | Vantage MT5 + EA | Task `TG_TradinGo_VantageMT5AtLogon` (chart/EA saved in profile, AutoTrading ON) |
-| Bridge `start_tradingo.bat` | Task `TG_TradinGo_BridgeAtLogon` (~45s after logon) |
+| Bridge `run_bridge_task.cmd` | Task `TG_TradinGo_BridgeAtLogon` (boot +2 min, logon +1 min) |
 | XM MT5 | Optional — keep Startup shortcut **or** disable if unused |
 
 **Today (before setup):** bridge does **not** auto-start; reboot ≠ full TG recovery.
@@ -51,6 +51,36 @@ Get-ScheduledTask | Where-Object { $_.TaskName -like 'TG_TradinGo_*' } | Format-
 ```
 
 Must include: `EnsureFriendSmb`, `BridgeAtLogon`, `VantageMT5AtLogon`.
+
+### Bridge task — esecuzione senza login interattivo (29/07/2026)
+
+Il task originale era registrato con `LogonType=InteractiveToken` e un solo
+trigger *at logon*: con la sessione Administrator disconnessa il task fallisce
+con `-2147020576` e il bridge **non si rialza** (webapp → bridge offline).
+
+Configurazione corrente (`docs/bridge_task.xml`):
+
+- `LogonType=Password` (Logon Mode: *Interactive/Background*) → parte anche
+  senza nessuno collegato in RDP;
+- trigger **BootTrigger** (delay 2 min) **+ LogonTrigger** (delay 1 min);
+- `ExecutionTimeLimit=PT0S` (nessun timeout), `MultipleInstancesPolicy=IgnoreNew`,
+  `RestartOnFailure` 3 tentativi ogni minuto;
+- azione `C:\TG_TradinGo\run_bridge_task.cmd`, non `start_tradingo.bat`:
+  senza console `timeout /t 90` e `pause` non sono affidabili. Il wrapper fa la
+  guardia anti-doppia-istanza (`tradingo_bridge.py` già in esecuzione → esce 0),
+  scrive `logs\bridge_task.log` e redirige stdout/stderr su `logs\bridge_stdout.log`.
+
+Ri-registrazione (l'XML va convertito in UTF-16LE, come richiesto da `schtasks`):
+
+```powershell
+schtasks /Create /XML C:\TG_TradinGo\_backups\bridge_task.xml `
+  /TN TG_TradinGo_BridgeAtLogon /RU Administrator /RP <password> /F
+schtasks /Run /TN TG_TradinGo_BridgeAtLogon
+```
+
+Nel principal e nel `LogonTrigger` l'utente è `VMI1399279\Administrator`
+(hostname Contabo): su un'altra macchina va sostituito. La password è quella
+dell'account Windows — se viene cambiata, il task va ri-registrato.
 
 ---
 

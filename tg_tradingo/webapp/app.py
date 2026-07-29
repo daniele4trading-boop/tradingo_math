@@ -17,6 +17,8 @@ import os
 import sys
 from pathlib import Path
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import (
     FileResponse,
@@ -67,14 +69,23 @@ limiter = RateLimiter(
 )
 collector = Collector(CONFIG)
 
-app = FastAPI(title="TG TradinGo Monitor", docs_url=None, redoc_url=None, openapi_url=None)
-app.mount("/static", StaticFiles(directory=str(_PKG_DIR / "static")), name="static")
 
-
-@app.on_event("startup")
-def _startup() -> None:
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     collector.start()
-    log.info("TG TradinGo webapp avviata (Fase 1 monitor)")
+    log.info("TG TradinGo webapp avviata (Fase 2 monitor + PnL)")
+    yield
+    collector.stop()
+
+
+app = FastAPI(
+    title="TG TradinGo Monitor",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+    lifespan=lifespan,
+)
+app.mount("/static", StaticFiles(directory=str(_PKG_DIR / "static")), name="static")
 
 
 def current_user(request: Request) -> str | None:

@@ -7,6 +7,8 @@
   "login_lockout_minutes": 15,
   "refresh_seconds": 15,
   "max_events": 20,
+  "pnl_lookback_days": 30,
+  "equity_days": 3,
   "orders_enabled": false,
 
   "users": [
@@ -26,6 +28,7 @@
     "mt5_process": "terminal64.exe",
     "ea_journal_dir": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\AE2CC2E013FDE1E3CDF010AA51C60400\\MQL5\\Files\\journal",
     "ea_journal_stale_sec": 300,
+    "signal_stats": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\AE2CC2E013FDE1E3CDF010AA51C60400\\MQL5\\Files\\tradingo_signal_stats.csv",
     "friend_host": "100.74.9.8",
     "friend_share": "\\\\100.74.9.8\\tradingo",
     "friend_heartbeat": "\\\\100.74.9.8\\tradingo\\tradingo_heartbeat.json"

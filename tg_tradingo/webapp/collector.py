@@ -18,6 +18,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
 from datetime import datetime, timezone
 from pathlib import Path
 
+from webapp.pnl import build_phase2, normalize_channel
+
 log = logging.getLogger("TradinGoWeb")
 
 STATUS_OK = "ok"
@@ -174,6 +176,8 @@ class Collector:
         lights["friend_heartbeat"] = self._check_friend_heartbeat()
 
         channels, events = self._read_journal_today()
+        phase2 = self._build_phase2()
+        self._merge_pnl_into_channels(channels, phase2)
 
         worst = STATUS_OK
         for lt in lights.values():
@@ -187,7 +191,58 @@ class Collector:
             "lights": lights,
             "channels": channels,
             "events": events,
+            "phase": 2,
+            "pnl": phase2.get("pnl"),
+            "open_positions": phase2.get("open_positions") or [],
+            "equity": phase2.get("equity"),
+            "exec": phase2.get("exec"),
+            "sources": phase2.get("sources"),
         }
+
+    def _build_phase2(self) -> dict:
+        try:
+            return build_phase2(
+                ea_journal_dir=self.checks.get("ea_journal_dir"),
+                signal_stats_path=self.checks.get("signal_stats"),
+                lookback_days=int(self.cfg.get("pnl_lookback_days", 30)),
+                equity_days=int(self.cfg.get("equity_days", 3)),
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("phase2 build failed: %s", exc)
+            return {
+                "pnl": None,
+                "open_positions": [],
+                "equity": {"points": [], "latest": None, "delta_today": None},
+                "exec": {"totals": {}, "by_channel": {}},
+                "sources": {"error": str(exc)},
+            }
+
+    @staticmethod
+    def _merge_pnl_into_channels(channels: list[dict], phase2: dict) -> None:
+        pnl = (phase2 or {}).get("pnl") or {}
+        by_ch = pnl.get("by_channel") or {}
+        exec_by = ((phase2 or {}).get("exec") or {}).get("by_channel") or {}
+        for ch in channels:
+            cid = ch["id"]
+            # also try short tag
+            short = cid.replace("CH_", "")
+            bucket = by_ch.get(cid) or by_ch.get(normalize_channel(short)) or {}
+            ch["pnl"] = {
+                "today": bucket.get("d1") or {
+                    "pnl": 0.0, "trades": 0, "wins": 0, "losses": 0, "win_rate": None
+                },
+                "d7": bucket.get("d7") or {
+                    "pnl": 0.0, "trades": 0, "wins": 0, "losses": 0, "win_rate": None
+                },
+                "d30": bucket.get("d30") or {
+                    "pnl": 0.0, "trades": 0, "wins": 0, "losses": 0, "win_rate": None
+                },
+            }
+            ex = exec_by.get(cid) or exec_by.get(normalize_channel(short)) or {}
+            ch["exec"] = {
+                "executed": ex.get("executed", 0),
+                "cancelled": ex.get("cancelled", 0),
+            }
 
     def _hb_status(self, age: int | None, err: str | None) -> dict:
         warn = int(self.checks.get("heartbeat_warn_sec", 90))

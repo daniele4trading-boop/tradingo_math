@@ -1,70 +1,65 @@
 # TG TradinGo Monitor Webapp
 
-Dashboard mobile per monitorare bridge, MT5, link Gamehosting e canali.
-**Fase 1: sola lettura** (semafori + eventi). Fase 3 (ordini) predisposta ma
-disabilitata (`orders_enabled: false`).
+Dashboard mobile per monitorare bridge, MT5, link Gamehosting, canali e **PnL**.
+**Fase 1:** semafori + eventi bridge. **Fase 2:** PnL per canale, posizioni aperte,
+equity curve, stats esecuzione EA. Fase 3 (ordini) predisposta ma disabilitata
+(`orders_enabled: false`).
 
 ## Architettura
 
 - Processo Python unico (FastAPI + uvicorn) su **Contabo**, porta `8600`.
-- Collector in thread background (refresh 15s), tutte le letture UNC con timeout:
-  la pagina resta veloce anche se la share Tailscale e' giu'.
-- Accesso **solo via Tailscale** (nessuna porta pubblica). Dal telefono:
-  installa Tailscale, stessa tailnet, apri `http://100.110.249.72:8600`.
+- Collector in thread background (refresh 15s), tutte le letture UNC con timeout.
+- Accesso **solo via Tailscale**. Telefono/PC: `http://100.110.249.72:8600`.
 
 ## Sicurezza
 
 - Login utente/password (hash PBKDF2-SHA256, 200k iterazioni).
-- Sessione cookie HMAC firmato, scadenza 12h (config `session_hours`).
-- Rate limit: 5 tentativi falliti per IP/utente → blocco 15 min.
-- Honeypot antibot nel form; `noindex`; niente docs/openapi esposti.
-- Niente segreti in git: `webapp_config.json` resta solo sul VPS.
+- Sessione cookie HMAC firmato, scadenza 12h.
+- Rate limit: 5 tentativi falliti → blocco 15 min + honeypot antibot.
+- `webapp_config.json` solo sul VPS (non in git).
 
-## Setup su Contabo (una tantum)
+## Setup Contabo (una tantum)
 
 ```powershell
 cd C:\TG_TradinGo
 pip install -r requirements.txt
-
-# 1. crea il config
 Copy-Item webapp_config.example.json webapp_config.json
-
-# 2. genera hash password + secret_key e incollali in webapp_config.json
 python -m webapp.hash_password
-
-# 3. avvia
 C:\TG_TradinGo\start_webapp.bat
 ```
 
-Autostart (facoltativo, come il bridge):
+## Fase 2 — fonti dati
+
+Da `checks.ea_journal_dir` (MQL5\\Files\\journal):
+
+| Path | Uso |
+|------|-----|
+| `trades\trades_YYYYMMDD.csv` | PnL chiuso oggi/7g/30g, posizioni aperte |
+| `equity\equity_YYYYMMDD.csv` | equity, floating, sparkline |
+| `..\tradingo_signal_stats.csv` | eseguiti vs annullati |
+
+Tag EA `ORO` / `GOLD` / `IT` / `AS` → normalizzati a `CH_*`.
+
+## Aggiornamento (senza rifare password)
 
 ```powershell
-$act = New-ScheduledTaskAction -Execute "C:\TG_TradinGo\start_webapp.bat" -WorkingDirectory "C:\TG_TradinGo"
-$trg = New-ScheduledTaskTrigger -AtLogOn
-$trg.Delay = "PT120S"
-Register-ScheduledTask -TaskName "TG_TradinGo_WebappAtLogon" -Action $act -Trigger $trg -Force
+powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\pull_and_deploy_tg_tradingo.ps1 -Branch cursor/journal-and-exit-hardening-8e22
+# Ctrl+C sulla finestra webapp, poi:
+C:\TG_TradinGo\start_webapp.bat
 ```
 
-## Semafori
+Opzionale in `webapp_config.json` (se manca):
 
-| Card | Verde | Giallo | Rosso |
-|------|-------|--------|-------|
-| Bridge Telegram | heartbeat < 90s | < 180s | oltre / file mancante |
-| MT5 locale | terminal64 attivo + journal EA fresco | journal fermo/assente | terminale spento |
-| Link Gamehosting | ping + share ok | — | ping o share KO |
-| Heartbeat su share | come bridge ma letto da `\\100.74.9.8\tradingo` | | |
-
-Canali: conteggi giornalieri dal journal `bridge_events` (EMITTED / ignorati /
-UNPARSED / PARSE_ERROR) + ultimo segnale emesso.
-
-## Config (`webapp_config.json`)
-
-Vedi `webapp_config.example.json`. Campi principali: `users[]` (hash), `secret_key`,
-`port`, `checks.*` (path heartbeat/journal, host/share amico, cartella journal EA
-con l'hash del terminale MT5).
+```json
+"pnl_lookback_days": 30,
+"equity_days": 3,
+"checks": {
+  "signal_stats": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\AE2CC2E013FDE1E3CDF010AA51C60400\\MQL5\\Files\\tradingo_signal_stats.csv"
+}
+```
 
 ## Test
 
 ```bash
-cd tg_tradingo && python -m pytest tests/test_webapp.py -v
+cd tg_tradingo && python -m pytest tests/test_webapp.py tests/test_webapp_pnl.py -v
 ```

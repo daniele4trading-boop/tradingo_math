@@ -87,10 +87,11 @@ if (-not (Test-Path -LiteralPath '$ShareUnc')) {
     catch {
         Write-Host "[WARN] Logon task NOT registered (Access denied). Run this script once in Admin PowerShell if you want auto-remap at logon." -ForegroundColor Yellow
         Write-Host ("       Detail: " + $_.Exception.Message) -ForegroundColor Yellow
-        Write-Info "cmdkey + persistent net use are already saved for this Windows user — usually enough."
+        Write-Info "cmdkey + persistent net use are already saved for this Windows user - usually enough."
     }
 }
 
 Write-Host ""
 Write-Ok "Done. Bridge can write to $ShareUnc without retyping password (same Windows user)."
-Write-Info "After Contabo reboot: Tailscale up + this user logon (task optional). Gamehosting: Tailscale + share + MT5/EA."
+Write-Info "After Contabo reboot: Tailscale up + this user logon (task optional)."
+Write-Info "Gamehosting needs: Tailscale + SMB share + MT5/EA."

@@ -808,3 +808,209 @@ class TestCloseIntentHelper:
         b = make_signal_id(1, 2, "NEW")
         assert a == b
         assert len(a) == 10
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Regressioni audit parser (luglio 2026)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestZanniBeAndTpClose:
+    def test_sposto_stop_a_be(self):
+        sig = parser_zanni_vip("E sposto stop a BE", CH1)
+        assert sig is not None
+        assert sig["action"] == "CHECK_AND_BE"
+
+    def test_portiamo_stop_loss_in_pareggio(self):
+        sig = parser_zanni_vip("Portiamo lo stop loss in pareggio", CH1)
+        assert sig["action"] == "CHECK_AND_BE"
+
+    def test_chiudete_il_tp1(self):
+        sig = parser_zanni_vip(
+            "Se siete entrati sui 4820 chiudete il tp1 anche a 4817!", CH1
+        )
+        assert sig is not None
+        assert sig["action"] == "CHECK_AND_CLOSE_TP"
+        assert sig["tp_index"] == 1
+
+
+class TestGoldPartialBeAndSl:
+    def test_close_half_be_with_trailing_close(self, bridge_state):
+        """'…close half break even close' non deve diventare CLOSE_ALL_SYMBOL."""
+        sig = parser_sala_gold(
+            "+70 pips close half break even close", CH2, bridge_state
+        )
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_standalone_sl_updates_known_trade(self, bridge_state):
+        parser_sala_gold(
+            "Sell gold now 4791 - 4800\nSL: 4805\nTp: 4782\nTp: 4765",
+            CH2,
+            bridge_state,
+        )
+        sig = parser_sala_gold("SL 4807", CH2, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "UPDATE_SL"
+        assert sig["direction"] == "SELL"
+        assert sig["new_sl"] == 4807.0
+
+    def test_standalone_sl_without_trade_ignored(self, bridge_state):
+        assert parser_sala_gold("SL 4807", CH2, bridge_state) is None
+
+    def test_standalone_sl_same_level_ignored(self, bridge_state):
+        parser_sala_gold(
+            "Sell gold now 4791 - 4800\nSL: 4805\nTp: 4782", CH2, bridge_state
+        )
+        assert parser_sala_gold("SL 4805", CH2, bridge_state) is None
+
+    def test_identical_setup_repost_ignored(self, bridge_state):
+        text = "Buy gold now 4807 - 4800\nSL: 4795\nTp: 4814\nTp: 4835"
+        first = parser_sala_gold(text, CH2, bridge_state)
+        assert first["action"] == "OPEN"
+        assert parser_sala_gold(text, CH2, bridge_state) is None
+
+    def test_different_setup_still_opens(self, bridge_state):
+        parser_sala_gold(
+            "Buy gold now 4807 - 4800\nSL: 4795\nTp: 4814", CH2, bridge_state
+        )
+        sig = parser_sala_gold(
+            "Buy gold now 4795 - 4802\nSL: 4790\nTp: 4812", CH2, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+
+    def test_naked_then_setup_still_update_open(self, bridge_state):
+        assert parser_sala_gold("Gold sell now", CH2, bridge_state)["action"] == "OPEN_NOW"
+        sig = parser_sala_gold(
+            "Sell gold now 4790 - 4800\nSL: 4805\nTp: 4782", CH2, bridge_state
+        )
+        assert sig["action"] == "UPDATE_OPEN"
+
+
+FOREX_NEW_ORDER = """NUOVO ORDINE - GBPCADpm Buy 📈
+Entrata: 1.84642 [Lotti: 0.02]
+Nessuno SL
+Nessuno TP
+Questo messaggio non incita a investire, riporta i nostri trade"""
+
+FOREX_MODIFIED = """GBPCADpm Buy - Modificato
+Nuovo TP: 1.85000
+Questo messaggio non incita a investire, riporta i nostri trade"""
+
+FOREX_CLOSED = """🟠 CHIUSO - GBPUSDpm Sell 🟠
+Entrata:    1.35166
+Uscita:     1.34954
+Questo messaggio non incita a investire, riporta i nostri trade"""
+
+
+class TestForexDisclaimerNotIgnored:
+    def test_new_order_with_disclaimer_sets_pending(self, bridge_state):
+        assert parser_sala_vip(FOREX_NEW_ORDER, CH3, bridge_state) is None
+        assert bridge_state.forex_pending_symbol == "GBPCAD"
+        assert bridge_state.forex_pending_entry == 1.84642
+
+    def test_pending_plus_modified_emits_open(self, bridge_state):
+        parser_sala_vip(FOREX_NEW_ORDER, CH3, bridge_state)
+        sig = parser_sala_vip(FOREX_MODIFIED, CH3, bridge_state)
+        assert sig["action"] == "OPEN"
+        assert sig["symbol"] == "GBPCAD"
+        assert sig["entry"] == 1.84642
+        assert sig["tp_levels"] == [1.85]
+
+    def test_closed_with_disclaimer_emits_close(self, bridge_state):
+        sig = parser_sala_vip(FOREX_CLOSED, CH3, bridge_state)
+        assert sig["action"] == "CHECK_AND_CLOSE"
+        assert sig["symbol"] == "GBPUSD"
+        assert sig["direction"] == "SELL"
+
+    def test_report_still_ignored(self, bridge_state):
+        assert parser_sala_vip(
+            "GIORNALIERO RAPPORTO\nProfitto: 120€", CH3, bridge_state
+        ) is None
+
+
+class TestStarkManualClose:
+    def test_close_uses_symbol_in_text(self, bridge_state):
+        sig = parser_sala_stark("⚖️ Chiusa a Break Even\n**XAUUSD**", CH4, bridge_state)
+        assert sig["action"] == "CLOSE_ALL_SYMBOL"
+        assert sig["symbol"] == "XAUUSD"
+
+    def test_close_falls_back_to_last_trade_symbol(self, bridge_state):
+        parser_sala_stark(
+            "BUY   GBPUSD 1.35864\n\nSL    1.31230\n\nTP    1.36050",
+            CH4,
+            bridge_state,
+        )
+        sig = parser_sala_stark("Chiusa in take profit ✅", CH4, bridge_state)
+        assert sig["action"] == "CLOSE_ALL_SYMBOL"
+        assert sig["symbol"] == "GBPUSD"
+
+    def test_close_without_context_ignored(self, bridge_state):
+        assert parser_sala_stark("Chiusa in take profit ✅", CH4, bridge_state) is None
+
+    def test_open_still_parsed(self, bridge_state):
+        sig = parser_sala_stark(
+            "Apro una nuova operazione 🚀\n**XAUUSD** **SELL**\n"
+            "Entry: **4809**\nSL: `4820.61`\nTP1: `4804.41`",
+            CH4,
+            bridge_state,
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+
+
+class TestOroCloseAndIgnore:
+    def test_close_all_with_noise_word(self, bridge_state):
+        sig = parser_sala_oro("Chiudiamo tutto ragazzi", CH_ORO, bridge_state)
+        assert sig["action"] == "CLOSE_ALL_SYMBOL"
+        assert sig["symbol"] == "XAUUSD"
+
+    def test_exit_with_reference_price(self, bridge_state):
+        sig = parser_sala_oro("usciamo qui a 4015", CH_ORO, bridge_state)
+        assert sig["action"] == "CLOSE_ALL_SYMBOL"
+        assert sig["reference_price"] == 4015.0
+
+    def test_noise_still_ignored(self, bridge_state):
+        assert parser_sala_oro(
+            "Ragazzi stasera live di formazione", CH_ORO, bridge_state
+        ) is None
+        assert parser_sala_oro("Report: +300 pips ✅", CH_ORO, bridge_state) is None
+
+    def test_setup_with_noise_word_parsed(self, bridge_state):
+        sig = parser_sala_oro(
+            "Attendiamo XAUUSD BUY 4050 | TP 4060 | SL 4040", CH_ORO, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["sl"] == 4040.0
+
+    def test_close_clears_state(self, bridge_state):
+        parser_sala_oro(
+            "XAUUSD SELL 4020-4022 | TP 4010 | SL 4024", CH_ORO, bridge_state
+        )
+        parser_sala_oro("Chiudiamo tutto", CH_ORO, bridge_state)
+        assert bridge_state.oro_last_trade is None
+        assert bridge_state.oro_pending_dir is None
+
+
+class TestIvanIgnoreGuard:
+    def test_setup_with_take_profit_wording_not_ignored(self, bridge_state):
+        sig = parser_ivan_vip(
+            "XAUUSD SELL 4059\nTP 1 4055\nTP 2 4052\nSL @ 4065\n"
+            "Take profit ravvicinati",
+            CH_IVAN,
+            bridge_state,
+        )
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["tp_levels"] == [4055.0, 4052.0]
+
+    def test_preparatory_phrase_still_ignored(self, bridge_state):
+        assert parser_ivan_vip(
+            "Pronti a chiudere se ve lo dico", CH_IVAN, bridge_state
+        ) is None
+
+    def test_ignore_registry_reports_pattern(self):
+        from tradingo_bridge import matched_ignore_pattern
+
+        assert matched_ignore_pattern("ivan_vip", "PRONTI A CHIUDERE SE VE LO DICO")
+        assert matched_ignore_pattern("ivan_vip", "XAUUSD SELL 4059") is None

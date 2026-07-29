@@ -298,6 +298,8 @@ class BridgeState:
         self.state_file = state_file
         self.ch2_pending_dir: str | None = None
         self.ch2_pending_open: bool = False
+        self.gold_last_trade: dict | None = None
+        self.stark_last_trade: dict | None = None
         self.oro_pending_dir: str | None = None
         self.oro_pending_entry: float | None = None
         self.oro_pending_range: list[float] | None = None
@@ -320,6 +322,8 @@ class BridgeState:
             ch2 = data.get("ch2_pending", {})
             self.ch2_pending_dir = ch2.get("pending_dir")
             self.ch2_pending_open = bool(ch2.get("pending_open", False))
+            self.gold_last_trade = data.get("gold_last_trade")
+            self.stark_last_trade = data.get("stark_last_trade")
             oro_p = data.get("oro_pending", {})
             self.oro_pending_dir = oro_p.get("direction")
             self.oro_pending_entry = oro_p.get("entry")
@@ -354,6 +358,8 @@ class BridgeState:
                 "pending_open": self.ch2_pending_open,
                 "pending_dir": self.ch2_pending_dir,
             },
+            "gold_last_trade": self.gold_last_trade,
+            "stark_last_trade": self.stark_last_trade,
             "oro_pending": {
                 "direction": self.oro_pending_dir,
                 "entry": self.oro_pending_entry,
@@ -393,6 +399,32 @@ class BridgeState:
     def clear_ch2_pending(self) -> None:
         self.ch2_pending_open = False
         self.ch2_pending_dir = None
+        self.save()
+
+    def set_gold_last_trade(self, trade: dict) -> None:
+        self.gold_last_trade = {
+            "ts": trade.get("ts", time.time()),
+            "direction": trade.get("direction"),
+            "entry": trade.get("entry"),
+            "entry_range": trade.get("entry_range"),
+            "sl": trade.get("sl"),
+            "tp_levels": list(trade.get("tp_levels") or []),
+        }
+        self.save()
+
+    def clear_gold_last_trade(self) -> None:
+        self.gold_last_trade = None
+        self.save()
+
+    def set_stark_last_trade(self, trade: dict) -> None:
+        self.stark_last_trade = {
+            "symbol": trade.get("symbol"),
+            "direction": trade.get("direction"),
+        }
+        self.save()
+
+    def clear_stark_last_trade(self) -> None:
+        self.stark_last_trade = None
         self.save()
 
     def set_oro_pending(
@@ -472,6 +504,8 @@ class EphemeralBridgeState(BridgeState):
         self.state_file = Path("_ephemeral_")
         self.ch2_pending_dir: str | None = None
         self.ch2_pending_open: bool = False
+        self.gold_last_trade: dict | None = None
+        self.stark_last_trade: dict | None = None
         self.oro_pending_dir: str | None = None
         self.oro_pending_entry: float | None = None
         self.oro_pending_range: list[float] | None = None

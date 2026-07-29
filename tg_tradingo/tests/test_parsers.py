@@ -1014,3 +1014,52 @@ class TestIvanIgnoreGuard:
 
         assert matched_ignore_pattern("ivan_vip", "PRONTI A CHIUDERE SE VE LO DICO")
         assert matched_ignore_pattern("ivan_vip", "XAUUSD SELL 4059") is None
+
+
+IVAN_SETUP = """XAUUSD SELL 4059
+TP 1 4055
+TP 2 4052
+TP 3 4048
+TP 4 4043
+SL @ 4065"""
+
+
+class TestIvanReentry:
+    def test_rientrate_ora_reopens_last_setup(self, bridge_state):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        sig = parser_ivan_vip("Rientrate ora", CH_IVAN, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["symbol"] == "XAUUSD"
+        assert sig["tp_levels"] == [4055.0, 4052.0, 4048.0, 4043.0]
+        assert sig["sl"] == 4065.0
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+
+    def test_reentry_after_close_keeps_direction(self, bridge_state):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        assert parser_ivan_vip("Chiudere ora", CH_IVAN, bridge_state)[
+            "action"
+        ] == "CLOSE_ALL_SYMBOL"
+        sig = parser_ivan_vip("rientriamo", CH_IVAN, bridge_state)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+
+    def test_reentry_keeps_lot_factor(self, bridge_state):
+        parser_ivan_vip(IVAN_SETUP + "\nMetà size", CH_IVAN, bridge_state)
+        sig = parser_ivan_vip("Riapriamo ora", CH_IVAN, bridge_state)
+        assert sig["lot_factor"] == 0.5
+
+    def test_reentry_without_previous_setup_ignored(self, bridge_state):
+        assert parser_ivan_vip("Rientrate ora", CH_IVAN, bridge_state) is None
+
+    def test_new_setup_wins_over_reentry_wording(self, bridge_state):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        sig = parser_ivan_vip(
+            "Rientriamo: XAUUSD BUY 4070\nTP 1 4075\nSL @ 4062",
+            CH_IVAN,
+            bridge_state,
+        )
+        assert sig["direction"] == "BUY"
+        assert sig["entry"] == 4070.0

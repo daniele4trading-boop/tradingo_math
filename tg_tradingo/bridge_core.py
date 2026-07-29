@@ -300,6 +300,7 @@ class BridgeState:
         self.ch2_pending_open: bool = False
         self.gold_last_trade: dict | None = None
         self.stark_last_trade: dict | None = None
+        self.ivan_last_trade: dict | None = None
         self.oro_pending_dir: str | None = None
         self.oro_pending_entry: float | None = None
         self.oro_pending_range: list[float] | None = None
@@ -324,6 +325,7 @@ class BridgeState:
             self.ch2_pending_open = bool(ch2.get("pending_open", False))
             self.gold_last_trade = data.get("gold_last_trade")
             self.stark_last_trade = data.get("stark_last_trade")
+            self.ivan_last_trade = data.get("ivan_last_trade")
             oro_p = data.get("oro_pending", {})
             self.oro_pending_dir = oro_p.get("direction")
             self.oro_pending_entry = oro_p.get("entry")
@@ -360,6 +362,7 @@ class BridgeState:
             },
             "gold_last_trade": self.gold_last_trade,
             "stark_last_trade": self.stark_last_trade,
+            "ivan_last_trade": self.ivan_last_trade,
             "oro_pending": {
                 "direction": self.oro_pending_dir,
                 "entry": self.oro_pending_entry,
@@ -425,6 +428,17 @@ class BridgeState:
 
     def clear_stark_last_trade(self) -> None:
         self.stark_last_trade = None
+        self.save()
+
+    def set_ivan_last_trade(self, trade: dict) -> None:
+        self.ivan_last_trade = {
+            "symbol": trade.get("symbol"),
+            "direction": trade.get("direction"),
+            "entry": trade.get("entry"),
+            "sl": trade.get("sl"),
+            "tp_levels": list(trade.get("tp_levels") or []),
+            "lot_factor": trade.get("lot_factor"),
+        }
         self.save()
 
     def set_oro_pending(
@@ -506,6 +520,7 @@ class EphemeralBridgeState(BridgeState):
         self.ch2_pending_open: bool = False
         self.gold_last_trade: dict | None = None
         self.stark_last_trade: dict | None = None
+        self.ivan_last_trade: dict | None = None
         self.oro_pending_dir: str | None = None
         self.oro_pending_entry: float | None = None
         self.oro_pending_range: list[float] | None = None

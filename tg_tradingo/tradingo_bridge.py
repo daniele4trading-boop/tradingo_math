@@ -922,12 +922,12 @@ def _oro_is_close_half_be(upper: str) -> bool:
     )
 
 
-def _oro_is_reentry(upper: str) -> bool:
-    """True when ORO explicitly asks to open again while a trade may still be open."""
+def _is_reentry_intent(upper: str) -> bool:
+    """Rientriamo / rientrate ora / riapriamo: riapri sull'ultimo setup del canale."""
     return bool(
-        re.search(r"\bRIENTRI(?:AMO|RE)?\b", upper)
-        or re.search(r"\bRIENTRO\b", upper)
-        or re.search(r"\bRE[- ]?ENTRY\b", upper)
+        re.search(r"\bRIENTR(?:O|IAMO|ATE|IAMOCI|ARE|IAMO\w*)\b", upper)
+        or re.search(r"\bRIAPR(?:O|IAMO|ITE|IRE)\b", upper)
+        or re.search(r"\bRE[- ]?ENTR(?:Y|IAMO)\b", upper)
     )
 
 
@@ -1021,7 +1021,7 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
 
     sl, tps = _parse_oro_sl_tp(upper)
     direction, entry, entry_range = _parse_oro_direction_entry(upper)
-    want_stack = _oro_is_reentry(upper)
+    want_stack = _is_reentry_intent(upper)
 
     # Ignore solo se il messaggio non porta direzione, livelli né intento di
     # chiusura: le parole di contorno ("ragazzi", "live", …) convivono spesso
@@ -1384,6 +1384,31 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         log.debug(f"[IVAN] Ignorato ({pat}): {raw[:60]}")
         return None
 
+    # "Rientrate ora" / "rientriamo": riapre l'ultimo setup del canale (solo GOLD)
+    # nella stessa direzione, a mercato. Senza setup noto non si indovina nulla.
+    if not has_setup and _is_reentry_intent(upper):
+        last = state.ivan_last_trade
+        if not last or not last.get("direction"):
+            log.warning(f"[IVAN] Rientro senza setup precedente: {raw[:60]}")
+            return None
+        log.info(
+            f"[IVAN] OPEN (rientro) {last['direction']} {last.get('symbol')} "
+            f"TP={last.get('tp_levels')} SL={last.get('sl')}"
+        )
+        signal = {
+            "action":      "OPEN",
+            "direction":   last["direction"],
+            "symbol":      last.get("symbol") or "XAUUSD",
+            "entry":       last.get("entry"),
+            "tp_levels":   list(last.get("tp_levels") or []),
+            "sl":          last.get("sl"),
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
+        }
+        if last.get("lot_factor") is not None:
+            signal["lot_factor"] = last["lot_factor"]
+        return signal
+
     if contains_any(upper, "SPOSTO SL A BE", "SPOSTIAMO SL A BE", "SL A BE"):
         log.info(f"[IVAN] CHECK_AND_BE: {raw[:60]}")
         return {
@@ -1451,6 +1476,7 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     }
     if lot_factor != 1.0:
         signal["lot_factor"] = lot_factor
+    state.set_ivan_last_trade(signal)
     return signal
 
 

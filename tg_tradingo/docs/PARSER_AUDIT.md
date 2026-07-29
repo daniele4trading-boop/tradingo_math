@@ -37,6 +37,7 @@ python parser_dryrun.py --events journal/bridge_events/events_20260724.jsonl --d
 | CH_ORO | `usciamo qui a 4015` | `CLOSE_ALL_SYMBOL` + `reference_price` | UNPARSED (nessun recognizer di uscita su ORO) | **critica** |
 | CH_ORO | `Attendiamo XAUUSD BUY 4050 \| TP 4060 \| SL 4040` | `OPEN` | UNPARSED (`ATTENDIAMO` bloccava il setup) | alta |
 | CH_ORO | `Ragazzi stasera live di formazione`, `Report: +300 pips ✅` | ignorato | ignorato (invariato) | — |
+| CH_IVAN | `Rientrate ora` (28/07) | `OPEN` sull'ultimo setup, stessa direzione | UNPARSED → nessuna riapertura | **critica** |
 | CH_IVAN | setup completo che contiene anche `Take profit ravvicinati` | `OPEN` | ignorato (`TAKE PROFIT` copriva il segnale) | alta |
 | CH_IVAN | `Pronti a chiudere se ve lo dico` | ignorato | ignorato (invariato) | — |
 
@@ -61,11 +62,20 @@ python parser_dryrun.py --events journal/bridge_events/events_20260724.jsonl --d
 - **CH4 STARK**: riconosce `Chiusa a/in …` come `CLOSE_ALL_SYMBOL`, con simbolo
   preso dal testo o dal nuovo stato `stark_last_trade`; se non c'è nessuno dei
   due il messaggio resta ignorato (nessuna chiusura “a indovinare”).
+- **CH_IVAN — rientro**: `rientrate/rientriamo/riapriamo ora` ri-emette l'ultimo
+  setup memorizzato (`ivan_last_trade`: direzione, entry, SL, TP, `lot_factor`)
+  come `OPEN` senza `entry_range`, quindi l'EA apre a mercato → 4 trade da 0.10
+  con gli stessi livelli (`apply_lot_rules`: 4 TP ⇒ `trades=4`, `fixed_lot=0.10`).
+  Un messaggio di chiusura non azzera `ivan_last_trade`: il rientro tipico arriva
+  proprio dopo la chiusura. Senza setup precedente il messaggio resta ignorato
+  (log `WARNING [IVAN] Rientro senza setup precedente`). `_oro_is_reentry` è ora
+  `_is_reentry_intent`, condiviso con ORO, e riconosce anche `RIENTRATE`/`RIAPRIAMO`
+  (prima solo `RIENTRO`/`RIENTRIAMO`/`RE-ENTRY`).
 
 Nessun campo JSON nuovo verso l'EA: `UPDATE_SL` e `CLOSE_ALL_SYMBOL` erano già
-nel contratto (`docs/EA_SPEC.md`). `bridge_core.py` cambia solo per i due nuovi
-campi di stato interno (`gold_last_trade`, `stark_last_trade`) in
-`state/bridge_state.json`.
+nel contratto (`docs/EA_SPEC.md`). `bridge_core.py` cambia solo per i tre nuovi
+campi di stato interno (`gold_last_trade`, `stark_last_trade`, `ivan_last_trade`)
+in `state/bridge_state.json`.
 
 ## Gap noti ancora aperti (nessuna azione emessa, volutamente)
 

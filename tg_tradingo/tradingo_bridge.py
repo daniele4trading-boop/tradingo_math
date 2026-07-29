@@ -1391,22 +1391,39 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         if not last or not last.get("direction"):
             log.warning(f"[IVAN] Rientro senza setup precedente: {raw[:60]}")
             return None
+        direction = last["direction"]
+        # "Rientrare ora a 4023": il prezzo nel messaggio è il nuovo entry.
+        m_px = re.search(r"\b(\d{3,}(?:[.,]\d+)?)\b", upper)
+        entry = (pf(m_px.group(1)) if m_px else None) or last.get("entry")
+        tps = list(last.get("tp_levels") or [])
+        sl = last.get("sl")
+        if entry is not None:
+            # I livelli già superati dal nuovo entry non sono più coerenti.
+            tps = [
+                tp for tp in tps
+                if (tp > entry if direction == "BUY" else tp < entry)
+            ]
+            if sl is not None and (
+                sl >= entry if direction == "BUY" else sl <= entry
+            ):
+                sl = None
         log.info(
-            f"[IVAN] OPEN (rientro) {last['direction']} {last.get('symbol')} "
-            f"TP={last.get('tp_levels')} SL={last.get('sl')}"
+            f"[IVAN] OPEN (rientro) {direction} {last.get('symbol')} "
+            f"@ {entry} TP={tps} SL={sl}"
         )
         signal = {
             "action":      "OPEN",
-            "direction":   last["direction"],
+            "direction":   direction,
             "symbol":      last.get("symbol") or "XAUUSD",
-            "entry":       last.get("entry"),
-            "tp_levels":   list(last.get("tp_levels") or []),
-            "sl":          last.get("sl"),
+            "entry":       entry,
+            "tp_levels":   tps,
+            "sl":          sl,
             "magic_base":  ch["magic_base"],
             "raw_message": raw,
         }
         if last.get("lot_factor") is not None:
             signal["lot_factor"] = last["lot_factor"]
+        state.set_ivan_last_trade(signal)
         return signal
 
     if contains_any(upper, "SPOSTO SL A BE", "SPOSTIAMO SL A BE", "SL A BE"):

@@ -1063,3 +1063,39 @@ class TestIvanReentry:
         )
         assert sig["direction"] == "BUY"
         assert sig["entry"] == 4070.0
+
+    def test_rientrare_ora_a_prezzo_usa_il_nuovo_entry(self, bridge_state):
+        """Caso reale CH_IVAN 28/07 12:11Z: 'Rientrare ora a 4023' era UNPARSED."""
+        parser_ivan_vip(
+            "XAUUSD BUY 4028\nTP 1 4033\nTP 2 4037\nTP 3 4040\nTP 4 4050\nSL @ 4015",
+            CH_IVAN,
+            bridge_state,
+        )
+        sig = parser_ivan_vip("Rientrare ora a 4023", CH_IVAN, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["entry"] == 4023.0
+        assert sig["tp_levels"] == [4033.0, 4037.0, 4040.0, 4050.0]
+        assert sig["sl"] == 4015.0
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+
+    def test_reentry_drops_levels_already_passed(self, bridge_state):
+        parser_ivan_vip(
+            "XAUUSD BUY 4028\nTP 1 4033\nTP 2 4037\nSL @ 4015", CH_IVAN, bridge_state
+        )
+        sig = parser_ivan_vip("Rientrare ora a 4035", CH_IVAN, bridge_state)
+        assert sig["tp_levels"] == [4037.0]
+        assert sig["sl"] == 4015.0
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+
+    def test_reentry_drops_sl_on_wrong_side(self, bridge_state):
+        parser_ivan_vip(
+            "XAUUSD BUY 4028\nTP 1 4033\nSL @ 4015", CH_IVAN, bridge_state
+        )
+        sig = parser_ivan_vip("Rientriamo a 4010", CH_IVAN, bridge_state)
+        assert sig["sl"] is None
+        ok, reason = validate_signal(sig)
+        assert ok, reason

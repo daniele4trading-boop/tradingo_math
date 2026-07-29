@@ -343,4 +343,12 @@ footer {
   text-align: center;
 }
 
+.login-hint {
+  margin-top: 16px;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .hp { position: absolute; left: -9999px; opacity: 0; }

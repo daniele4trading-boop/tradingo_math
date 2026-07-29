@@ -22,6 +22,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import (
     FileResponse,
+    HTMLResponse,
     JSONResponse,
     RedirectResponse,
 )
@@ -81,7 +82,12 @@ collector = Collector(CONFIG)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     collector.start()
-    log.info("TG TradinGo webapp avviata (Fase 2 monitor + PnL)")
+    days = sessions.ttl_sec / 86400.0
+    log.info(
+        "TG TradinGo webapp avviata (Fase 2) — sessione cookie ~%.0f giorni (%ss)",
+        days,
+        sessions.ttl_sec,
+    )
     yield
     collector.stop()
 
@@ -145,7 +151,18 @@ def login(request: Request, username: str = Form(""), password: str = Form(""), 
     for k in keys:
         limiter.reset(k)
     token = sessions.create(user_cfg["username"])
-    resp = RedirectResponse("/", status_code=302)
+    # Safari/iOS often drops Set-Cookie on 302 after POST. Serve a 200 page that
+    # sets the cookie, then redirects with JS/meta — session then persists.
+    html = (
+        "<!DOCTYPE html><html><head>"
+        '<meta charset="utf-8">'
+        '<meta http-equiv="refresh" content="0;url=/">'
+        "<title>Accesso…</title></head><body>"
+        "<p>Accesso riuscito, reindirizzamento…</p>"
+        '<script>location.replace("/");</script>'
+        "</body></html>"
+    )
+    resp = HTMLResponse(content=html, status_code=200)
     resp.set_cookie(
         COOKIE_NAME,
         token,
@@ -154,7 +171,12 @@ def login(request: Request, username: str = Form(""), password: str = Form(""), 
         samesite="lax",
         path="/",
     )
-    log.info("login ok user=%s ip=%s", user_cfg["username"], ip)
+    log.info(
+        "login ok user=%s ip=%s session_days≈%.0f",
+        user_cfg["username"],
+        ip,
+        sessions.ttl_sec / 86400.0,
+    )
     return resp
 
 

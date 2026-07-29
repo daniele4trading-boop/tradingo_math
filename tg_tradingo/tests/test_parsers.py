@@ -1138,3 +1138,66 @@ class TestStateWriteFailureDoesNotLoseSignal:
         path = tmp_path / "s.json"
         assert bridge_core.save_state_json(path, {"a": 1}, "test") is True
         assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1}
+
+
+class TestIdenticalEditIsDeduped:
+    """STARK 29/07: EDIT identico dopo SL → l'EA riapriva a 539 pts dal segnale."""
+
+    def test_new_marks_identical_edit_as_duplicate(self, tmp_path):
+        from bridge_core import ProcessedMessageStore
+
+        store = ProcessedMessageStore(tmp_path / "processed.json")
+        text = "Apro una nuova operazione\nXAUUSD SELL\nEntry: 4010\nSL: 4014.66\nTP1: 4007.96"
+        key_new = ProcessedMessageStore.make_key(-100, 55, "NEW", text)
+        key_edit = ProcessedMessageStore.make_key(-100, 55, "EDIT", text)
+
+        store.mark_processed(key_new, key_edit)
+
+        assert store.is_duplicate(key_new)
+        assert store.is_duplicate(key_edit)
+        # un EDIT che cambia i livelli resta processabile
+        changed = text.replace("4010", "4020")
+        assert not store.is_duplicate(
+            ProcessedMessageStore.make_key(-100, 55, "EDIT", changed)
+        )
+
+    def test_alias_survives_reload(self, tmp_path):
+        from bridge_core import ProcessedMessageStore
+
+        path = tmp_path / "processed.json"
+        store = ProcessedMessageStore(path)
+        store.mark_processed("k:NEW", "k:EDIT:abc")
+        assert ProcessedMessageStore(path).is_duplicate("k:EDIT:abc")
+
+
+class TestOroFragmentsFromProduction:
+    """Sequenze ORO reali del 29/07: pending → setup completo."""
+
+    def test_entriamo_ora_sets_pending_then_full_setup_opens(self, bridge_state):
+        assert parser_sala_oro("Entriamo ora buy 3996", CH_ORO, bridge_state) is None
+        assert bridge_state.oro_pending_dir == "BUY"
+        assert bridge_state.oro_pending_entry == 3996.0
+
+        sig = parser_sala_oro(
+            "XAUUSD BUY 3996-3995\nTP 4002\nSL 3991", CH_ORO, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["entry_range"] == [3995.0, 3996.0]
+        assert sig["sl"] == 3991.0
+
+    def test_standalone_sl_accumulates_on_pending(self, bridge_state):
+        assert parser_sala_oro("4016 buy", CH_ORO, bridge_state) is None
+        assert bridge_state.oro_pending_dir == "BUY"
+        assert parser_sala_oro("Sl 4011", CH_ORO, bridge_state) is None
+        assert bridge_state.oro_pending_sl == 4011.0
+
+        sig = parser_sala_oro("TP 4024", CH_ORO, bridge_state)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["sl"] == 4011.0
+        assert sig["tp_levels"] == [4024.0]
+
+    def test_zona_buy_after_range(self, bridge_state):
+        assert parser_sala_oro("3998-3995 zona buy", CH_ORO, bridge_state) is None
+        assert bridge_state.oro_pending_dir == "BUY"
+        assert bridge_state.oro_pending_range == [3995.0, 3998.0]

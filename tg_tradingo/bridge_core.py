@@ -618,12 +618,17 @@ class ProcessedMessageStore:
     def is_duplicate(self, key: str) -> bool:
         return key in self._seen
 
-    def mark_processed(self, key: str) -> None:
-        if key in self._seen:
-            return
-        self._keys.append(key)
-        self._seen.add(key)
-        self.save()
+    def mark_processed(self, key: str, *aliases: str) -> None:
+        """Mark key as processed; aliases pre-book equivalent future events."""
+        added = False
+        for k in (key, *aliases):
+            if k in self._seen:
+                continue
+            self._keys.append(k)
+            self._seen.add(k)
+            added = True
+        if added:
+            self.save()
 
 
 def _sl_coherent(direction: str, entry: float | None, sl: float) -> bool:

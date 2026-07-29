@@ -878,6 +878,14 @@ def _parse_oro_direction_entry(upper: str) -> tuple[str | None, float | None, li
         v2 = pf(m.group(3))
         return direction, None, [min(v1, v2), max(v1, v2)]
 
+    # "3998-3995 zona buy": range prima della parola ZONA
+    m = re.search(r"([\d.,]+)\s*-\s*([\d.,]+)\s+ZONA\s+(BUY|SELL)", upper)
+    if m:
+        v1 = pf(m.group(1))
+        v2 = pf(m.group(2))
+        if v1 is not None and v2 is not None:
+            return m.group(3), None, [min(v1, v2), max(v1, v2)]
+
     m = re.search(
         r"(?:XAUUSD|GOLD)\s+(BUY|SELL)\s+([\d.,]+)(?:\s*-\s*([\d.,]+))?",
         upper,
@@ -1662,7 +1670,20 @@ async def run_bridge():
                     "event_type": event_type,
                 }
                 if write_signal(ch_cfg, signal, meta):
-                    processed_messages.mark_processed(dedup_key)
+                    # Un EDIT che non cambia il testo non porta informazione
+                    # nuova: prenotiamo la sua chiave così non riemette il
+                    # segnale (STARK ri-pubblica ogni setup come EDIT identico
+                    # ~60s dopo e l'EA riapriva a mercato dopo SL/TP).
+                    edit_alias = (
+                        ()
+                        if is_edit
+                        else (
+                            ProcessedMessageStore.make_key(
+                                int(chat_id), int(message_id), "EDIT", text
+                            ),
+                        )
+                    )
+                    processed_messages.mark_processed(dedup_key, *edit_alias)
                     append_bridge_event(CONFIG, {
                         "ts_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                         "channel_id": ch_cfg["id"],

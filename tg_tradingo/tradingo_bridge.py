@@ -267,6 +267,99 @@ def contains_any(text: str, *words) -> bool:
     t = text.upper()
     return any(w.upper() in t for w in words)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IGNORE PATTERNS (per parser)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Un solo registro per parser: usato dai parser stessi e dal journal del bridge
+# per etichettare l'outcome come IGNORED_PATTERN invece di UNPARSED.
+# Gli ignore sono sempre subordinati al contenuto operativo del messaggio:
+# ogni parser controlla prima se il testo contiene un segnale/comando valido.
+
+IGNORE_PATTERNS: dict[str, tuple[str, ...]] = {
+    "sala_gold": (
+        r"ZOOM\.US", r"SALA\s+APERT", r"FORMAZIONE", r"STASERA\s+FORM",
+        r"TP2?\s+HIT", r"PIPS\s+BREAK",
+        r"SL\s+HIT", r"\bSL\s+\d{4}\b",
+        r"BE\s+O\s+TP", r"RICORDO\s+A\s+TUTTI", r"MINUTI\s+E\s+APRIAMO",
+        r"ID\s+DE\s+REUNI", r"CODIGO\s+DE\s+ACCESO",
+        r"LINK\s+.*LIVE", r"SALA\s+APERTAAAA",
+        r"PIPS\s+\d", r"\+\d+\s+PIPS",
+    ),
+    "sala_vip": (
+        r"GIORNALIERO\s+RAPPORTO", r"SETTIMANALE\s+RAPPORTO", r"REPORT\s+SETTIMANALE",
+        r"SALA\s+APERT", r"ZOOM\.US", r"FORMAZIONE\s+STRATEG", r"LIVE\s+DI\s+FORMAZIONE",
+        r"LEZIONE\s+LIVE", r"VIDEO\s+ANALISI", r"RICORDO\s+A\s+TUTTI",
+        r"ENTRATE\s+TUTTI", r"LINK\s+.*LIVE", r"ID\s+DE\s+REUNI",
+        r"NEL\s+TRADING\s+NON", r"QUESTI\s+SONO\s+I\s+RISULTATI",
+        r"ORDINI\s+ANCORA\s+IN\s+ESECUZIONE",
+        r"QUESTO MESSAGGIO NON INCITA",
+    ),
+    # ORO: \b evita di ignorare parole contenute (LIVELLO conteneva LIVE) e
+    # FORMAZIONE in upper-case (il pattern misto "FORMazione" non matchava mai).
+    "sala_oro": (
+        r"\bREPORT\b",
+        r"BOOO?MM",
+        r"\bRAGAZZI\b",
+        r"\bPOTREBBE\b",
+        r"\bATTENDIAMO\b",
+        r"\bDOVREBBE\b",
+        r"FORMAZIONE",
+        r"\bLIVE\b",
+        r"^\d+\s+PIPS?\s*✅\s*$",
+    ),
+    "sala_stark": (
+        r"SPOSTO\s+LO\s+STOP\s+LOSS\s+A",
+        r"BREAK\s*EVEN",
+        r"TAKE\s+PROFIT\s*\d*\s+PRESO",
+        r"TAKE\s+PROFIT\s+PRESO",
+        r"STOP\s+LOSS\s+PRESO",
+        r"CHIUSA\s+A\s+BREAK",
+        r"CI\s+VEDIAMO\b",
+        r"WEBINARJAM",
+        r"LINK\s+PER\s+PRENOTARE",
+        r"COME\s+POTETE\s+CAPIRE",
+        r"MINUTI\s+PRIMA",
+        r"SI\s+COMINCIA",
+        r"ENTRATE\s+TUTTI",
+        r"LINK\s+LIVE",
+        r"RAGAZZI\s+COME\s+POTETE",
+    ),
+    "ivan_vip": (
+        r"^SL$",
+        r"^PECCATO$",
+        r"BUONGIORNO",
+        r"GTA\s+FRATELLI",
+        r"SCREEN\s+DI\s+PROFITTI",
+        r"STO\s+(?:SEMPRE\s+)?VALUTANDO",
+        r"^PROVIAMO$",
+        r"BOOO+MM",
+        r"EHEHE",
+        r"TP\s*\d+\s+HIT",
+        r"BE\s+HIT",
+        r"TAKE\s+PROFIT",
+        r"GESTIAMO\s+A\s+MERCATO",
+        r"SE\s+NON\s+LI\s+PIACE",
+        r"PRONTI\s+A\s+CHIUDERE",
+        r"VI\s+ERO\s+MANCATO",
+        r"CECCHINO",
+        r"INIZIO\s+SETTIMANA",
+        r"SIAMO\s+IN\s+LIVE",
+        r"TIK\s*TOK",
+        r"YOUTUBE\.COM",
+        r"^HTTPS?://",
+    ),
+}
+
+
+def matched_ignore_pattern(parser_name: str, upper: str) -> str | None:
+    """First ignore pattern matching an already normalised/upper text."""
+    for pat in IGNORE_PATTERNS.get(parser_name, ()):
+        if re.search(pat, upper):
+            return pat
+    return None
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PARSER CH1 — ZANNI VIP SIGNALS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -291,8 +384,13 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
     # "TP1 ✅ Spostiamo SL a BE" / "TP1 preso, sposto a BE" / "porto a BE"
     # Anche senza menzione TP1: "porto stop a BE", "sposto a BE", "metto a BE"
     be_with_tp1 = re.search(r"TP\s*1", upper) and contains_any(upper, " BE", "BREAK EVEN", "PAREGGIO")
-    be_generic  = contains_any(upper, "PORTO STOP A BE", "SPOSTO A BE", "SPOSTO SL A BE",
-                                "METTO A BE", "PORTO A BE", "MOVE TO BE", "SET BE")
+    # "sposto stop a BE", "portiamo lo stop loss in pareggio", "metto a BE", …
+    be_generic  = bool(re.search(
+        r"\b(?:SPOST|PORT|METT)(?:O|IAMO|IATE|ATE)\s+"
+        r"(?:(?:LO|IL|LA)\s+)?(?:STOP(?:\s+LOSS)?|SL)?\s*"
+        r"(?:A|IN)\s+(?:BE|PAREGGIO|BREAK\s*EVEN)\b",
+        upper,
+    )) or contains_any(upper, "MOVE TO BE", "SET BE")
     if be_with_tp1 or be_generic:
         log.info(f"[CH1] CHECK_AND_BE: {raw[:60]}")
         return {"action": "CHECK_AND_BE", "tp_index": 1, "raw_message": raw}
@@ -305,7 +403,8 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
         log.info(f"[CH1] CHECK_AND_CLOSE_TP{tp_n} (preso): {raw[:60]}")
         return {"action": "CHECK_AND_CLOSE_TP", "tp_index": tp_n, "raw_message": raw}
 
-    m_cl = re.search(r"(?:CHIUD[OI]\w*|CLOSING)\b.*?TP\s*(\d)", upper)
+    # CHIUDO / CHIUDI / CHIUDETE / CHIUDIAMO + "tp N"
+    m_cl = re.search(r"(?:CHIUD[OIEA]\w*|CLOSING)\b.*?TP\s*(\d)", upper)
     if m_cl:
         tp_n = int(m_cl.group(1))
         log.info(f"[CH1] CHECK_AND_CLOSE_TP{tp_n}: {raw[:60]}")
@@ -380,19 +479,45 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
 # Entry range: [min, max] — EA valuta se il prezzo e' nel range (non usa la media)
 # BE: AUTOMATICO nell'EA su TP1 hit — messaggi BE/SL/TP hit ignorati
 
+def _gold_has_full_setup(upper: str) -> bool:
+    """Direzione + prezzo + almeno un livello: il messaggio è un setup, non rumore."""
+    if not re.search(
+        r"(?:BUY|SELL)\s+(?:GOLD|XAUUSD)|(?:GOLD|XAUUSD)\s+(?:BUY|SELL)", upper
+    ):
+        return False
+    if not re.search(r"\d{3,}", upper):
+        return False
+    return bool(re.search(r"\bSL\b", upper) or re.search(r"\bTP\d*\b", upper))
+
+
+GOLD_REPOST_TTL_SEC = 1800.0
+
+
+def _gold_is_repost(last: dict | None, signal: dict) -> bool:
+    """Stesso setup identico rinviato entro TTL: evita il secondo trade stacked."""
+    if not last:
+        return False
+    ts = last.get("ts")
+    if not isinstance(ts, (int, float)) or time.time() - ts > GOLD_REPOST_TTL_SEC:
+        return False
+    return (
+        last.get("direction") == signal.get("direction")
+        and last.get("sl") == signal.get("sl")
+        and list(last.get("tp_levels") or []) == list(signal.get("tp_levels") or [])
+        and _entry_interval(last) == _entry_interval(signal)
+    )
+
+
 def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
     if state is None:
         state, _ = _ensure_runtime()
     raw   = text.strip()
     upper = strip_md(raw).upper()
 
-    # ── Chiusura totale CH2 (shared recognizer) ─────────────────────────────
-    close_sig = _maybe_close_from_text(upper, ch, raw, state)
-    if close_sig:
-        return close_sig
-
-    # ── Partial / half + break even → CLOSE_HALF_BE (prima del BE-prezzo) ──
-    # Deve stare PRIMA del match "N gold break even", altrimenti
+    # ── Partial / half + break even → CLOSE_HALF_BE ─────────────────────────
+    # Deve stare PRIMA del recognizer di chiusura totale: "+70 pips close half
+    # break even close" finiva in CLOSE_ALL_SYMBOL per il "close" finale.
+    # E prima del match "N gold break even", altrimenti
     # "Partial close, break even +100 pips" cattura la virgola come prezzo.
     is_partial = contains_any(
         upper,
@@ -406,6 +531,12 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         log.info(f"[CH2] CLOSE_HALF_BE: {raw[:60]}")
         return {"action": "CLOSE_HALF_BE", "symbol": "XAUUSD",
                 "magic_base": ch["magic_base"], "raw_message": raw}
+
+    # ── Chiusura totale CH2 (shared recognizer) ─────────────────────────────
+    close_sig = _maybe_close_from_text(upper, ch, raw, state)
+    if close_sig:
+        state.clear_gold_last_trade()
+        return close_sig
 
     # ── BE con prezzo esplicito: "4789 gold break Even" ─────────────────────
     # Richiede almeno 3 cifre (prezzo XAU), non pips (+100) né virgole isolate.
@@ -443,20 +574,37 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
             "raw_message": raw,
         }
 
-    # ── Messaggi da ignorare completamente ───────────────────────────────────
-    ignore_pats = [
-        r"ZOOM\.US", r"SALA\s+APERT", r"FORMAZIONE", r"STASERA\s+FORM",
-        r"TP2?\s+HIT", r"PIPS\s+BREAK",
-        r"SL\s+HIT", r"\bSL\s+\d{4}\b",
-        r"BE\s+O\s+TP", r"RICORDO\s+A\s+TUTTI", r"MINUTI\s+E\s+APRIAMO",
-        r"ID\s+DE\s+REUNI", r"CODIGO\s+DE\s+ACCESO",
-        r"LINK\s+.*LIVE", r"SALA\s+APERTAAAA",
-        r"PIPS\s+\d", r"\+\d+\s+PIPS",
-    ]
-    for pat in ignore_pats:
-        if re.search(pat, upper):
-            log.debug(f"[CH2] Ignorato: {raw[:60]}")
+    # ── SL spostato senza altro contesto: "SL 4807" ─────────────────────────
+    # Solo se c'è un trade GOLD noto e il livello è diverso da quello corrente,
+    # altrimenti è una ripetizione del setup appena inviato.
+    m_sl_only = re.match(r"^SL\s*[:\s]\s*(\d{3,}(?:[.,]\d+)?)\s*$", upper)
+    if m_sl_only:
+        new_sl = pf(m_sl_only.group(1))
+        last = state.gold_last_trade
+        if new_sl is None or not last:
+            log.debug(f"[CH2] SL standalone senza trade noto, ignorato: {raw[:60]}")
             return None
+        if last.get("sl") == new_sl:
+            log.debug(f"[CH2] SL standalone uguale al corrente ({new_sl}), ignorato")
+            return None
+        state.set_gold_last_trade({**last, "sl": new_sl})
+        log.info(f"[CH2] UPDATE_SL {last.get('direction')} XAUUSD SL={new_sl}")
+        return {
+            "action":      "UPDATE_SL",
+            "direction":   last.get("direction"),
+            "symbol":      "XAUUSD",
+            "new_sl":      new_sl,
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
+        }
+
+    # ── Messaggi da ignorare completamente ───────────────────────────────────
+    # Solo se il messaggio non contiene un setup completo: i canali mescolano
+    # spesso il segnale con testo promozionale ("+70 pips", "formazione", …).
+    pat = matched_ignore_pattern("sala_gold", upper)
+    if pat and not _gold_has_full_setup(upper):
+        log.debug(f"[CH2] Ignorato ({pat}): {raw[:60]}")
+        return None
 
     # ── Controlla se ci sono numeri significativi nel testo ──────────────────
     has_numbers = bool(re.search(r"\d{3,}", upper))
@@ -525,18 +673,8 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     tp_matches = re.findall(r"TP\d*\s*[:.]\s*([\d.,]+)\*?", upper)
     tps        = [pf(v) for v in tp_matches]
 
-    # Determina se e' completamento di un OPEN_NOW o nuovo segnale standalone
-    if state.ch2_pending_open and state.ch2_pending_dir == direction:
-        action = "UPDATE_OPEN"
-        state.clear_ch2_pending()
-        log.info(f"[CH2] UPDATE_OPEN {direction} range={entry_range} TP={tps} SL={sl}")
-    else:
-        action = "OPEN"
-        state.clear_ch2_pending()
-        log.info(f"[CH2] OPEN {direction} range={entry_range} TP={tps} SL={sl}")
-
-    return {
-        "action":       action,
+    signal = {
+        "action":       "OPEN",
         "direction":    direction,
         "symbol":       "XAUUSD",
         "entry":        entry,
@@ -546,6 +684,21 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         "magic_base":   ch["magic_base"],
         "raw_message":  raw,
     }
+
+    # Determina se e' completamento di un OPEN_NOW o nuovo segnale standalone
+    if state.ch2_pending_open and state.ch2_pending_dir == direction:
+        signal["action"] = "UPDATE_OPEN"
+        state.clear_ch2_pending()
+        log.info(f"[CH2] UPDATE_OPEN {direction} range={entry_range} TP={tps} SL={sl}")
+    else:
+        state.clear_ch2_pending()
+        if _gold_is_repost(state.gold_last_trade, signal):
+            log.info(f"[CH2] Setup identico già inviato, ignorato: {raw[:60]}")
+            return None
+        log.info(f"[CH2] OPEN {direction} range={entry_range} TP={tps} SL={sl}")
+
+    state.set_gold_last_trade(signal)
+    return signal
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -572,25 +725,25 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     raw   = text.strip()
     upper = strip_md(raw).upper()
 
-    # ── Messaggi da ignorare ─────────────────────────────────────────────────
-    ignore_pats = [
-        r"GIORNALIERO\s+RAPPORTO", r"SETTIMANALE\s+RAPPORTO", r"REPORT\s+SETTIMANALE",
-        r"SALA\s+APERT", r"ZOOM\.US", r"FORMAZIONE\s+STRATEG", r"LIVE\s+DI\s+FORMAZIONE",
-        r"LEZIONE\s+LIVE", r"VIDEO\s+ANALISI", r"RICORDO\s+A\s+TUTTI",
-        r"ENTRATE\s+TUTTI", r"LINK\s+.*LIVE", r"ID\s+DE\s+REUNI",
-        r"NEL\s+TRADING\s+NON", r"QUESTI\s+SONO\s+I\s+RISULTATI",
-        r"ORDINI\s+ANCORA\s+IN\s+ESECUZIONE",
-        r"QUESTO MESSAGGIO NON INCITA",
-    ]
-    for pat in ignore_pats:
-        if re.search(pat, upper):
-            log.debug(f"[CH3] Ignorato: {raw[:60]}")
-            return None
-
     # ── Apertura (IT / EN) — TP arriva nel messaggio Modified successivo ─────
     m_new = re.search(
         r"(?:NUOVO\s+ORDINE|NEW\s+ORDER)\s*[-]\s*(\w+)\s+(BUY|SELL)", upper
     )
+    m_mod = re.search(
+        r"(\w+)\s+(BUY|SELL)\s*[-]\s*(MODIFICATO|MODIFIED)", upper
+    )
+    m_close = re.search(r"(?:CHIUSO|CLOSED)\s*[-]\s*(\w+)\s+(BUY|SELL)", upper)
+
+    # ── Messaggi da ignorare ─────────────────────────────────────────────────
+    # Solo se non c'è un blocco ordine: il canale allega il disclaimer
+    # "Questo messaggio non incita a investire" a NUOVO ORDINE e CHIUSO, che
+    # finivano quindi ignorati (nessun OPEN e nessun CHECK_AND_CLOSE emesso).
+    if not (m_new or m_mod or m_close):
+        pat = matched_ignore_pattern("sala_vip", upper)
+        if pat:
+            log.debug(f"[CH3] Ignorato ({pat}): {raw[:60]}")
+            return None
+
     if m_new:
         symbol    = normalize_symbol(m_new.group(1))
         direction = m_new.group(2)
@@ -601,9 +754,6 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         return None
 
     # ── Modifica TP/SL (IT / EN) ─────────────────────────────────────────────
-    m_mod = re.search(
-        r"(\w+)\s+(BUY|SELL)\s*[-]\s*(MODIFICATO|MODIFIED)", upper
-    )
     if m_mod:
         symbol    = normalize_symbol(m_mod.group(1))
         direction = m_mod.group(2)
@@ -675,7 +825,6 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         return None
 
     # ── Chiusura (IT / EN) ────────────────────────────────────────────────────
-    m_close = re.search(r"(?:CHIUSO|CLOSED)\s*[-]\s*(\w+)\s+(BUY|SELL)", upper)
     if m_close:
         symbol    = normalize_symbol(m_close.group(1))
         direction = m_close.group(2)
@@ -773,16 +922,16 @@ def _oro_is_close_half_be(upper: str) -> bool:
     )
 
 
-def _oro_is_reentry(upper: str) -> bool:
-    """True when ORO explicitly asks to open again while a trade may still be open."""
+def _is_reentry_intent(upper: str) -> bool:
+    """Rientriamo / rientrate ora / riapriamo: riapri sull'ultimo setup del canale."""
     return bool(
-        re.search(r"\bRIENTRI(?:AMO|RE)?\b", upper)
-        or re.search(r"\bRIENTRO\b", upper)
-        or re.search(r"\bRE[- ]?ENTRY\b", upper)
+        re.search(r"\bRIENTR(?:O|IAMO|ATE|IAMOCI|ARE|IAMO\w*)\b", upper)
+        or re.search(r"\bRIAPR(?:O|IAMO|ITE|IRE)\b", upper)
+        or re.search(r"\bRE[- ]?ENTR(?:Y|IAMO)\b", upper)
     )
 
 
-def _oro_entry_interval(trade: dict) -> tuple[float, float] | None:
+def _entry_interval(trade: dict) -> tuple[float, float] | None:
     er = trade.get("entry_range")
     if er and len(er) >= 2:
         return min(er[0], er[1]), max(er[0], er[1])
@@ -792,7 +941,7 @@ def _oro_entry_interval(trade: dict) -> tuple[float, float] | None:
     return None
 
 
-def _oro_same_trade_setup(a: dict, b: dict, *, max_gap: float = 5.0) -> bool:
+def _same_trade_setup(a: dict, b: dict, *, max_gap: float = 5.0) -> bool:
     """Same direction and compatible entry (exact, overlapping range, or near).
 
     Treats refinements like entry 4060 → range 4060-4062 as the same setup so
@@ -800,8 +949,8 @@ def _oro_same_trade_setup(a: dict, b: dict, *, max_gap: float = 5.0) -> bool:
     """
     if a.get("direction") != b.get("direction"):
         return False
-    ia = _oro_entry_interval(a)
-    ib = _oro_entry_interval(b)
+    ia = _entry_interval(a)
+    ib = _entry_interval(b)
     if ia is None or ib is None:
         return False
     a_lo, a_hi = ia
@@ -870,21 +1019,18 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
 
     upper = strip_md(raw).upper()
 
-    ignore_pats = [
-        r"REPORT",
-        r"BOOO?MM",
-        r"RAGAZZI",
-        r"POTREBBE",
-        r"ATTENDIAMO",
-        r"DOVREBBE",
-        r"FORMazione",
-        r"LIVE",
-        r"^\d+\s+PIPS?\s*✅\s*$",
-    ]
-    for pat in ignore_pats:
-        if re.search(pat, upper):
-            log.debug(f"[ORO] Ignorato: {raw[:60]}")
-            return None
+    sl, tps = _parse_oro_sl_tp(upper)
+    direction, entry, entry_range = _parse_oro_direction_entry(upper)
+    want_stack = _is_reentry_intent(upper)
+
+    # Ignore solo se il messaggio non porta direzione, livelli né intento di
+    # chiusura: le parole di contorno ("ragazzi", "live", …) convivono spesso
+    # con il segnale ("Chiudiamo tutto ragazzi" era ignorato).
+    close_intent, _ = match_close_all_intent(upper)
+    pat = matched_ignore_pattern("sala_oro", upper)
+    if pat and direction is None and sl is None and not tps and not close_intent:
+        log.debug(f"[ORO] Ignorato ({pat}): {raw[:60]}")
+        return None
 
     if _oro_is_close_half_be(upper):
         log.info(f"[ORO] CLOSE_HALF_BE: {raw[:60]}")
@@ -895,9 +1041,15 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
             "raw_message": raw,
         }
 
-    sl, tps = _parse_oro_sl_tp(upper)
-    direction, entry, entry_range = _parse_oro_direction_entry(upper)
-    want_stack = _oro_is_reentry(upper)
+    # Chiusura totale ("chiudiamo tutto", "usciamo qui a 4060"): il canale ORO
+    # non aveva alcun recognizer di uscita, i messaggi finivano UNPARSED.
+    if direction is None:
+        close_sig = _maybe_close_from_text(upper, ch, raw, state)
+        if close_sig:
+            state.clear_oro_pending()
+            state.oro_last_trade = None
+            state.save()
+            return close_sig
 
     range_only = _oro_parse_range_only(upper)
     if range_only and state.oro_pending_dir:
@@ -972,7 +1124,7 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
         # New entry far from last setup → drop stale last_trade so later
         # fragments cannot UPDATE_OPEN against the overnight range.
         last = state.oro_last_trade
-        if last and not _oro_same_trade_setup(
+        if last and not _same_trade_setup(
             {"direction": direction, "entry": entry, "entry_range": entry_range},
             last,
         ):
@@ -999,12 +1151,12 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
     }
 
     last = state.oro_last_trade
-    if last and _oro_same_trade_setup(signal, last) and not want_stack:
+    if last and _same_trade_setup(signal, last) and not want_stack:
         last_tps = last.get("tp_levels") or []
         last_sl = last.get("sl")
         tps_changed = tps != last_tps
         sl_changed = sl != last_sl
-        entry_changed = _oro_entry_interval(signal) != _oro_entry_interval(last)
+        entry_changed = _entry_interval(signal) != _entry_interval(last)
         if not tps_changed and not sl_changed and not entry_changed:
             log.info(f"[ORO] Duplicate OPEN ignored (same levels) {direction}")
             return None
@@ -1092,32 +1244,38 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
 #
 # BE: automatico nell'EA su TP1 hit. "Sposto SL a Break Even" ignorato
 
-def parser_sala_stark(text: str, ch: dict) -> dict | None:
+def parser_sala_stark(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
+    if state is None:
+        state, _ = _ensure_runtime()
     raw   = text.strip()
     upper = strip_md(raw).upper()
 
-    # ── Messaggi da ignorare ─────────────────────────────────────────────────
-    ignore_pats = [
-        r"SPOSTO\s+LO\s+STOP\s+LOSS\s+A",
-        r"BREAK\s*EVEN",
-        r"TAKE\s+PROFIT\s*\d*\s+PRESO",
-        r"TAKE\s+PROFIT\s+PRESO",
-        r"STOP\s+LOSS\s+PRESO",
-        r"CHIUSA\s+A\s+BREAK",
-        r"CI\s+VEDIAMO\b",
-        r"WEBINARJAM",
-        r"LINK\s+PER\s+PRENOTARE",
-        r"COME\s+POTETE\s+CAPIRE",
-        r"MINUTI\s+PRIMA",
-        r"SI\s+COMINCIA",
-        r"ENTRATE\s+TUTTI",
-        r"LINK\s+LIVE",
-        r"RAGAZZI\s+COME\s+POTETE",
-    ]
-    for pat in ignore_pats:
-        if re.search(pat, upper):
-            log.debug(f"[CH4] Ignorato: {raw[:60]}")
+    # ── Chiusura manuale dell'operazione ─────────────────────────────────
+    # "Chiusa a Break Even" / "Chiusa in take profit": il canale ha chiuso tutto,
+    # va replicato sulle nostre posizioni residue (prima degli ignore, che
+    # matchano BREAK EVEN / TAKE PROFIT).
+    if re.search(r"\bCHIUS[AO]\b\s+(?:A|IN)\b", upper):
+        m_sym = re.search(r"\b(XAUUSD|GOLD|[A-Z]{3}(?:USD|JPY|EUR|GBP|CHF|CAD|AUD|NZD))\b", upper)
+        symbol = (
+            normalize_symbol(m_sym.group(1)) if m_sym
+            else (state.stark_last_trade or {}).get("symbol")
+        )
+        if not symbol:
+            log.debug(f"[CH4] Chiusura senza simbolo né trade noto: {raw[:60]}")
             return None
+        state.clear_stark_last_trade()
+        log.info(f"[CH4] CLOSE_ALL_SYMBOL {symbol}: {raw[:60]}")
+        return {
+            "action":      "CLOSE_ALL_SYMBOL",
+            "symbol":      symbol,
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
+        }
+
+    pat = matched_ignore_pattern("sala_stark", upper)
+    if pat:
+        log.debug(f"[CH4] Ignorato ({pat}): {raw[:60]}")
+        return None
 
     is_add = bool(re.search(r"AGGIUNGO\s+UN", upper))
 
@@ -1145,6 +1303,7 @@ def parser_sala_stark(text: str, ch: dict) -> dict | None:
 
         log.info(f"[CH4] {'ADD' if is_add else 'OPEN'} {direction} {symbol} @ {entry} "
                  f"SL={sl} TP={tps} inherit={inherit}")
+        state.set_stark_last_trade({"symbol": symbol, "direction": direction})
         return {
             "action":             "OPEN",
             "direction":          direction,
@@ -1171,6 +1330,7 @@ def parser_sala_stark(text: str, ch: dict) -> dict | None:
         tps = [pf(m.group(1)) for m in re.finditer(r"\bTP\d*\s+([\d.,]+)", upper)]
 
         log.info(f"[CH4] OPEN FLAT {direction} {symbol} @ {entry} SL={sl} TP={tps}")
+        state.set_stark_last_trade({"symbol": symbol, "direction": direction})
         return {
             "action":             "OPEN",
             "direction":          direction,
@@ -1212,35 +1372,59 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
 
     upper = strip_md(raw).upper()
 
-    # ignore_pats MUST run before close recognizer (preparatory phrases).
-    ignore_pats = [
-        r"^SL$",
-        r"^PECCATO$",
-        r"BUONGIORNO",
-        r"GTA\s+FRATELLI",
-        r"SCREEN\s+DI\s+PROFITTI",
-        r"STO\s+(?:SEMPRE\s+)?VALUTANDO",
-        r"^PROVIAMO$",
-        r"BOOO+MM",
-        r"EHEHE",
-        r"TP\s*\d+\s+HIT",
-        r"BE\s+HIT",
-        r"TAKE\s+PROFIT",
-        r"GESTIAMO\s+A\s+MERCATO",
-        r"SE\s+NON\s+LI\s+PIACE",
-        r"PRONTI\s+A\s+CHIUDERE",
-        r"VI\s+ERO\s+MANCATO",
-        r"CECCHINO",
-        r"INIZIO\s+SETTIMANA",
-        r"SIAMO\s+IN\s+LIVE",
-        r"TIK\s*TOK",
-        r"YOUTUBE\.COM",
-        r"^HTTPS?://",
-    ]
-    for pat in ignore_pats:
-        if re.search(pat, upper):
-            log.debug(f"[IVAN] Ignorato: {raw[:60]}")
+    # Gli ignore DEVONO precedere il recognizer di chiusura (frasi preparatorie),
+    # ma non devono coprire un setup completo: "TAKE PROFIT"/"TP n" compaiono sia
+    # nei commenti sia nei segnali veri.
+    has_setup = bool(
+        re.search(r"(?:XAUUSD|GOLD)\s+(?:BUY|SELL)\s+\d", upper)
+        and re.search(r"\bSL\b", upper)
+    )
+    pat = matched_ignore_pattern("ivan_vip", upper)
+    if pat and not has_setup:
+        log.debug(f"[IVAN] Ignorato ({pat}): {raw[:60]}")
+        return None
+
+    # "Rientrate ora" / "rientriamo": riapre l'ultimo setup del canale (solo GOLD)
+    # nella stessa direzione, a mercato. Senza setup noto non si indovina nulla.
+    if not has_setup and _is_reentry_intent(upper):
+        last = state.ivan_last_trade
+        if not last or not last.get("direction"):
+            log.warning(f"[IVAN] Rientro senza setup precedente: {raw[:60]}")
             return None
+        direction = last["direction"]
+        # "Rientrare ora a 4023": il prezzo nel messaggio è il nuovo entry.
+        m_px = re.search(r"\b(\d{3,}(?:[.,]\d+)?)\b", upper)
+        entry = (pf(m_px.group(1)) if m_px else None) or last.get("entry")
+        tps = list(last.get("tp_levels") or [])
+        sl = last.get("sl")
+        if entry is not None:
+            # I livelli già superati dal nuovo entry non sono più coerenti.
+            tps = [
+                tp for tp in tps
+                if (tp > entry if direction == "BUY" else tp < entry)
+            ]
+            if sl is not None and (
+                sl >= entry if direction == "BUY" else sl <= entry
+            ):
+                sl = None
+        log.info(
+            f"[IVAN] OPEN (rientro) {direction} {last.get('symbol')} "
+            f"@ {entry} TP={tps} SL={sl}"
+        )
+        signal = {
+            "action":      "OPEN",
+            "direction":   direction,
+            "symbol":      last.get("symbol") or "XAUUSD",
+            "entry":       entry,
+            "tp_levels":   tps,
+            "sl":          sl,
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
+        }
+        if last.get("lot_factor") is not None:
+            signal["lot_factor"] = last["lot_factor"]
+        state.set_ivan_last_trade(signal)
+        return signal
 
     if contains_any(upper, "SPOSTO SL A BE", "SPOSTIAMO SL A BE", "SL A BE"):
         log.info(f"[IVAN] CHECK_AND_BE: {raw[:60]}")
@@ -1309,6 +1493,7 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     }
     if lot_factor != 1.0:
         signal["lot_factor"] = lot_factor
+    state.set_ivan_last_trade(signal)
     return signal
 
 
@@ -1437,21 +1622,14 @@ async def run_bridge():
                         bridge_state.set_ch2_pending(direction)
                         log.info(f"[CH2] EDIT con dati completi → forzo UPDATE_OPEN {direction}")
 
-            matched_ignore = None
-            upper_for_ignore = strip_md(text).upper()
-            if ch_cfg["parser"] == "ivan_vip":
-                for pat in (
-                    r"PRONTI\s+A\s+CHIUDERE",
-                    r"GESTIAMO\s+A\s+MERCATO",
-                    r"SE\s+NON\s+LI\s+PIACE",
-                    r"TP\s*\d+\s+HIT",
-                ):
-                    if re.search(pat, upper_for_ignore):
-                        matched_ignore = pat
-                        break
+            matched_ignore = matched_ignore_pattern(
+                ch_cfg["parser"], strip_md(text).upper()
+            )
 
             try:
-                if ch_cfg["parser"] in ("sala_gold", "sala_oro", "sala_vip", "ivan_vip"):
+                if ch_cfg["parser"] in (
+                    "sala_gold", "sala_oro", "sala_vip", "sala_stark", "ivan_vip"
+                ):
                     signal = parser(text, ch_cfg, bridge_state)
                 else:
                     signal = parser(text, ch_cfg)

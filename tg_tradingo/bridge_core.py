@@ -104,6 +104,11 @@ def make_signal_id(chat_id: int | str, message_id: int | str, event_type: str) -
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:10]
 
 
+# Massimo numero di parole entro cui un verbo di chiusura da solo
+# ("Chiudiamo", "Esco") vale come comando e non come frase narrativa.
+CLOSE_STANDALONE_MAX_WORDS = 6
+
+
 def match_close_all_intent(upper: str) -> tuple[bool, float | None]:
     """Detect explicit close-all / exit intent.
 
@@ -116,32 +121,54 @@ def match_close_all_intent(upper: str) -> tuple[bool, float | None]:
         return False, None
 
     # Imperative / 1st-person plural exit verbs + optional complement.
-    # Avoid bare CHIUDERE/CLOSE alone (too ambiguous without ora/tutto/…).
+    # Il registro è additivo: ogni nuova forma vista in produzione va AGGIUNTA,
+    # mai sostituita a una esistente.
     verb = (
         r"(?:"
-        r"USCIAMO|USCITE|"
-        # CHIDUAMO/CHIUDAMO = common mobile typos for CHIUDIAMO
-        r"CHIUDIAMO|CHIDUAMO|CHIUDAMO|CHIUDETE|CHIUDERE|"
-        r"CHIUDO|"
-        r"CLOSING|CLOSE|EXIT|"
+        # uscire
+        r"USCIAMO|USCITE|USCIRE|USCIAMOCI|"
+        r"ESCIAMO|ESCO|ESCI|ESCITE|"
+        # chiudere (CHIDUAMO/CHIUDAMO = typo mobile ricorrenti per CHIUDIAMO)
+        r"CHIUDIAMO|CHIDUAMO|CHIUDAMO|CHIUDIAM|CHIUDETE|CHIUDERE|"
+        r"CHIUDO|CHIUDI|CHIUSURA|"
+        r"LIQUIDIAMO|LIQUIDA(?:RE|TE)?|"
+        r"SVUOTIAMO|FLATTIAMO|"
+        # inglese
+        r"CLOSING|CLOSE|CLOSED|EXIT|EXITING|FLAT|"
         r"CLOSA(?:RE|TE|MO)?"
         r")"
     )
     complement = (
         r"(?:"
-        r"ORA|QUI|TUTTO|TUTTI|ADESSO|SUBITO|"
-        r"A\s+MERCATO|NOW|ALL(?:\s+POSITIONS)?"
+        r"ORA|QUI|TUTTO|TUTTI|TUTTE|ADESSO|SUBITO|IMMEDIATAMENTE|"
+        r"POSIZIONI|POSIZIONE|OPERAZIONI|OPERAZIONE|TRADE|TRADES|"
+        r"A\s+MERCATO|SUL\s+MERCATO|NOW|ALL(?:\s+POSITIONS)?|EVERYTHING"
         r")"
     )
-    # Require verb + complement, OR known standalone forms (USCIAMO alone OK for CH1).
+    # Forme standalone: verbo imperativo da solo ("Chiudiamo", "Esco", "Uscite ✅").
+    # Ammesse solo in messaggi brevi, così una frase narrativa
+    # ("chiudiamo la settimana con questi risultati") non chiude i trade.
+    standalone = (
+        r"(?:"
+        r"USCIAMO|USCITE|ESCIAMO|ESCO|ESCI|"
+        r"CHIUDIAMO|CHIDUAMO|CHIUDAMO|CHIUDO|CHIUDETE|CHIUDI|"
+        r"CLOSE|CLOSING|EXIT|FLAT"
+        r")"
+    )
     close_re = re.compile(
         rf"(?:^|[^\w])({verb})\s+({complement})\b|"
         rf"(?:^|[^\w])(USCIAMO|USCITE\s+TUTTI|CHIUDIAMO\s+TUTTO|CHIUDO\s+TUTTO|"
-        rf"CLOSE\s*!*$|EXIT\s+ALL)\b",
+        rf"CLOSE\s*!*$|EXIT\s+ALL|CLOSE\s+ALL)\b",
+        re.IGNORECASE,
+    )
+    standalone_re = re.compile(
+        rf"(?:^|[^\w]){standalone}(?:[^\w]|$)",
         re.IGNORECASE,
     )
     if not close_re.search(upper):
-        return False, None
+        words = re.findall(r"[A-Za-zÀ-ÿ]+", upper)
+        if len(words) > CLOSE_STANDALONE_MAX_WORDS or not standalone_re.search(upper):
+            return False, None
 
     # Optional reference price: "a 5054", "@4060.5", "a 4060.5 -40 PIPS"
     price: float | None = None
@@ -149,6 +176,12 @@ def match_close_all_intent(upper: str) -> tuple[bool, float | None]:
         r"(?:^|\s)(?:A|@)\s*(\d{3,5}(?:[.,]\d+)?)\b",
         upper,
     )
+    if not m_px:
+        # "CHIUDIAMO ORA 4073", "Usciamo 4073": prezzo subito dopo il comando
+        m_px = re.search(
+            rf"(?:^|[^\w]){verb}(?:\s+{complement})?\s+(\d{{3,5}}(?:[.,]\d+)?)\b",
+            upper,
+        )
     if m_px:
         token = m_px.group(1).replace(",", ".")
         try:
@@ -159,6 +192,48 @@ def match_close_all_intent(upper: str) -> tuple[bool, float | None]:
         except ValueError:
             price = None
     return True, price
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Break-even / chiusura parziale: registri di sinonimi condivisi (additivi)
+# ─────────────────────────────────────────────────────────────────────────────
+
+BREAK_EVEN_WORDS: tuple[str, ...] = (
+    r"BREAK\s*-?\s*EVEN",
+    r"BREAKEVEN",
+    r"BREKIVEN",
+    r"BREACK\s*EVEN",
+    r"\bPAREGGIO\b",
+    r"\bPAREGGI\w*",          # pareggia, pareggiamo, pareggiare, pareggiato
+    r"\bPARI\b",
+    r"IN\s+PARIT\w*",
+    r"\bBE\s+MANUALE\b",
+    r"(?:SL|STOP)\s+(?:A|AL|IN)\s+(?:BE|PAREGGIO|ENTRY|ENTRATA)",
+)
+
+PARTIAL_CLOSE_WORDS: tuple[str, ...] = (
+    r"CLOSE\s+HALF",
+    r"HALF\s+CLOSE",
+    r"PARTIAL\s+CLOS\w*",
+    r"\bPARTIAL\b",
+    r"CLOSE\s+PART\w*",
+    r"CHIUSURA\s+PARZIAL\w*",
+    r"CHIUDI\w*\s+PARZIAL\w*",
+    r"\bPARZIAL\w*",
+    r"CHIUDI\w*\s+MET\w*",
+    r"MET\w*\s+POSIZIONE",
+    r"RIDUCIAMO\s+(?:LA\s+)?POSIZIONE",
+)
+
+
+def match_break_even_intent(upper: str) -> bool:
+    """True se il testo contiene un riferimento a break-even/pareggio."""
+    return any(re.search(p, upper) for p in BREAK_EVEN_WORDS)
+
+
+def match_partial_close_intent(upper: str) -> bool:
+    """True se il testo chiede una chiusura parziale / a metà."""
+    return any(re.search(p, upper) for p in PARTIAL_CLOSE_WORDS)
 
 
 def match_close_price_followup(upper: str) -> float | None:
@@ -331,6 +406,8 @@ class BridgeState:
         self.ch2_pending_dir: str | None = None
         self.ch2_pending_open: bool = False
         self.gold_last_trade: dict | None = None
+        # ultimo comando di gestione GOLD emesso: {"key": str, "ts": float}
+        self.gold_last_cmd: dict | None = None
         self.stark_last_trade: dict | None = None
         self.ivan_last_trade: dict | None = None
         self.oro_pending_dir: str | None = None
@@ -356,6 +433,8 @@ class BridgeState:
             self.ch2_pending_dir = ch2.get("pending_dir")
             self.ch2_pending_open = bool(ch2.get("pending_open", False))
             self.gold_last_trade = data.get("gold_last_trade")
+            glc = data.get("gold_last_cmd")
+            self.gold_last_cmd = glc if isinstance(glc, dict) else None
             self.stark_last_trade = data.get("stark_last_trade")
             self.ivan_last_trade = data.get("ivan_last_trade")
             oro_p = data.get("oro_pending", {})
@@ -393,6 +472,7 @@ class BridgeState:
                 "pending_dir": self.ch2_pending_dir,
             },
             "gold_last_trade": self.gold_last_trade,
+            "gold_last_cmd": self.gold_last_cmd,
             "stark_last_trade": self.stark_last_trade,
             "ivan_last_trade": self.ivan_last_trade,
             "oro_pending": {
@@ -449,6 +529,11 @@ class BridgeState:
 
     def clear_gold_last_trade(self) -> None:
         self.gold_last_trade = None
+        self.save()
+
+    def set_gold_last_cmd(self, key: str) -> None:
+        """Registra l'ultimo comando di gestione GOLD emesso (dedup IT/EN)."""
+        self.gold_last_cmd = {"key": key, "ts": time.time()}
         self.save()
 
     def set_stark_last_trade(self, trade: dict) -> None:
@@ -551,6 +636,7 @@ class EphemeralBridgeState(BridgeState):
         self.ch2_pending_dir: str | None = None
         self.ch2_pending_open: bool = False
         self.gold_last_trade: dict | None = None
+        self.gold_last_cmd: dict | None = None
         self.stark_last_trade: dict | None = None
         self.ivan_last_trade: dict | None = None
         self.oro_pending_dir: str | None = None

@@ -31,8 +31,10 @@ from bridge_core import (
     atomic_write_text_timed,
     is_unc_path,
     make_signal_id,
+    match_break_even_intent,
     match_close_all_intent,
     match_close_price_followup,
+    match_partial_close_intent,
     validate_signal,
 )
 from bridge_journal import append_bridge_event, write_heartbeat
@@ -280,8 +282,12 @@ def contains_any(text: str, *words) -> bool:
 IGNORE_PATTERNS: dict[str, tuple[str, ...]] = {
     "sala_gold": (
         r"ZOOM\.US", r"SALA\s+APERT", r"FORMAZIONE", r"STASERA\s+FORM",
-        r"TP2?\s+HIT", r"PIPS\s+BREAK",
+        r"TP\d*\s+HIT", r"PIPS\s+BREAK",
         r"SL\s+HIT", r"\bSL\s+\d{4}\b",
+        r"\bBE\s+HIT\b", r"PAREGGIO\s+(?:PRESO|RAGGIUNTO|FATTO)",
+        # comunicazioni broker/promo ricorrenti (arrivano su GOLD e su FOREX)
+        r"COMUNICAZIONE\s+IMPORTANTE", r"CONTO\s+FINANZIAT", r"NUOVA\s+DASHBOARD",
+        r"TRAMITE\s+QUESTA\s+GUIDA", r"POSSESSORI\s+DI\s+UN\s+CONTO",
         r"BE\s+O\s+TP", r"RICORDO\s+A\s+TUTTI", r"MINUTI\s+E\s+APRIAMO",
         r"ID\s+DE\s+REUNI", r"CODIGO\s+DE\s+ACCESO",
         r"LINK\s+.*LIVE", r"SALA\s+APERTAAAA",
@@ -295,6 +301,8 @@ IGNORE_PATTERNS: dict[str, tuple[str, ...]] = {
         r"NEL\s+TRADING\s+NON", r"QUESTI\s+SONO\s+I\s+RISULTATI",
         r"ORDINI\s+ANCORA\s+IN\s+ESECUZIONE",
         r"QUESTO MESSAGGIO NON INCITA",
+        r"COMUNICAZIONE\s+IMPORTANTE", r"CONTO\s+FINANZIAT", r"NUOVA\s+DASHBOARD",
+        r"TRAMITE\s+QUESTA\s+GUIDA", r"POSSESSORI\s+DI\s+UN\s+CONTO",
     ),
     # ORO: \b evita di ignorare parole contenute (LIVELLO conteneva LIVE) e
     # FORMAZIONE in upper-case (il pattern misto "FORMazione" non matchava mai).
@@ -479,6 +487,55 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
 # Entry range: [min, max] — EA valuta se il prezzo e' nel range (non usa la media)
 # BE: AUTOMATICO nell'EA su TP1 hit — messaggi BE/SL/TP hit ignorati
 
+# ── CH2 GOLD: il canale pubblica in italiano e poi edita in inglese ─────────
+# I sinonimi vengono normalizzati verso la forma canonica inglese, così tutta la
+# logica esistente (naked → OPEN_NOW, range, SL/TP, dedup) vale per entrambe le
+# lingue. Registro additivo: nuove forme si aggiungono, nulla viene rimosso.
+
+GOLD_SELL_WORDS = (
+    r"VENDIAMO", r"VENDETE", r"VENDERE", r"VENDIMO", r"VENDI", r"VENDO",
+    r"VENDITA", r"SHORTIAMO", r"SHORTA", r"SHORT",
+)
+GOLD_BUY_WORDS = (
+    r"COMPRIAMO", r"COMPRATE", r"COMPRARE", r"COMPRA", r"COMPRO",
+    r"ACQUISTIAMO", r"ACQUISTATE", r"ACQUISTARE", r"ACQUISTA", r"ACQUISTO",
+    r"LONGHIAMO", r"LONG",
+)
+GOLD_ASSET_WORDS = (r"ORO", r"GOLD", r"XAUUSD", r"XAU\/USD", r"XAU")
+GOLD_NOW_WORDS = (
+    r"ADESSO", r"ORA", r"SUBITO", r"IMMEDIATAMENTE", r"A\s+MERCATO",
+    r"SUL\s+MERCATO", r"NOW", r"MARKET",
+)
+
+_GOLD_PENDING_ORDER_RE = re.compile(
+    r"\b(?:BUY|SELL)\s+(?:STOP|LIMIT)\b|\b(?:STOP|LIMIT)\s+(?:BUY|SELL)\b"
+)
+
+
+def _gold_canonicalize(upper: str) -> str:
+    """Traduce i sinonimi italiani nella forma canonica 'BUY/SELL GOLD [NOW]'.
+
+    "VENDI oro ora 4063 - 4070 | SL:4078" → "SELL GOLD NOW 4063 - 4070 | SL:4078"
+    """
+    out = upper
+    for word in GOLD_SELL_WORDS:
+        out = re.sub(rf"\b{word}\b", "SELL", out)
+    for word in GOLD_BUY_WORDS:
+        out = re.sub(rf"\b{word}\b", "BUY", out)
+    for word in GOLD_ASSET_WORDS:
+        out = re.sub(rf"\b{word}\b", "GOLD", out)
+    # "NOW" solo se segue direzione+asset: evita di riscrivere "ora" nel testo libero.
+    now_alt = "|".join(GOLD_NOW_WORDS)
+    out = re.sub(
+        rf"\b((?:BUY|SELL)\s+GOLD|GOLD\s+(?:BUY|SELL))\s+(?:{now_alt})\b",
+        r"\1 NOW",
+        out,
+    )
+    # canale mono-asset: "Compriamo ora 4063" → "BUY NOW 4063" (asset implicito)
+    out = re.sub(rf"\b(BUY|SELL)\s+(?:{now_alt})\s+(?=[\d])", r"\1 NOW ", out)
+    return re.sub(r"  +", " ", out)
+
+
 def _gold_has_full_setup(upper: str) -> bool:
     """Direzione + prezzo + almeno un livello: il messaggio è un setup, non rumore."""
     if not re.search(
@@ -490,44 +547,97 @@ def _gold_has_full_setup(upper: str) -> bool:
     return bool(re.search(r"\bSL\b", upper) or re.search(r"\bTP\d*\b", upper))
 
 
+def _gold_has_levels_setup(upper: str) -> bool:
+    """Setup senza il nome dell'asset: direzione + prezzo + SL + TP.
+
+    Il canale è mono-asset (oro), quindi "Compriamo ora 4063 - 4070 SL 4055
+    TP 4080" è un setup valido anche se la parola "oro" non compare.
+    """
+    if not re.search(r"\b(?:BUY|SELL)\b", upper):
+        return False
+    if not re.search(r"\d{3,}", upper):
+        return False
+    if not re.search(r"\bSL\b\s*[:\s]\s*[\d.,]+", upper):
+        return False
+    return bool(re.search(r"\bTP\d*\b\s*[:.\s]\s*[\d.,]+", upper))
+
+
 GOLD_REPOST_TTL_SEC = 1800.0
+# Il canale ripubblica lo stesso comando di gestione prima in italiano e poi in
+# inglese (EDIT): entro questa finestra un comando equivalente non viene riemesso.
+GOLD_CMD_DEDUP_TTL_SEC = 180.0
 
 
 def _gold_is_repost(last: dict | None, signal: dict) -> bool:
-    """Stesso setup identico rinviato entro TTL: evita il secondo trade stacked."""
+    """Stesso setup rinviato entro TTL: evita il secondo trade stacked.
+
+    Il canale pubblica il setup in italiano e poi lo edita in inglese ritoccando
+    l'entry di qualche decimo (4076-4086 → 4076.8-4086): stessi SL e TP +
+    range sovrapposti o vicini = stesso setup, non un secondo segnale.
+    """
     if not last:
         return False
     ts = last.get("ts")
     if not isinstance(ts, (int, float)) or time.time() - ts > GOLD_REPOST_TTL_SEC:
         return False
-    return (
-        last.get("direction") == signal.get("direction")
-        and last.get("sl") == signal.get("sl")
-        and list(last.get("tp_levels") or []) == list(signal.get("tp_levels") or [])
-        and _entry_interval(last) == _entry_interval(signal)
-    )
+    if last.get("direction") != signal.get("direction"):
+        return False
+    if last.get("sl") != signal.get("sl"):
+        return False
+    if list(last.get("tp_levels") or []) != list(signal.get("tp_levels") or []):
+        return False
+    if _entry_interval(last) == _entry_interval(signal):
+        return True
+    return _same_trade_setup(last, signal, max_gap=2.0)
+
+
+def _gold_cmd_is_repeat(state: BridgeState, key: str) -> bool:
+    """True se lo stesso comando di gestione è già stato emesso entro il TTL."""
+    last = state.gold_last_cmd
+    if not isinstance(last, dict) or last.get("key") != key:
+        return False
+    ts = last.get("ts")
+    if not isinstance(ts, (int, float)):
+        return False
+    return (time.time() - ts) <= GOLD_CMD_DEDUP_TTL_SEC
 
 
 def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
     if state is None:
         state, _ = _ensure_runtime()
     raw   = text.strip()
-    upper = strip_md(raw).upper()
+    upper = _gold_canonicalize(strip_md(raw).upper())
+
+    # ── Ordini pendenti: non supportati, ma non vanno eseguiti a mercato ──────
+    # "Vendi stop oro 4065" → SELL STOP: ingresso differito che il sistema non
+    # gestisce. Meglio nessun trade che un ingresso a mercato non richiesto.
+    if _GOLD_PENDING_ORDER_RE.search(upper):
+        log.warning(f"[CH2] Ordine pendente non supportato, nessun segnale: {raw[:60]}")
+        return None
 
     # ── Partial / half + break even → CLOSE_HALF_BE ─────────────────────────
     # Deve stare PRIMA del recognizer di chiusura totale: "+70 pips close half
     # break even close" finiva in CLOSE_ALL_SYMBOL per il "close" finale.
     # E prima del match "N gold break even", altrimenti
     # "Partial close, break even +100 pips" cattura la virgola come prezzo.
-    is_partial = contains_any(
+    is_partial = match_partial_close_intent(upper) or contains_any(
         upper,
         "CLOSE HALF", "PARTIAL CLOSE", "PARTIAL CLOSURE", "HALF CLOSE",
         "CHIUDI META", "PARZIALE", "CLOSE PART", "PARTIAL",
     )
-    is_be_msg = contains_any(
-        upper, "BREAK EVEN", "BREAKEVEN", "BREAK-EVEN",
-    ) or re.search(r"\bBREAK\s+EVEN\b", upper)
+    is_be_msg = bool(
+        match_break_even_intent(upper)
+        or contains_any(upper, "BREAK EVEN", "BREAKEVEN", "BREAK-EVEN")
+    )
+    # "Rompere anche la chiusura parziale" = resa automatica di "break even +
+    # partial close": ROMPERE vale come break-even solo insieme al parziale.
+    if is_partial and re.search(r"\bROMP\w*", upper):
+        is_be_msg = True
     if is_partial and is_be_msg:
+        if _gold_cmd_is_repeat(state, "CLOSE_HALF_BE"):
+            log.info(f"[CH2] CLOSE_HALF_BE già emesso di recente, ignorato: {raw[:60]}")
+            return None
+        state.set_gold_last_cmd("CLOSE_HALF_BE")
         log.info(f"[CH2] CLOSE_HALF_BE: {raw[:60]}")
         return {"action": "CLOSE_HALF_BE", "symbol": "XAUUSD",
                 "magic_base": ch["magic_base"], "raw_message": raw}
@@ -535,14 +645,21 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     # ── Chiusura totale CH2 (shared recognizer) ─────────────────────────────
     close_sig = _maybe_close_from_text(upper, ch, raw, state)
     if close_sig:
+        cmd_key = f"{close_sig.get('action')}:{close_sig.get('close_price')}"
+        if _gold_cmd_is_repeat(state, cmd_key):
+            log.info(f"[CH2] Chiusura già emessa di recente, ignorata: {raw[:60]}")
+            return None
+        state.set_gold_last_cmd(cmd_key)
         state.clear_gold_last_trade()
         return close_sig
 
     # ── BE con prezzo esplicito: "4789 gold break Even" ─────────────────────
     # Richiede almeno 3 cifre (prezzo XAU), non pips (+100) né virgole isolate.
+    _be_kw = r"(?:BREAK\s*-?\s*EVEN|BREAKEVEN|BREKIVEN|PAREGGI\w*)"
     m_be_price = re.search(
-        r"(?<!\d)(\d{3,}(?:[.,]\d+)?)\s+(?:GOLD|XAUUSD)?\s*BREAK\s*EVEN|"
-        r"BREAK\s*EVEN\s+(?:GOLD|XAUUSD)?\s*(?<!\d)(\d{3,}(?:[.,]\d+)?)",
+        rf"(?<!\d)(\d{{3,}}(?:[.,]\d+)?)\s+(?:GOLD|XAUUSD)?\s*{_be_kw}|"
+        rf"{_be_kw}\s+(?:(?:IN|SU|SUL|A|AL|SULL')\s*)?(?:GOLD|XAUUSD)?\s*"
+        rf"(?<!\d)(\d{{3,}}(?:[.,]\d+)?)",
         upper,
     )
     if m_be_price:
@@ -558,6 +675,10 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
                 "magic_base": ch["magic_base"],
                 "raw_message": raw,
             }
+        if _gold_cmd_is_repeat(state, f"BREAK_EVEN_PRICE:{be_price}"):
+            log.info(f"[CH2] BE {be_price} già emesso di recente, ignorato: {raw[:60]}")
+            return None
+        state.set_gold_last_cmd(f"BREAK_EVEN_PRICE:{be_price}")
         log.info(f"[CH2] BE con prezzo esplicito: {be_price}")
         return {"action": "BREAK_EVEN_PRICE", "be_price": be_price,
                 "symbol": "XAUUSD", "magic_base": ch["magic_base"], "raw_message": raw}
@@ -565,6 +686,10 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     # ── "break even" standalone / manual BE instruction → SL a entry ───────
     # Esempi: "break Even", "MANUALLY SET A BREAK EVEN ON ALL YOUR POSITIONS!"
     if is_be_msg or re.search(r"MANUALLY\s+SET\s+A\s+BREAK\s*EVEN", upper):
+        if _gold_cmd_is_repeat(state, "CHECK_AND_BE"):
+            log.info(f"[CH2] CHECK_AND_BE già emesso di recente, ignorato: {raw[:60]}")
+            return None
+        state.set_gold_last_cmd("CHECK_AND_BE")
         log.info(f"[CH2] CHECK_AND_BE (break even): {raw[:60]}")
         return {
             "action": "CHECK_AND_BE",
@@ -602,7 +727,7 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     # Solo se il messaggio non contiene un setup completo: i canali mescolano
     # spesso il segnale con testo promozionale ("+70 pips", "formazione", …).
     pat = matched_ignore_pattern("sala_gold", upper)
-    if pat and not _gold_has_full_setup(upper):
+    if pat and not (_gold_has_full_setup(upper) or _gold_has_levels_setup(upper)):
         log.debug(f"[CH2] Ignorato ({pat}): {raw[:60]}")
         return None
 
@@ -615,10 +740,17 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         r"(?:GOLD|XAUUSD)\s+(BUY|SELL)(?:\s+NOW)?",
         upper
     )
+    # Fallback: canale mono-asset, la direzione può arrivare senza nominare l'oro
+    # ("Compriamo ora 4063 - 4070 SL 4055 TP 4080"). Solo con setup completo,
+    # così una frase di commento non apre nulla.
+    if not m_dir and _gold_has_levels_setup(upper):
+        m_dir = re.search(r"\b(BUY|SELL)\b(?:\s+NOW)?", upper)
     if not m_dir:
         return None
 
-    direction = m_dir.group(1) or m_dir.group(2)
+    direction = m_dir.group(1) or (
+        m_dir.group(2) if m_dir.lastindex and m_dir.lastindex >= 2 else None
+    )
 
     # ── NAKED: messaggio senza numeri → OPEN_NOW a mercato ───────────────────
     if not has_numbers:
@@ -643,10 +775,13 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         r"(?:GOLD|XAUUSD)\s+(?:BUY|SELL)(?:\s+NOW)?\s+([\d.,\s\-]+)",
         upper
     )
+    if not entry_raw_m:
+        # forma senza asset: "BUY NOW 4063 - 4070" (canale mono-asset)
+        entry_raw_m = re.search(r"(?:BUY|SELL)(?:\s+NOW)?\s+([\d.,\s\-]+)", upper)
     entry_range = None
     entry       = None
     if entry_raw_m:
-        raw_entry = (entry_raw_m.group(1) or entry_raw_m.group(2) or "").strip()
+        raw_entry = next((g for g in entry_raw_m.groups() if g), "").strip()
         parts     = re.findall(r"[\d.,]+", raw_entry)
         if len(parts) >= 2:
             v1 = pf(parts[0])
@@ -671,6 +806,9 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
 
     # TP — gestisce "Tp: 4768*", "Tp. 4824", "TP1: 5195"
     tp_matches = re.findall(r"TP\d*\s*[:.]\s*([\d.,]+)\*?", upper)
+    if not tp_matches:
+        # forma senza separatore: "TP 4080", "TP1 4069"
+        tp_matches = re.findall(r"\bTP\d*\s+([\d.,]+)\*?", upper)
     tps        = [pf(v) for v in tp_matches]
 
     signal = {
@@ -719,6 +857,30 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
 # Formato chiusura:
 #   CHIUSO - XAUUSDpm Buy            <- verifica se gia' chiuso, altrimenti chiudi
 
+# Registro additivo dei termini usati dal canale FOREX (bot IT + EN).
+_FX_DIR = r"(?:BUY|SELL|LONG|SHORT|COMPRA|VENDI|ACQUISTA|VENDITA|ACQUISTO)"
+_FX_SEP = r"\s*(?:[-–—:|]|\s)\s*"
+_FX_NEW = r"(?:NUOVO\s+ORDINE|NUOVA\s+OPERAZIONE|NUOVO\s+TRADE|ORDINE\s+APERTO|" \
+          r"NEW\s+ORDER|NEW\s+TRADE|NEW\s+POSITION|ORDER\s+OPENED|OPENED)"
+_FX_MOD = r"(?:MODIFICAT[OA]|MODIFICA|MODIFIED|UPDATED|UPDATE|AGGIORNAT[OA]|" \
+          r"SPOSTAT[OA]|MOVED)"
+_FX_CLOSE = r"(?:CHIUS[OAE]|CHIUSURA|CLOSED|CLOSE|EXIT|EXITED|TERMINAT[OA]|USCIT[OAI])"
+_FX_TP = r"(?:TP|TAKE\s*PROFIT)"
+_FX_SL = r"(?:SL|STOP\s*LOSS|STOP)"
+_FX_LEVEL_PREFIX = r"(?:NUOVO|NUOVA|NEW|MODIFICATO|AGGIORNATO|SET|SPOSTATO|MOVED)"
+_FX_ENTRY_LABEL = r"(?:ENTRATA|ENTRY|PREZZO|PRICE|APERTURA|OPEN(?:ED)?\s+AT)"
+
+
+def _fx_direction(token: str) -> str | None:
+    """Normalizza la direzione del canale FOREX (IT/EN) su BUY/SELL."""
+    t = (token or "").upper()
+    if t in ("BUY", "LONG", "COMPRA", "ACQUISTA", "ACQUISTO"):
+        return "BUY"
+    if t in ("SELL", "SHORT", "VENDI", "VENDITA"):
+        return "SELL"
+    return None
+
+
 def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> dict | None:
     if state is None:
         state, _ = _ensure_runtime()
@@ -726,13 +888,26 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     upper = strip_md(raw).upper()
 
     # ── Apertura (IT / EN) — TP arriva nel messaggio Modified successivo ─────
+    # Separatore e ordine simbolo/direzione tollerati in tutte le varianti viste.
     m_new = re.search(
-        r"(?:NUOVO\s+ORDINE|NEW\s+ORDER)\s*[-]\s*(\w+)\s+(BUY|SELL)", upper
+        rf"{_FX_NEW}{_FX_SEP}(\w+)\s+({_FX_DIR})\b", upper
+    ) or re.search(
+        rf"(\w+)\s+({_FX_DIR}){_FX_SEP}{_FX_NEW}", upper
     )
     m_mod = re.search(
-        r"(\w+)\s+(BUY|SELL)\s*[-]\s*(MODIFICATO|MODIFIED)", upper
+        rf"(\w+)\s+({_FX_DIR}){_FX_SEP}{_FX_MOD}", upper
+    ) or re.search(
+        rf"{_FX_MOD}{_FX_SEP}(\w+)\s+({_FX_DIR})\b", upper
     )
-    m_close = re.search(r"(?:CHIUSO|CLOSED)\s*[-]\s*(\w+)\s+(BUY|SELL)", upper)
+    m_close = re.search(
+        rf"{_FX_CLOSE}{_FX_SEP}(\w+)\s+({_FX_DIR})\b", upper
+    ) or re.search(
+        rf"(\w+)\s+({_FX_DIR}){_FX_SEP}{_FX_CLOSE}\b", upper
+    )
+    # Un messaggio di modifica cita spesso anche "chiuso parzialmente"/"stop
+    # spostato": la modifica ha precedenza sulla chiusura solo se porta livelli.
+    if m_mod and m_close and re.search(rf"{_FX_LEVEL_PREFIX}\s+{_FX_TP}|{_FX_LEVEL_PREFIX}\s+{_FX_SL}", upper):
+        m_close = None
 
     # ── Messaggi da ignorare ─────────────────────────────────────────────────
     # Solo se non c'è un blocco ordine: il canale allega il disclaimer
@@ -746,8 +921,10 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
 
     if m_new:
         symbol    = normalize_symbol(m_new.group(1))
-        direction = m_new.group(2)
-        m_entry   = re.search(r"(?:ENTRATA|ENTRY)\s*[:\s]\s*([\d.,]+)", upper)
+        direction = _fx_direction(m_new.group(2))
+        if direction is None:
+            return None
+        m_entry   = re.search(rf"{_FX_ENTRY_LABEL}\s*[:\s]\s*([\d.,]+)", upper)
         entry     = pf(m_entry.group(1)) if m_entry else None
         state.set_forex_pending(symbol, direction, entry)
         log.info(f"[FOREX] Pending {direction} {symbol} @ {entry}")
@@ -756,10 +933,12 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     # ── Modifica TP/SL (IT / EN) ─────────────────────────────────────────────
     if m_mod:
         symbol    = normalize_symbol(m_mod.group(1))
-        direction = m_mod.group(2)
+        direction = _fx_direction(m_mod.group(2))
+        if direction is None:
+            return None
 
-        m_tp = re.search(r"(?:NUOVO|NEW)\s+TP\s*[:\s]\s*([\d.,]+)", upper)
-        m_sl = re.search(r"(?:NUOVO|NEW)\s+SL\s*[:\s]\s*([\d.,]+)", upper)
+        m_tp = re.search(rf"{_FX_LEVEL_PREFIX}\s+{_FX_TP}\s*[:\s]\s*([\d.,]+)", upper)
+        m_sl = re.search(rf"{_FX_LEVEL_PREFIX}\s+{_FX_SL}\s*[:\s]\s*([\d.,]+)", upper)
 
         if m_tp:
             tp_val = pf(m_tp.group(1))
@@ -787,17 +966,39 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
                 state.clear_forex_pending()
                 return signal
 
-            log.info(f"[FOREX] UPDATE_TP {symbol} {direction} TP={tp_val}")
-            if (
+            known_trade = bool(
                 state.forex_last_trade
                 and state.forex_last_trade.get("symbol") == symbol
                 and state.forex_last_trade.get("direction") == direction
-            ):
+            )
+            last_entry = (
+                state.forex_last_trade.get("entry") if known_trade else None
+            )
+            if known_trade:
                 state.set_forex_last_trade({
                     **state.forex_last_trade,
                     "tp_levels": [tp_val],
                     "sl": sl_val or state.forex_last_trade.get("sl"),
                 })
+            # TP e SL nello stesso messaggio: UPDATE_TP porterebbe solo il TP e
+            # lo stop nuovo andrebbe perso. UPDATE_OPEN è la sola azione che
+            # applica entrambi i livelli alle posizioni già aperte.
+            if sl_val is not None and known_trade:
+                log.info(
+                    f"[FOREX] UPDATE_OPEN (TP+SL) {symbol} {direction} "
+                    f"TP={tp_val} SL={sl_val}"
+                )
+                return {
+                    "action":      "UPDATE_OPEN",
+                    "symbol":      symbol,
+                    "direction":   direction,
+                    "entry":       last_entry,
+                    "tp_levels":   [tp_val],
+                    "sl":          sl_val,
+                    "magic_base":  ch["magic_base"],
+                    "raw_message": raw,
+                }
+            log.info(f"[FOREX] UPDATE_TP {symbol} {direction} TP={tp_val}")
             return {
                 "action":      "UPDATE_TP",
                 "symbol":      symbol,
@@ -810,7 +1011,34 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
 
         if m_sl:
             sl_val = pf(m_sl.group(1))
-            is_be  = contains_any(upper, "PAREGGIO", "BREAK EVEN", "BREAKEVEN")
+            # Solo SL sul pending: il trade va aperto comunque, altrimenti resta
+            # in attesa per sempre e il segnale si perde.
+            if (
+                state.forex_pending_symbol == symbol
+                and state.forex_pending_dir == direction
+            ):
+                entry = state.forex_pending_entry
+                log.info(
+                    f"[FOREX] OPEN (pending+SL) {direction} {symbol} @{entry} SL={sl_val}"
+                )
+                signal = {
+                    "action":      "OPEN",
+                    "direction":   direction,
+                    "symbol":      symbol,
+                    "entry":       entry,
+                    "tp_levels":   [],
+                    "sl":          sl_val,
+                    "magic_base":  ch["magic_base"],
+                    "raw_message": raw,
+                }
+                state.set_forex_last_trade(signal)
+                state.clear_forex_pending()
+                return signal
+            is_be  = match_break_even_intent(upper) or contains_any(
+                upper, "PAREGGIO", "BREAK EVEN", "BREAKEVEN"
+            )
+            if state.forex_last_trade and state.forex_last_trade.get("symbol") == symbol:
+                state.set_forex_last_trade({**state.forex_last_trade, "sl": sl_val})
             log.info(f"[FOREX] UPDATE_SL {symbol} {direction} SL={sl_val} be={is_be}")
             return {
                 "action":      "UPDATE_SL",
@@ -827,7 +1055,14 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     # ── Chiusura (IT / EN) ────────────────────────────────────────────────────
     if m_close:
         symbol    = normalize_symbol(m_close.group(1))
-        direction = m_close.group(2)
+        direction = _fx_direction(m_close.group(2))
+        if direction is None:
+            return None
+        if (
+            state.forex_pending_symbol == symbol
+            and state.forex_pending_dir == direction
+        ):
+            state.clear_forex_pending()
         if (
             state.forex_last_trade
             and state.forex_last_trade.get("symbol") == symbol
@@ -918,6 +1153,9 @@ def _parse_oro_direction_entry(upper: str) -> tuple[str | None, float | None, li
 
 
 def _oro_is_close_half_be(upper: str) -> bool:
+    # Forma esplicita: "chiusura parziale in pareggio" (senza conteggio pips)
+    if match_partial_close_intent(upper) and match_break_even_intent(upper):
+        return True
     if not re.search(r"\d+\s*PIPS?", upper):
         return False
     return contains_any(

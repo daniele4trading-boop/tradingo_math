@@ -21,6 +21,7 @@ from bridge_core import (
     make_signal_id,
 )
 from tradingo_bridge import (
+    GOLD_CMD_DEDUP_TTL_SEC,
     parser_sala_gold,
     parser_sala_oro,
     parser_sala_stark,
@@ -766,22 +767,22 @@ class TestEditOpenCoerce:
 
 
 class TestGoldBreakEvenHardening:
-    def test_partial_close_plus_pips_no_crash(self):
-        sig = parser_sala_gold("Partial close, break even +100 pips", CH2)
+    def test_partial_close_plus_pips_no_crash(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("Partial close, break even +100 pips", CH2, bridge_state)
         assert sig is not None
         assert sig["action"] == "CLOSE_HALF_BE"
 
-    def test_partial_closure_be(self):
-        sig = parser_sala_gold("Partial closure break Even!!!", CH2)
+    def test_partial_closure_be(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("Partial closure break Even!!!", CH2, bridge_state)
         assert sig["action"] == "CLOSE_HALF_BE"
 
-    def test_bare_break_even(self):
-        sig = parser_sala_gold("break Even", CH2)
+    def test_bare_break_even(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("break Even", CH2, bridge_state)
         assert sig["action"] == "CHECK_AND_BE"
 
-    def test_manual_break_even_instruction(self):
+    def test_manual_break_even_instruction(self, bridge_state: BridgeState):
         sig = parser_sala_gold(
-            "MANUALLY SET A BREAK EVEN ON ALL YOUR POSITIONS!", CH2
+            "MANUALLY SET A BREAK EVEN ON ALL YOUR POSITIONS!", CH2, bridge_state
         )
         assert sig["action"] == "CHECK_AND_BE"
 
@@ -1201,3 +1202,375 @@ class TestOroFragmentsFromProduction:
         assert parser_sala_oro("3998-3995 zona buy", CH_ORO, bridge_state) is None
         assert bridge_state.oro_pending_dir == "BUY"
         assert bridge_state.oro_pending_range == [3995.0, 3998.0]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GOLD: forme italiane e sinonimi (audit produzione 29-30/07/2026)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestGoldItalianForms:
+    def test_vendi_oro_adesso_naked(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("VENDI oro adesso", CH2, bridge_state)
+        assert sig["action"] == "OPEN_NOW"
+        assert sig["direction"] == "SELL"
+        assert bridge_state.ch2_pending_open is True
+
+    @pytest.mark.parametrize(
+        "text,direction",
+        [
+            ("Vendi oro ora", "SELL"),
+            ("Vendo oro subito", "SELL"),
+            ("Vendiamo oro adesso", "SELL"),
+            ("Vendete oro a mercato", "SELL"),
+            ("Short gold now", "SELL"),
+            ("Compra oro adesso", "BUY"),
+            ("Compro oro ora", "BUY"),
+            ("Compriamo oro subito", "BUY"),
+            ("Comprate oro a mercato", "BUY"),
+            ("Acquistiamo oro adesso", "BUY"),
+            ("Long gold now", "BUY"),
+            ("Vendi XAUUSD adesso", "SELL"),
+            ("Buy xau/usd now", "BUY"),
+        ],
+    )
+    def test_naked_open_synonyms(self, bridge_state: BridgeState, text, direction):
+        sig = parser_sala_gold(text, CH2, bridge_state)
+        assert sig is not None, text
+        assert sig["action"] == "OPEN_NOW"
+        assert sig["direction"] == direction
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_english_naked_still_works(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("Gold sell now", CH2, bridge_state)
+        assert sig["action"] == "OPEN_NOW"
+        assert sig["direction"] == "SELL"
+
+    def test_italian_setup_completes_naked(self, bridge_state: BridgeState):
+        parser_sala_gold("VENDI oro adesso", CH2, bridge_state)
+        sig = parser_sala_gold(
+            "VENDI oro ora 4063 - 4070\nSL:4078\nTP: 4055\nTP: 4040",
+            CH2,
+            bridge_state,
+        )
+        assert sig["action"] == "UPDATE_OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry_range"] == [4063.0, 4070.0]
+        assert sig["sl"] == 4078.0
+        assert sig["tp_levels"] == [4055.0, 4040.0]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_italian_setup_standalone(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "VENDI oro ora 4067 - 4077\nSL:4082\nTP: 4060\nTP: 4040",
+            CH2,
+            bridge_state,
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["entry_range"] == [4067.0, 4077.0]
+        assert sig["sl"] == 4082.0
+        assert sig["tp_levels"] == [4060.0, 4040.0]
+
+    def test_buy_setup_italian(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "COMPRA oro ora 4063 - 4070\nSL: 4055\nTP: 4080", CH2, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["sl"] == 4055.0
+        assert sig["tp_levels"] == [4080.0]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_setup_without_asset_word(self, bridge_state: BridgeState):
+        """Canale mono-asset: direzione + prezzo + SL + TP bastano."""
+        sig = parser_sala_gold(
+            "Compriamo ora 4063 - 4070 SL 4055 TP 4080", CH2, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["entry_range"] == [4063.0, 4070.0]
+        assert sig["sl"] == 4055.0
+        assert sig["tp_levels"] == [4080.0]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Vendi stop oro 4065",
+            "SELL stop oro 4065",
+            "Buy limit oro 4050",
+            "Sell limit gold 4090",
+            "Stop sell oro 4065",
+        ],
+    )
+    def test_pending_orders_never_open_at_market(self, bridge_state: BridgeState, text):
+        assert parser_sala_gold(text, CH2, bridge_state) is None, text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "BE HIT",
+            "TP1 HIT + 70 PIPS 🔥",
+            "SL HIT",
+            "📢 Comunicazione importante per tutti i possessori di un Conto Finanziato",
+            "Tramite questa guida sara’ possibile aprire la dashboard",
+        ],
+    )
+    def test_informational_messages_ignored(self, bridge_state: BridgeState, text):
+        assert parser_sala_gold(text, CH2, bridge_state) is None, text
+
+
+class TestGoldManagementSynonyms:
+    def test_partial_be_with_pips_prefix(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "+120 pip chiusura parziale in pareggio", CH2, bridge_state
+        )
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_partial_be_italian_plain(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("Chiusura parziale in pareggio", CH2, bridge_state)
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_partial_be_break_wording(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("Rompere anche la chiusura parziale", CH2, bridge_state)
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    def test_be_and_partial_italian(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Mettere a break even  e chiusura parziale", CH2, bridge_state
+        )
+        assert sig["action"] == "CLOSE_HALF_BE"
+
+    @pytest.mark.parametrize(
+        "text", ["Pareggiare", "Mettiamo in pareggio", "Portiamo lo SL a pareggio"]
+    )
+    def test_break_even_italian(self, bridge_state: BridgeState, text):
+        sig = parser_sala_gold(text, CH2, bridge_state)
+        assert sig is not None, text
+        assert sig["action"] == "CHECK_AND_BE"
+
+    def test_break_even_with_price_italian(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("4074 pareggio in oro", CH2, bridge_state)
+        assert sig["action"] == "BREAK_EVEN_PRICE"
+        assert sig["be_price"] == 4074.0
+
+    def test_identical_command_not_repeated_within_ttl(self, bridge_state: BridgeState):
+        first = parser_sala_gold("Chiusura parziale in pareggio", CH2, bridge_state)
+        assert first["action"] == "CLOSE_HALF_BE"
+        # stesso comando tradotto in inglese subito dopo (EDIT del canale)
+        assert (
+            parser_sala_gold("Partial close break Even +100 pips", CH2, bridge_state)
+            is None
+        )
+
+    def test_same_command_emitted_again_after_ttl(self, bridge_state: BridgeState):
+        first = parser_sala_gold("Chiusura parziale in pareggio", CH2, bridge_state)
+        assert first["action"] == "CLOSE_HALF_BE"
+        last = dict(bridge_state.gold_last_cmd or {})
+        last["ts"] = last["ts"] - (GOLD_CMD_DEDUP_TTL_SEC + 1)
+        bridge_state.gold_last_cmd = last
+
+        again = parser_sala_gold("Partial close break even +60 pips", CH2, bridge_state)
+        assert again is not None
+        assert again["action"] == "CLOSE_HALF_BE"
+
+    def test_same_setup_reposted_in_english_is_not_a_second_trade(
+        self, bridge_state: BridgeState
+    ):
+        first = parser_sala_gold(
+            "VENDI oro ora 4076 - 4086\nSL:4091\nTP: 4069\nTP: 4040",
+            CH2,
+            bridge_state,
+        )
+        assert first["action"] == "OPEN"
+        assert (
+            parser_sala_gold(
+                "SELL gold now 4076.8 - 4086\nSL: 4091\nTP: 4069\nTP: 4040",
+                CH2,
+                bridge_state,
+            )
+            is None
+        )
+
+
+class TestCloseSynonymsWidening:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "USCIAMO",
+            "Usciamo ora",
+            "USCITE",
+            "Uscite subito",
+            "Usciamo qui a 5054 -40 PIPS",
+            "ESCO",
+            "Esco ora",
+            "Esciamo",
+            "Esciamo tutti",
+            "Esci adesso",
+            "CHIUDIAMO",
+            "Chiudiamo ora",
+            "CHIUDO",
+            "Chiudete ora",
+            "Chiudi tutto",
+            "Chiudiamo tutte le posizioni",
+            "Liquidiamo tutto",
+            "Chiudiamo a mercato",
+            "CLOSE ALL",
+            "Close everything now",
+            "EXIT ALL",
+            "Closing all positions",
+            "CHIDUAMO ORA",
+        ],
+    )
+    def test_close_variants_detected(self, text):
+        ok, _ = match_close_all_intent(text.upper())
+        assert ok is True, text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "pronti a chiudere ragazzi",
+            "potremmo chiudere a breve",
+            "gestiamo a mercato",
+            "Se rompe chiudiamo il trade a mercato senza pensarci",
+            "chiudiamo la settimana con un ottimo risultato in profitto",
+            "domani chiuderemo la sala prima",
+        ],
+    )
+    def test_narrative_close_not_operational(self, text):
+        ok, _ = match_close_all_intent(text.upper())
+        assert ok is False, text
+
+    def test_close_price_still_extracted(self):
+        ok, px = match_close_all_intent("CHIUDIAMO ORA 4073")
+        assert ok is True
+        assert px == 4073.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FOREX: varianti IT/EN aggiunte (canale bot Sala VIP)
+# ─────────────────────────────────────────────────────────────────────────────
+class TestForexWidening:
+    def test_english_flow_unchanged(self, bridge_state: BridgeState):
+        assert parser_sala_vip(
+            "NEW ORDER - GBPUSDpm Sell 📉\n\nEntry: 1.33852 [Lots: 0.02]\nNo SL\nNo TP",
+            CH3,
+            bridge_state,
+        ) is None
+        sig = parser_sala_vip(
+            "🛠️ GBPUSDpm Sell - Modified\n\n--------{ Set TP }---------\n"
+            "🗑️ Old TP: 0.00000\n👉 New TP: 1.33700",
+            CH3,
+            bridge_state,
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["symbol"] == "GBPUSD"
+        assert sig["direction"] == "SELL"
+        assert sig["entry"] == 1.33852
+        assert sig["tp_levels"] == [1.337]
+
+    def test_italian_flow(self, bridge_state: BridgeState):
+        assert parser_sala_vip(
+            "NUOVO ORDINE - EURUSDpm Compra\n\nEntrata: 1.10000", CH3, bridge_state
+        ) is None
+        sig = parser_sala_vip(
+            "EURUSDpm Compra - Modificato\n\nNuovo TP: 1.11000", CH3, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["symbol"] == "EURUSD"
+        assert sig["tp_levels"] == [1.11]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_take_profit_label(self, bridge_state: BridgeState):
+        parser_sala_vip("NEW ORDER - EURUSDpm Sell\nEntry: 1.15000", CH3, bridge_state)
+        sig = parser_sala_vip(
+            "EURUSDpm Sell - Updated\nNew Take Profit: 1.14000", CH3, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["tp_levels"] == [1.14]
+
+    def test_pending_opened_with_sl_only(self, bridge_state: BridgeState):
+        parser_sala_vip("NEW ORDER - EURUSDpm Sell\nEntry: 1.15000", CH3, bridge_state)
+        sig = parser_sala_vip(
+            "EURUSDpm Sell - Modified\nNew SL: 1.15400", CH3, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["sl"] == 1.154
+        assert sig["tp_levels"] == []
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_tp_and_sl_together_on_open_trade(self, bridge_state: BridgeState):
+        parser_sala_vip("NEW ORDER - XAUUSDpm Sell\nEntry: 4076.31", CH3, bridge_state)
+        opened = parser_sala_vip(
+            "XAUUSDpm Sell - Modified\n-----{ Moved SL & TP }-----\n"
+            "👉 New SL: 4091.00\n👉 New TP: 4050.00",
+            CH3,
+            bridge_state,
+        )
+        assert opened["action"] == "OPEN"
+
+        sig = parser_sala_vip(
+            "XAUUSDpm Sell - Modified\n👉 New SL: 4085.00\n👉 New TP: 4045.00",
+            CH3,
+            bridge_state,
+        )
+        assert sig["action"] == "UPDATE_OPEN"
+        assert sig["sl"] == 4085.0
+        assert sig["tp_levels"] == [4045.0]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_update_tp_without_known_trade(self, bridge_state: BridgeState):
+        sig = parser_sala_vip(
+            "AUDJPYpm Sell - Modified\nNew TP: 113.370", CH3, bridge_state
+        )
+        assert sig["action"] == "UPDATE_TP"
+        assert sig["new_tp"] == 113.37
+
+    def test_update_sl_without_known_trade(self, bridge_state: BridgeState):
+        sig = parser_sala_vip(
+            "AUDJPYpm Sell - Modificato\nNuovo SL: 113.900", CH3, bridge_state
+        )
+        assert sig["action"] == "UPDATE_SL"
+        assert sig["new_sl"] == 113.9
+
+    def test_close_english(self, bridge_state: BridgeState):
+        sig = parser_sala_vip(
+            "🟠 CLOSED - XAUUSDpm Sell 🟠\n\nEntry:  4076.31", CH3, bridge_state
+        )
+        assert sig["action"] == "CHECK_AND_CLOSE"
+        assert sig["symbol"] == "XAUUSD"
+        assert sig["direction"] == "SELL"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "CHIUSO - EURUSDpm Sell",
+            "CHIUSA - EURUSDpm Sell",
+            "EURUSDpm Sell - CHIUSO",
+            "EURUSDpm Vendi - Chiuso",
+            "CLOSE - EURUSDpm Sell",
+            "EXIT - EURUSDpm Sell",
+        ],
+    )
+    def test_close_variants(self, bridge_state: BridgeState, text):
+        sig = parser_sala_vip(text, CH3, bridge_state)
+        assert sig is not None, text
+        assert sig["action"] == "CHECK_AND_CLOSE"
+        assert sig["symbol"] == "EURUSD"
+        assert sig["direction"] == "SELL"
+
+    def test_close_clears_pending(self, bridge_state: BridgeState):
+        parser_sala_vip("NEW ORDER - EURUSDpm Sell\nEntry: 1.15000", CH3, bridge_state)
+        parser_sala_vip("CLOSED - EURUSDpm Sell", CH3, bridge_state)
+        assert bridge_state.forex_pending_symbol is None
+
+    def test_promo_message_ignored(self, bridge_state: BridgeState):
+        assert parser_sala_vip(
+            "📢 Comunicazione importante per tutti i possessori di un Conto Finanziato",
+            CH3,
+            bridge_state,
+        ) is None

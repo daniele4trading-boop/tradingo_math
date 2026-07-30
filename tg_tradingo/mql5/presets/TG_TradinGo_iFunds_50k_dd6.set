@@ -1,0 +1,64 @@
+; TG_TradinGoEA — preset iFunds 50k, piano DD 6% / split 80%
+; Regola unica iFunds: non superare il DD massimo statico sull'equity.
+;   equity di partenza 50.000 -> floor 47.000 -> allowance 3.000
+;   chiusura totale + halt a 47.600 (80% dell allowance consumato)
+;   blocco nuove aperture a 48.200 (60% dell allowance consumato)
+; Sizing dal serbatoio: util 50%, scatti del 10%, cap 0.25 per posizione
+;   (3.000 x 50% / 39.9 = 0.37 su IVAN: il cap parte a 0.25 e va alzato
+;    gradualmente quando il serbatoio cresce con profitti REALIZZATI)
+; Kill switch manuale: crea MQL5\Files\tradingo_halt.flag per bloccare le aperture
+; Carica da: Inputs EA -> Load -> questo file
+; Richiede EA v2.12+
+
+InpSignalsPath=
+InpUseAbsolutePath=false
+InpChannels=ivan,stark
+InpSymbolSuffix=
+InpLotMultiplier=1.0
+InpAddLotFactor=0.5
+InpLotIvan=0.25
+InpLotStark=0.25
+InpLotGold=0.0
+InpLotOro=0.0
+InpLotForex=0.0
+InpTagIvan=IT
+InpTagStark=AS
+InpTagGold=
+InpTagOro=
+InpTagForex=
+InpCommentUseTgPrefix=false
+InpMaxSlippagePoints=50
+InpPollMs=500
+InpRangeTolerancePoints=150
+InpOroRangeTolerancePoints=250
+InpLogCancelledSignals=true
+InpClearSignalAfterProcess=true
+InpIgnoreExistingOnInit=true
+InpStackOpensIfFlatBusy=true
+InpStopBufferPoints=20
+InpAutoBreakEvenOnTp1=true
+InpMagicOffset=500000
+InpMaxFloatingLossUSD=1500.0
+InpKillSwitchCooldownMin=60
+InpMaxHoldingMinutes=0
+InpHeartbeatMaxAgeSec=180
+InpHeartbeatFile=tradingo_heartbeat.json
+InpEquitySampleSec=60
+InpJournalPrefix=journal\\
+InpSingleInstanceLock=true
+InpLockStaleSec=120
+InpDdMaxPct=6.0
+InpDdStartEquity=50000.0
+InpDdCloseAtPct=80.0
+InpDdBlockNewAtPct=60.0
+InpHaltFlagFile=tradingo_halt.flag
+InpDdSizingEnabled=true
+InpDdUtilizationPct=50.0
+InpDdStepPct=10.0
+InpDdMaxLot=0.25
+InpDdFloatIvan=39.9
+InpDdFloatStark=10.4
+InpDdFloatGold=15.0
+InpDdFloatOro=12.4
+InpDdFloatForex=20.0
+InpMaxConcurrentLots=1.50

@@ -11,6 +11,7 @@ CANALI:
 
 import asyncio
 import json
+import math
 import os
 import re
 import sys
@@ -35,6 +36,7 @@ from bridge_core import (
     match_close_all_intent,
     match_close_price_followup,
     match_partial_close_intent,
+    match_selective_close_intent,
     validate_signal,
 )
 from bridge_journal import append_bridge_event, write_heartbeat
@@ -224,7 +226,25 @@ def _maybe_close_from_text(
     *,
     symbol: str | None = "XAUUSD",
 ) -> dict | None:
-    """Shared close intent + optional price follow-up (after ignore_pats)."""
+    """Shared close intent + optional price follow-up (after ignore_pats).
+
+    La chiusura SELETTIVA ha la precedenza: "chiudiamo le entry meno premium"
+    deve chiudere solo quelle, non tutto il simbolo.
+    """
+    keep = match_selective_close_intent(upper)
+    if keep:
+        if state is not None:
+            state.pop_close_price_pending(ch["id"])
+        log.info(f"[{ch['id']}] CLOSE_SELECTIVE keep={keep}: {raw[:60]}")
+        sig: dict = {
+            "action": "CLOSE_SELECTIVE",
+            "keep": keep,
+            "magic_base": ch["magic_base"],
+            "raw_message": raw,
+        }
+        sig["symbol"] = symbol or "XAUUSD"
+        return sig
+
     matched, ref = match_close_all_intent(upper)
     if matched:
         if state is not None and ref is None:
@@ -1169,12 +1189,60 @@ def _oro_is_close_half_be(upper: str) -> bool:
 
 
 def _is_reentry_intent(upper: str) -> bool:
-    """Rientriamo / rientrate ora / riapriamo: riapri sull'ultimo setup del canale."""
+    """Rientriamo / rientrate ora / riapriamo: riapri sull'ultimo setup del canale.
+
+    Registro additivo: comprende anche le forme di entrata aggiuntiva viste in
+    produzione ("Okay dentro anche da qui", "Rientri piccola da qui a 58",
+    "E altra metà sui 4057").
+    """
+    folded = fold_accents(upper)
     return bool(
-        re.search(r"\bRIENTR(?:O|IAMO|ATE|IAMOCI|ARE|IAMO\w*)\b", upper)
-        or re.search(r"\bRIAPR(?:O|IAMO|ITE|IRE)\b", upper)
-        or re.search(r"\bRE[- ]?ENTR(?:Y|IAMO)\b", upper)
+        re.search(r"\bRIENTR(?:O|I|IAMO|ATE|IAMOCI|ARE|IAMO\w*)\w*\b", folded)
+        or re.search(r"\bRIAPR(?:O|IAMO|ITE|IRE)\b", folded)
+        or re.search(r"\bRE[- ]?ENTR(?:Y|IAMO)\b", folded)
+        or re.search(r"\bDENTRO\s+(?:ANCHE|PURE|ALTRA|ALTRO)\b", folded)
+        or re.search(r"\b(?:ENTRIAMO|ENTRATE|ENTRA)\s+(?:ANCHE|PURE|ALTRA)\b", folded)
+        or re.search(r"\bAGGIUNGIAMO\b|\bAGGIUNGO\b|\bADD\s+(?:ANOTHER|MORE)\b", folded)
+        or re.search(r"\b(?:E\s+)?ALTRA\s+(?:META|MEZZA|SIZE|PARTE)\b", folded)
     )
+
+
+def _expand_short_price(value: float, reference: float | None) -> float:
+    """'da qui a 58' con ultimo entry 4054 → 4058 (abbreviazione del canale)."""
+    if reference is None or value >= 100:
+        return value
+    base = math.floor(reference / 100.0) * 100.0
+    candidates = [base + value, base + value + 100.0, base + value - 100.0]
+    return min(candidates, key=lambda c: abs(c - reference))
+
+
+def _reduced_size_factor(upper: str) -> float | None:
+    """'piccola', 'metà size', 'size ridotta' → lot_factor 0.5."""
+    folded = fold_accents(upper)
+    if re.search(
+        r"\bPICCOL[AEIO]\b|\bPICCOLINA\b|\bRIDOTT[AEIO]\b|\bMINI\b|"
+        r"\b(?:META|MEZZA|HALF)\s*(?:SIZE|SAZIE|POSIZIONE)?\b|\bSMALL\b",
+        folded,
+    ):
+        return 0.5
+    return None
+
+
+IVAN_REENTRY_DEDUP_TTL_SEC = 180.0
+IVAN_REENTRY_DEDUP_MAX_GAP = 3.0
+
+
+def _ivan_reentry_is_repeat(last: dict | None, entry: float | None) -> bool:
+    """True se lo stesso rientro è già stato emesso da poco (MSG poi EDIT)."""
+    if not isinstance(last, dict) or not last.get("allow_stack"):
+        return False
+    ts = last.get("ts")
+    if not isinstance(ts, (int, float)) or (time.time() - ts) > IVAN_REENTRY_DEDUP_TTL_SEC:
+        return False
+    prev = last.get("entry")
+    if entry is None or prev is None:
+        return True
+    return abs(float(entry) - float(prev)) <= IVAN_REENTRY_DEDUP_MAX_GAP
 
 
 def _entry_interval(trade: dict) -> tuple[float, float] | None:
@@ -1292,9 +1360,12 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
     if direction is None:
         close_sig = _maybe_close_from_text(upper, ch, raw, state)
         if close_sig:
-            state.clear_oro_pending()
-            state.oro_last_trade = None
-            state.save()
+            # Una chiusura selettiva lascia aperte le entry migliori: il setup
+            # resta valido e non va dimenticato.
+            if close_sig["action"] == "CLOSE_ALL_SYMBOL":
+                state.clear_oro_pending()
+                state.oro_last_trade = None
+                state.save()
             return close_sig
 
     range_only = _oro_parse_range_only(upper)
@@ -1639,8 +1710,12 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
             return None
         direction = last["direction"]
         # "Rientrare ora a 4023": il prezzo nel messaggio è il nuovo entry.
-        m_px = re.search(r"\b(\d{3,}(?:[.,]\d+)?)\b", upper)
-        entry = (pf(m_px.group(1)) if m_px else None) or last.get("entry")
+        # "Rientri piccola da qui a 58": il canale abbrevia le ultime due cifre.
+        m_px = re.search(r"\b(\d{2,}(?:[.,]\d+)?)\b", upper)
+        raw_px = pf(m_px.group(1)) if m_px else None
+        if raw_px is not None:
+            raw_px = _expand_short_price(raw_px, last.get("entry"))
+        entry = raw_px or last.get("entry")
         tps = list(last.get("tp_levels") or [])
         sl = last.get("sl")
         if entry is not None:
@@ -1653,9 +1728,18 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
                 sl >= entry if direction == "BUY" else sl <= entry
             ):
                 sl = None
+        # MSG + EDIT dello stesso rientro ("… a 58" poi "… a 58.5") non deve
+        # aprire due volte: lo stack è consentito solo a distanza di tempo/prezzo.
+        if _ivan_reentry_is_repeat(last, entry):
+            log.info(f"[IVAN] Rientro già emesso di recente, ignorato: {raw[:60]}")
+            return None
+
+        # Il rientro è per definizione una posizione in più su un setup già
+        # aperto: senza allow_stack l'EA lo tratterebbe come modifica SL/TP.
+        lot_factor = _reduced_size_factor(upper) or last.get("lot_factor")
         log.info(
             f"[IVAN] OPEN (rientro) {direction} {last.get('symbol')} "
-            f"@ {entry} TP={tps} SL={sl}"
+            f"@ {entry} TP={tps} SL={sl} lot_factor={lot_factor}"
         )
         signal = {
             "action":      "OPEN",
@@ -1664,11 +1748,12 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
             "entry":       entry,
             "tp_levels":   tps,
             "sl":          sl,
+            "allow_stack": True,
             "magic_base":  ch["magic_base"],
             "raw_message": raw,
         }
-        if last.get("lot_factor") is not None:
-            signal["lot_factor"] = last["lot_factor"]
+        if lot_factor is not None:
+            signal["lot_factor"] = lot_factor
         state.set_ivan_last_trade(signal)
         return signal
 

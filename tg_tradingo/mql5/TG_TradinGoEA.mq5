@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.12"
+#property version   "2.13"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -52,7 +52,7 @@ input ulong  InpMagicOffset        = 0;
 //--- v2.10 hardening / journal inputs
 // Floating-loss killswitch. Compared in ACCOUNT_CURRENCY (see OnInit print). 0 = off.
 input double InpMaxFloatingLossUSD   = 150.0;
-input int    InpKillSwitchCooldownMin = 60;   // block re-opens on a bucket after killswitch
+input int    InpKillSwitchCooldownMin = 0;    // 0 = nessun blocco dopo killswitch bucket
 input int    InpMaxHoldingMinutes    = 0;     // 0 = off (90 suggested): stale-position exit
 input int    InpHeartbeatMaxAgeSec   = 180;   // 0 = off: block opens if bridge heartbeat stale
 input string InpHeartbeatFile        = "tradingo_heartbeat.json";
@@ -1186,6 +1186,84 @@ bool HandleCloseAllSymbol(const string json)
   }
 
 //+------------------------------------------------------------------+
+//| CLOSE_SELECTIVE: chiude solo una parte delle entry.               |
+//| keep=BEST     tiene le entry migliori per la direzione            |
+//|               (SELL: prezzo più alto, BUY: prezzo più basso)      |
+//| keep=HIGHEST  tiene le entry con prezzo di apertura più alto      |
+//| keep=LOWEST   tiene le entry con prezzo di apertura più basso     |
+//| Le posizioni allo stesso prezzo del gruppo tenuto restano aperte. |
+//+------------------------------------------------------------------+
+bool HandleCloseSelective(const string json)
+  {
+   string keep = JsonGetString(json, "keep");
+   StringToUpper(keep);
+   if(keep != "BEST" && keep != "HIGHEST" && keep != "LOWEST")
+     {
+      Print("[TradinGo] CLOSE_SELECTIVE ignorata — keep non valido: '", keep, "'");
+      return false;
+     }
+
+   string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
+   int magicBase = JsonGetInt(json, "magic_base");
+
+   // Il gruppo da tenere si determina per direzione: un SELL e un BUY sullo
+   // stesso simbolo non sono confrontabili.
+   for(int pass = 0; pass < 2; pass++)
+     {
+      ENUM_POSITION_TYPE side = (pass == 0 ? POSITION_TYPE_BUY : POSITION_TYPE_SELL);
+
+      double keepPrice = 0.0;
+      bool found = false;
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+        {
+         if(!g_pos.SelectByIndex(i))
+            continue;
+         if(g_pos.Symbol() != symbol || g_pos.PositionType() != side)
+            continue;
+         if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
+            continue;
+         double price = g_pos.PriceOpen();
+         bool keepHigher = (keep == "HIGHEST")
+                           || (keep == "BEST" && side == POSITION_TYPE_SELL);
+         if(!found || (keepHigher ? price > keepPrice : price < keepPrice))
+           {
+            keepPrice = price;
+            found = true;
+           }
+        }
+      if(!found)
+         continue;
+
+      double tol = SymbolInfoDouble(symbol, SYMBOL_POINT) * 10.0;
+      int closed = 0;
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+        {
+         if(!g_pos.SelectByIndex(i))
+            continue;
+         if(g_pos.Symbol() != symbol || g_pos.PositionType() != side)
+            continue;
+         if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
+            continue;
+         if(MathAbs(g_pos.PriceOpen() - keepPrice) <= tol)
+            continue;
+         ulong ticket = g_pos.Ticket();
+         SetTrackReason(ticket, "CLOSE_SELECTIVE_" + keep);
+         if(g_trade.PositionClose(ticket))
+            closed++;
+         else
+            Print("[TradinGo] CLOSE_SELECTIVE close failed ticket=", ticket,
+                  " err=", GetLastError());
+        }
+      Print("[TradinGo] CLOSE_SELECTIVE ", symbol,
+            " side=", (side == POSITION_TYPE_BUY ? "BUY" : "SELL"),
+            " keep=", keep,
+            " keep_price=", DoubleToString(keepPrice, _Digits),
+            " closed=", closed);
+     }
+   return true;
+  }
+
+//+------------------------------------------------------------------+
 bool HandleBreakEvenPrice(const string json)
   {
    string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
@@ -1307,6 +1385,8 @@ bool ProcessSignalJson(const string channelFile, const string json)
       handled = HandleCheckAndClose(json);
    else if(action == "CLOSE_ALL_SYMBOL")
       handled = HandleCloseAllSymbol(json);
+   else if(action == "CLOSE_SELECTIVE")
+      handled = HandleCloseSelective(json);
    else if(action == "BREAK_EVEN_PRICE")
       handled = HandleBreakEvenPrice(json);
    else if(action == "CLOSE_HALF_BE")
@@ -1619,6 +1699,10 @@ bool KsCooldownActive(const string bucket)
 //+------------------------------------------------------------------+
 void KsSetCooldown(const string bucket)
   {
+   // 0 = nessun blocco: dopo la chiusura del bucket i segnali successivi
+   // restano eseguibili (il floor guard sull'equity resta la protezione).
+   if(InpKillSwitchCooldownMin <= 0)
+      return;
    datetime until = TimeCurrent() + (datetime)InpKillSwitchCooldownMin * 60;
    for(int i = 0; i < ArraySize(g_ksBucket); i++)
       if(g_ksBucket[i] == bucket)
@@ -2437,7 +2521,9 @@ void CheckFloatingKillSwitch()
             " floating=", DoubleToString(sums[k], 2),
             " limit=", DoubleToString(-InpMaxFloatingLossUSD, 2),
             " ccy=", AccountInfoString(ACCOUNT_CURRENCY),
-            " -> closing bucket, cooldown=", InpKillSwitchCooldownMin, "m");
+            " -> closing bucket, cooldown=",
+            (InpKillSwitchCooldownMin > 0
+             ? IntegerToString(InpKillSwitchCooldownMin) + "m" : "off"));
       CloseBucketPositions(bks[k], "KILLSWITCH_FLOATING");
       KsSetCooldown(bks[k]);
      }

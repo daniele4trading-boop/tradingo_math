@@ -12,6 +12,7 @@ import os
 import re
 import tempfile
 import time
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from datetime import datetime, timezone
@@ -73,6 +74,7 @@ VALID_ACTIONS = frozenset({
     "CHECK_AND_BE",
     "CHECK_AND_CLOSE_TP",
     "CLOSE_ALL_SYMBOL",
+    "CLOSE_SELECTIVE",
     "BREAK_EVEN_PRICE",
     "CLOSE_HALF_BE",
     "UPDATE_TP",
@@ -94,9 +96,16 @@ ACTIONS_REQUIRING_SYMBOL = frozenset({
     "UPDATE_SL",
     "CHECK_AND_CLOSE",
     "CLOSE_ALL_SYMBOL",
+    "CLOSE_SELECTIVE",
     "BREAK_EVEN_PRICE",
     "CLOSE_HALF_BE",
 })
+
+# CLOSE_SELECTIVE: quali posizioni restano aperte.
+#   BEST    -> tiene le entry migliori per la direzione (SELL: prezzo alto, BUY: basso)
+#   HIGHEST -> tiene le entry con prezzo più alto (chiude quelle sotto)
+#   LOWEST  -> tiene le entry con prezzo più basso (chiude quelle sopra)
+SELECTIVE_KEEP_MODES = frozenset({"BEST", "HIGHEST", "LOWEST"})
 
 def make_signal_id(chat_id: int | str, message_id: int | str, event_type: str) -> str:
     """Short deterministic id for JSON + MT5 comment (fits in 31-char budget)."""
@@ -107,6 +116,95 @@ def make_signal_id(chat_id: int | str, message_id: int | str, event_type: str) -
 # Massimo numero di parole entro cui un verbo di chiusura da solo
 # ("Chiudiamo", "Esco") vale come comando e non come frase narrativa.
 CLOSE_STANDALONE_MAX_WORDS = 6
+
+
+def _fold_accents_upper(text: str) -> str:
+    """PIÙ → PIU, METÀ → META: confronti insensibili agli accenti."""
+    normalized = unicodedata.normalize("NFKD", text.upper())
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+# Chiusure parziali SELETTIVE: il canale chiede di chiudere solo una parte
+# delle entry ("le entry meno premium", "quelle più in basso") e di tenere le
+# altre. Il registro è additivo: nuove forme si AGGIUNGONO, mai sostituite.
+_SELECTIVE_ENTRY_NOUN = (
+    r"(?:ENTR(?:Y|IES|ATA|ATE|I)|POSIZION[EI]|OPERAZION[EI]|ORDIN[EI]|"
+    r"TRADE[S]?|QUELL[EAIO]|LE\s+ALTRE)"
+)
+# Qualificatori direzionali (prezzo) e qualitativi (rispetto alla direzione).
+_SELECTIVE_HIGH = (
+    r"(?:PIU\s+(?:IN\s+)?ALT[EIO]|PIU\s+SU|IN\s+ALTO|DA\s+SOPRA|DI\s+SOPRA|"
+    r"SOPRA|ALTE|SUPERIOR[EI]|HIGHER|ABOVE|TOP)"
+)
+_SELECTIVE_LOW = (
+    r"(?:PIU\s+(?:IN\s+)?BASS[EIO]|PIU\s+GIU|IN\s+BASSO|DA\s+SOTTO|DI\s+SOTTO|"
+    r"SOTTO|BASSE|INFERIOR[EI]|LOWER|BELOW|BOTTOM)"
+)
+_SELECTIVE_WORST = (
+    r"(?:MENO\s+PREMIUM|PEGGIOR[EI]|PIU\s+DEBOL[EI]|MENO\s+BUON[EI]|"
+    r"IN\s+PERDITA|IN\s+LOSS|WORST|WEAKEST)"
+)
+_SELECTIVE_BEST = (
+    r"(?:PIU\s+PREMIUM|MIGLIOR[EI]|PIU\s+FORT[EI]|BEST|STRONGEST)"
+)
+# "lasciamo/teniamo solo quelle …": il qualificatore descrive ciò che RESTA.
+SELECTIVE_KEEP_MAX_WORDS = 10
+_SELECTIVE_KEEP_VERB = (
+    r"(?:LASCIAMO|LASCIATE|LASCIA|LASCIANDO|TENIAMO|TENETE|TIENI|"
+    r"MANTENIAMO|MANTENETE|RESTANO|RESTA|KEEP|HOLD)"
+)
+
+
+def match_selective_close_intent(upper: str) -> str | None:
+    """Chiusura parziale selettiva: ritorna quali posizioni RESTANO aperte.
+
+    Valori: ``BEST`` / ``HIGHEST`` / ``LOWEST`` (vedi SELECTIVE_KEEP_MODES),
+    ``None`` se il messaggio non è una chiusura selettiva.
+
+    Va valutata PRIMA di :func:`match_close_all_intent`, altrimenti
+    "chiudiamo le entry meno premium" verrebbe eseguita come chiusura totale.
+    """
+    if not upper or not upper.strip():
+        return None
+    text = _fold_accents_upper(upper)
+
+    has_noun = re.search(_SELECTIVE_ENTRY_NOUN, text) is not None
+
+    # Forma "tieni": il qualificatore descrive le posizioni da MANTENERE.
+    keep_form = re.search(
+        rf"{_SELECTIVE_KEEP_VERB}\s+(?:SOLO\s+|SOLTANTO\s+|SOLE\s+)?",
+        text,
+    )
+    # La forma "tieni" non ha verbo di chiusura: vale solo in messaggi brevi,
+    # così una frase narrativa lunga non chiude posizioni.
+    words = re.findall(r"[A-Za-z\u00c0-\u00ff]+", text)
+    if keep_form and has_noun and len(words) <= SELECTIVE_KEEP_MAX_WORDS:
+        if re.search(_SELECTIVE_HIGH, text):
+            return "HIGHEST"
+        if re.search(_SELECTIVE_LOW, text):
+            return "LOWEST"
+        if re.search(_SELECTIVE_BEST, text):
+            return "BEST"
+        if re.search(_SELECTIVE_WORST, text):
+            # "lasciamo solo le peggiori" non ha senso operativo: non indovinare.
+            return None
+
+    # Forma "chiudi": il qualificatore descrive le posizioni da CHIUDERE.
+    close_verb = (
+        r"(?:CHIUDIAMO|CHIDUAMO|CHIUDAMO|CHIUDIAM|CHIUDETE|CHIUDERE|CHIUDO|"
+        r"CHIUDI|USCIAMO|USCITE|ESCIAMO|CLOSE|CLOSING|EXIT)"
+    )
+    if not re.search(rf"(?:^|[^\w]){close_verb}(?:[^\w]|$)", text) or not has_noun:
+        return None
+    if re.search(_SELECTIVE_WORST, text):
+        return "BEST"          # chiudi le peggiori → restano le migliori
+    if re.search(_SELECTIVE_LOW, text):
+        return "HIGHEST"       # chiudi quelle sotto → restano quelle sopra
+    if re.search(_SELECTIVE_HIGH, text):
+        return "LOWEST"        # chiudi quelle sopra → restano quelle sotto
+    if re.search(_SELECTIVE_BEST, text):
+        return "LOWEST" if re.search(r"BUY|LONG", text) else "HIGHEST"
+    return None
 
 
 def match_close_all_intent(upper: str) -> tuple[bool, float | None]:
@@ -555,6 +653,8 @@ class BridgeState:
             "sl": trade.get("sl"),
             "tp_levels": list(trade.get("tp_levels") or []),
             "lot_factor": trade.get("lot_factor"),
+            "allow_stack": bool(trade.get("allow_stack")),
+            "ts": trade.get("ts", time.time()),
         }
         self.save()
 
@@ -845,6 +945,11 @@ def validate_signal(signal: dict) -> tuple[bool, str]:
                     return False, f"TP levels {tps} incoherent with {direction} range {entry_range}"
             elif not _tp_coherent(direction, entry, tps):
                 return False, f"TP levels {tps} incoherent with {direction} entry {entry}"
+
+    if action == "CLOSE_SELECTIVE":
+        keep = signal.get("keep")
+        if keep not in SELECTIVE_KEEP_MODES:
+            return False, f"CLOSE_SELECTIVE keep must be one of {sorted(SELECTIVE_KEEP_MODES)}, got {keep!r}"
 
     if action == "OPEN_NOW":
         if signal.get("entry") is not None:

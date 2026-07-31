@@ -1025,6 +1025,72 @@ TP 4 4043
 SL @ 4065"""
 
 
+class TestSelectiveClose:
+    """Casi reali CH_IVAN 31/07: chiusure parziali eseguite come chiusura totale."""
+
+    @pytest.mark.parametrize(
+        "text,keep",
+        [
+            ("Chiudiamo le entry meno premium", "BEST"),
+            ("Chiduamo a be l'entrata meno premium a Be", "BEST"),
+            ("Chiduamo orario entry più in basso", "HIGHEST"),
+            ("Chiudiamo le posizioni più in alto", "LOWEST"),
+            ("E lasciamo solo quelle da sopra", "HIGHEST"),
+            ("E lasciamo solo quelle più in alto", "HIGHEST"),
+            ("Teniamo solo le entrate più in basso", "LOWEST"),
+        ],
+    )
+    def test_selective_close_variants(self, bridge_state, text, keep):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        sig = parser_ivan_vip(text, CH_IVAN, bridge_state)
+        assert sig is not None, text
+        assert sig["action"] == "CLOSE_SELECTIVE", text
+        assert sig["keep"] == keep, text
+        assert sig["symbol"] == "XAUUSD"
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Chiduamo tutto",
+            "CHIUDIAMO ORA ‼️",
+            "Usciamo ora",
+        ],
+    )
+    def test_total_close_still_total(self, bridge_state, text):
+        sig = parser_ivan_vip(text, CH_IVAN, bridge_state)
+        assert sig is not None, text
+        assert sig["action"] == "CLOSE_ALL_SYMBOL", text
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Stiamo pronti a chiudere se torna su",
+            "Gestiamo a mercato",
+            (
+                "E lasciamo solo quelle da sopra a respirare un po'"
+                " prima di decidere cosa fare domani mattina presto"
+            ),
+        ],
+    )
+    def test_narrative_not_selective(self, bridge_state, text):
+        sig = parser_ivan_vip(text, CH_IVAN, bridge_state)
+        assert sig is None or sig["action"] != "CLOSE_SELECTIVE", text
+
+    def test_invalid_keep_rejected_by_validation(self):
+        ok, reason = validate_signal(
+            {
+                "action": "CLOSE_SELECTIVE",
+                "symbol": "XAUUSD",
+                "keep": "MIDDLE",
+                "magic_base": 17000,
+            }
+        )
+        assert not ok
+        assert "keep" in reason
+
+
 class TestIvanReentry:
     def test_rientrate_ora_reopens_last_setup(self, bridge_state):
         parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
@@ -1081,6 +1147,44 @@ class TestIvanReentry:
         assert sig["sl"] == 4015.0
         ok, reason = validate_signal(sig)
         assert ok, reason
+
+    def test_rientro_abbreviato_con_size_ridotta(self, bridge_state):
+        """Caso reale CH_IVAN 31/07 11:12Z: 'Rientri piccola da qui a 58'."""
+        parser_ivan_vip(
+            "XAUUSD SELL 4054\nTP 1 4050\nTP 2 4047\nTP 3 4042\nTP 4 4020\nSL @ 4066",
+            CH_IVAN,
+            bridge_state,
+        )
+        sig = parser_ivan_vip("Rientri piccola da qui a 58", CH_IVAN, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry"] == 4058.0
+        assert sig["lot_factor"] == 0.5
+        assert sig["allow_stack"] is True
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+
+    def test_rientro_ripetuto_in_edit_non_riapre(self, bridge_state):
+        """MSG 'a 58' + EDIT 'a 58.5' devono aprire una sola posizione."""
+        parser_ivan_vip(
+            "XAUUSD SELL 4054\nTP 1 4050\nSL @ 4066", CH_IVAN, bridge_state
+        )
+        assert parser_ivan_vip("Rientri piccola da qui a 58", CH_IVAN, bridge_state)
+        assert parser_ivan_vip(
+            "Rientri piccola da qui a 58.5", CH_IVAN, bridge_state
+        ) is None
+
+    def test_entrata_aggiuntiva_a_mercato(self, bridge_state):
+        """Caso reale CH_IVAN 31/07 12:10Z: 'Okay dentro anche da qui'."""
+        parser_ivan_vip(
+            "XAUUSD SELL 4054\nTP 1 4050\nSL @ 4065", CH_IVAN, bridge_state
+        )
+        sig = parser_ivan_vip("Okay dentro anche da qui", CH_IVAN, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["allow_stack"] is True
 
     def test_reentry_drops_levels_already_passed(self, bridge_state):
         parser_ivan_vip(

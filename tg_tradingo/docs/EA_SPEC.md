@@ -94,6 +94,7 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 | `UPDATE_SL` | Modifica SL (FOREX) |
 | `CHECK_AND_CLOSE` | Chiudi se esiste posizione symbol+direction |
 | `CLOSE_ALL_SYMBOL` | Chiudi tutte le posizioni del simbolo (magic del canale) |
+| `CLOSE_SELECTIVE` | Chiusura **parziale selettiva**: campo `keep` = `BEST` / `HIGHEST` / `LOWEST`. Restano aperte solo le posizioni con quel prezzo di apertura (per direzione, tolleranza 10 punti), le altre si chiudono. `BEST` = migliori per la direzione (SELL: prezzo più alto, BUY: più basso) |
 | `BREAK_EVEN_PRICE` | Sposta SL a `be_price` |
 | `CLOSE_HALF_BE` | Chiudi metà volume + BE sul resto (ORO: `60 PIPS CLOSE OR BREKIVEN`) |
 | `CHECK_AND_BE` | Se TP1 non chiuso, sposta SL a entry |

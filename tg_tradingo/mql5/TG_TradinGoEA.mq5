@@ -5,7 +5,7 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.11"
+#property version   "2.12"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 #include <Trade/Trade.mqh>
@@ -60,6 +60,29 @@ input int    InpEquitySampleSec      = 60;    // 0 = off: equity curve sampling 
 input string InpJournalPrefix        = "journal\\"; // relative under MQL5\\Files unless absolute
 input bool   InpSingleInstanceLock   = true;  // one running EA instance per terminal
 input int    InpLockStaleSec         = 120;   // lock expiry after a crash (no clean OnDeinit)
+
+//--- v2.12 prop-account guards (iFunds): all defaults NEUTRAL (off) so the
+//--- same build keeps running unchanged on the Vantage/Ultima demo accounts.
+// Static equity drawdown floor. 0 = off (guard disabled entirely).
+input double InpDdMaxPct             = 0.0;   // e.g. 6.0 -> floor = start*(1-6%)
+input double InpDdStartEquity        = 0.0;   // 0 = capture equity at first init (persisted)
+input double InpDdCloseAtPct         = 80.0;  // % of allowance consumed -> close all + halt
+input double InpDdBlockNewAtPct      = 60.0;  // % of allowance consumed -> block new opens
+// Manual kill switch: presence of this file blocks new opens (no restart needed).
+// Existing positions stay under normal management. "" = disabled.
+input string InpHaltFlagFile         = "tradingo_halt.flag";
+// Reservoir-based sizing: lot = (reservoir * util%) / floating_per_001, per channel.
+input bool   InpDdSizingEnabled      = false; // false = keep JSON/override lots
+input double InpDdUtilizationPct     = 50.0;  // share of the reservoir at risk
+input double InpDdStepPct            = 10.0;  // recompute only every +/- this % of reservoir
+input double InpDdMaxLot             = 0.0;   // 0 = off: hard cap per position
+input double InpDdFloatIvan          = 39.9;  // measured worst floating per 0.01 lot
+input double InpDdFloatStark         = 10.4;
+input double InpDdFloatGold          = 15.0;
+input double InpDdFloatOro           = 12.4;
+input double InpDdFloatForex         = 20.0;
+// Concurrent exposure cap across all TG positions. 0 = off.
+input double InpMaxConcurrentLots    = 0.0;
 
 //--- trade objects
 CTrade         g_trade;
@@ -697,6 +720,15 @@ bool OpenMarket(const string symbol, const string direction, const double lot,
                 const double rangeLo, const double rangeHi,
                 const double distancePoints, const int tpIndex)
   {
+   // Concurrent exposure cap: evaluated per position so the TPs already
+   // opened for this signal stay, and only the excess volume is rejected.
+   if(!ExposureAllows(lot))
+     {
+      AppendSignalStat(channelFile, json, symbol, direction, "CANCELLED_LOTS_CAP",
+                       rangeLo, rangeHi, SignalEntryFromJson(json, rangeLo, rangeHi),
+                       0.0, distancePoints, tpIndex, magic);
+      return false;
+     }
    g_sym.Name(symbol);
    g_sym.RefreshRates();
    g_trade.SetExpertMagicNumber((int)magic);
@@ -920,6 +952,9 @@ bool HandleOpen(const string channelFile, const string json)
    double ov = LotOverrideForChannel(channelFile, json);
    if(ov > 0.0)
       fixedLot = ov;
+   fixedLot = DdSizedLot(symbol, ChannelKeyFromFile(channelFile, json), fixedLot);
+   if(fixedLot <= 0.0)
+      return false;
    double lot = NormalizeLot(symbol, fixedLot);
    if(JsonGetBool(json, "is_add_signal"))
       lot = NormalizeLot(symbol, fixedLot * InpAddLotFactor);
@@ -1011,6 +1046,9 @@ bool HandleUpdateOpen(const string channelFile, const string json)
    double ovUpd = LotOverrideForChannel(channelFile, json);
    if(ovUpd > 0.0)
       fixedLot = ovUpd;
+   double sized = DdSizedLot(symbol, ChannelKeyFromFile(channelFile, json), fixedLot);
+   if(sized > 0.0)
+      fixedLot = sized;
    double lot = NormalizeLot(symbol, fixedLot);
 
    int openCnt = CountOurPositions(symbol, magicBase, 5);
@@ -1348,6 +1386,18 @@ datetime g_ksUntil[];
 //--- bridge heartbeat state
 bool     g_bridgeStale = false;
 
+//--- v2.12 equity-drawdown guard / manual kill switch / reservoir sizing
+#define TG_DD_START_NAME "TG_TRADINGO_DD_START"
+#define TG_DD_PEAK_NAME  "TG_TRADINGO_DD_PEAK"
+#define TG_DD_HALT_NAME  "TG_TRADINGO_DD_HALT"
+double   g_ddStart      = 0.0;  // static reference equity (never recomputed)
+double   g_ddPeakClosed = 0.0;  // peak of closed equity (balance), never decreases
+bool     g_ddHalted     = false;
+bool     g_haltFlag     = false;
+datetime g_lastHaltCheck = 0;
+string   g_ddLotKey[];
+double   g_ddLotVal[];
+
 //--- equity sampling
 datetime g_lastEquitySample = 0;
 
@@ -1583,9 +1633,337 @@ void KsSetCooldown(const string bucket)
    g_ksUntil[n] = until;
   }
 
+//+==================================================================+
+//| v2.12 equity drawdown guard (static floor)                       |
+//+==================================================================+
+bool DdGuardEnabled()
+  {
+   return (InpDdMaxPct > 0.0 && g_ddStart > 0.0);
+  }
+
+//+------------------------------------------------------------------+
+double DdFloor()
+  {
+   return g_ddStart * (1.0 - InpDdMaxPct / 100.0);
+  }
+
+//+------------------------------------------------------------------+
+double DdAllowance()
+  {
+   return g_ddStart - DdFloor();
+  }
+
+//+------------------------------------------------------------------+
+//| Equity level at which a given share of the allowance is consumed |
+//+------------------------------------------------------------------+
+double DdLevelForConsumedPct(const double consumedPct)
+  {
+   double pct = MathMax(0.0, MathMin(100.0, consumedPct));
+   return DdFloor() + DdAllowance() * (1.0 - pct / 100.0);
+  }
+
+//+------------------------------------------------------------------+
+//| Reservoir = peak closed equity - floor. Grows with realized      |
+//| profits only: floating gains never inflate it.                   |
+//+------------------------------------------------------------------+
+double DdReservoir()
+  {
+   if(!DdGuardEnabled())
+      return 0.0;
+   return MathMax(0.0, g_ddPeakClosed - DdFloor());
+  }
+
+//+------------------------------------------------------------------+
+void DdSetHalted(const bool halted)
+  {
+   g_ddHalted = halted;
+   GlobalVariableSet(TG_DD_HALT_NAME, halted ? 1.0 : 0.0);
+  }
+
+//+------------------------------------------------------------------+
+void DdTrackPeakClosed()
+  {
+   double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+   if(bal > g_ddPeakClosed)
+     {
+      g_ddPeakClosed = bal;
+      GlobalVariableSet(TG_DD_PEAK_NAME, g_ddPeakClosed);
+     }
+  }
+
+//+------------------------------------------------------------------+
+void DdInit()
+  {
+   if(InpDdMaxPct <= 0.0)
+     {
+      Print("[TradinGo] DD_GUARD disabled (InpDdMaxPct=0) — demo/neutral mode");
+      return;
+     }
+   if(InpDdStartEquity > 0.0)
+      g_ddStart = InpDdStartEquity;
+   else if(GlobalVariableCheck(TG_DD_START_NAME))
+      g_ddStart = GlobalVariableGet(TG_DD_START_NAME);
+   else
+      g_ddStart = AccountInfoDouble(ACCOUNT_EQUITY);
+   GlobalVariableSet(TG_DD_START_NAME, g_ddStart);
+
+   g_ddPeakClosed = GlobalVariableCheck(TG_DD_PEAK_NAME)
+                    ? GlobalVariableGet(TG_DD_PEAK_NAME) : 0.0;
+   g_ddPeakClosed = MathMax(g_ddPeakClosed, g_ddStart);
+   DdTrackPeakClosed();
+
+   g_ddHalted = (GlobalVariableCheck(TG_DD_HALT_NAME)
+                 && GlobalVariableGet(TG_DD_HALT_NAME) > 0.5);
+
+   Print("[TradinGo] DD_GUARD armed | start=", DoubleToString(g_ddStart, 2),
+         " max_dd_pct=", DoubleToString(InpDdMaxPct, 2),
+         " floor=", DoubleToString(DdFloor(), 2),
+         " allowance=", DoubleToString(DdAllowance(), 2),
+         " close_all_at_equity=", DoubleToString(DdLevelForConsumedPct(InpDdCloseAtPct), 2),
+         " block_new_at_equity=", DoubleToString(DdLevelForConsumedPct(InpDdBlockNewAtPct), 2),
+         " peak_closed=", DoubleToString(g_ddPeakClosed, 2),
+         " reservoir=", DoubleToString(DdReservoir(), 2),
+         " halted=", (g_ddHalted ? "YES (manual reset required)" : "no"),
+         " ccy=", AccountInfoString(ACCOUNT_CURRENCY));
+   if(g_ddHalted)
+      Print("[TradinGo] CRITICAL DD_HALT still active from a previous breach. ",
+            "To resume: delete GlobalVariable '", TG_DD_HALT_NAME, "'.");
+  }
+
+//+------------------------------------------------------------------+
+void CloseAllOurPositions(const string reason)
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(!IsTGPositionSelected())
+         continue;
+      ulong tk = g_pos.Ticket();
+      SetTrackReason(tk, reason);
+      if(!g_trade.PositionClose(tk))
+         Print("[TradinGo] ERROR close failed ticket=", tk,
+               " reason=", reason, " ret=", g_trade.ResultRetcode(),
+               " (", g_trade.ResultRetcodeDescription(), ")");
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Closes everything and latches the halt well BEFORE the floor:    |
+//| waiting for the exact floor means breaching it, fills come late.  |
+//+------------------------------------------------------------------+
+void CheckEquityFloorGuard()
+  {
+   if(!DdGuardEnabled())
+      return;
+   DdTrackPeakClosed();
+   if(g_ddHalted)
+      return;
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   double trip = DdLevelForConsumedPct(InpDdCloseAtPct);
+   if(equity > trip)
+      return;
+   Print("[TradinGo] CRITICAL DD_BREACH equity=", DoubleToString(equity, 2),
+         " <= trip=", DoubleToString(trip, 2),
+         " floor=", DoubleToString(DdFloor(), 2),
+         " consumed_pct_of_allowance=",
+         DoubleToString(100.0 * (g_ddStart - equity) / MathMax(0.01, DdAllowance()), 1),
+         " -> closing ALL TG positions, halting new opens");
+   CloseAllOurPositions("KILLSWITCH_EQUITY_FLOOR");
+   DdSetHalted(true);
+  }
+
+//+==================================================================+
+//| v2.12 manual kill switch (flag file, no restart needed)          |
+//+==================================================================+
+bool HaltFlagExists()
+  {
+   if(StringLen(InpHaltFlagFile) == 0)
+      return false;
+   if(FileIsExist(InpHaltFlagFile))
+      return true;
+   if(StringLen(InpSignalsPath) > 0 && !InpUseAbsolutePath
+      && FileIsExist(BuildRelativeSignalPath(InpHaltFlagFile)))
+      return true;
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+void CheckHaltFlag()
+  {
+   if(StringLen(InpHaltFlagFile) == 0)
+      return;
+   datetime now = TimeCurrent();
+   if(g_lastHaltCheck != 0 && (now - g_lastHaltCheck) < 2)
+      return;
+   g_lastHaltCheck = now;
+   bool present = HaltFlagExists();
+   if(present == g_haltFlag)
+      return;
+   g_haltFlag = present;
+   if(present)
+      Print("[TradinGo] KILL_SWITCH ON — flag file '", InpHaltFlagFile,
+            "' present: new opens blocked, open positions keep normal management");
+   else
+      Print("[TradinGo] KILL_SWITCH OFF — flag file '", InpHaltFlagFile,
+            "' removed: opens allowed again");
+  }
+
+//+==================================================================+
+//| v2.12 concurrent exposure cap                                    |
+//+==================================================================+
+double TotalOurLots()
+  {
+   double lots = 0.0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(!IsTGPositionSelected())
+         continue;
+      lots += g_pos.Volume();
+     }
+   return lots;
+  }
+
+//+------------------------------------------------------------------+
+//| Evaluated per position, so the first TPs of a signal still open  |
+//| and only the volume above the cap is rejected.                   |
+//+------------------------------------------------------------------+
+bool ExposureAllows(const double lot)
+  {
+   if(InpMaxConcurrentLots <= 0.0)
+      return true;
+   double open = TotalOurLots();
+   if(open + lot <= InpMaxConcurrentLots + 1e-8)
+      return true;
+   Print("[TradinGo] OPEN rejected — concurrent lots cap: open=",
+         DoubleToString(open, 2), " + ", DoubleToString(lot, 2),
+         " > cap=", DoubleToString(InpMaxConcurrentLots, 2));
+   return false;
+  }
+
+//+==================================================================+
+//| v2.12 reservoir-based sizing                                     |
+//+==================================================================+
+double DdFloatPer001(const string channelKey)
+  {
+   if(channelKey == "ivan")
+      return InpDdFloatIvan;
+   if(channelKey == "stark")
+      return InpDdFloatStark;
+   if(channelKey == "gold")
+      return InpDdFloatGold;
+   if(channelKey == "oro")
+      return InpDdFloatOro;
+   if(channelKey == "forex")
+      return InpDdFloatForex;
+   return 0.0;
+  }
+
+//+------------------------------------------------------------------+
+double DdLotCacheGet(const string key)
+  {
+   for(int i = 0; i < ArraySize(g_ddLotKey); i++)
+      if(g_ddLotKey[i] == key)
+         return g_ddLotVal[i];
+   return 0.0;
+  }
+
+//+------------------------------------------------------------------+
+void DdLotCacheSet(const string key, const double lot)
+  {
+   for(int i = 0; i < ArraySize(g_ddLotKey); i++)
+      if(g_ddLotKey[i] == key)
+        {
+         g_ddLotVal[i] = lot;
+         return;
+        }
+   int n = ArraySize(g_ddLotKey);
+   ArrayResize(g_ddLotKey, n + 1);
+   ArrayResize(g_ddLotVal, n + 1);
+   g_ddLotKey[n] = key;
+   g_ddLotVal[n] = lot;
+  }
+
+//+------------------------------------------------------------------+
+//| lot = (reservoir * util%) / worst_floating_per_0.01_lot          |
+//| Quantized in InpDdStepPct steps of the initial allowance, and    |
+//| refreshed only while flat, so an open signal keeps its size.     |
+//+------------------------------------------------------------------+
+double DdSizedLot(const string symbol, const string channelKey, const double fallbackLot)
+  {
+   if(!InpDdSizingEnabled || !DdGuardEnabled())
+      return fallbackLot;
+   double per001 = DdFloatPer001(channelKey);
+   if(per001 <= 0.0)
+     {
+      Print("[TradinGo] DD_SIZING skipped — no floating-per-0.01 reference for channel=",
+            channelKey, " (using lot=", DoubleToString(fallbackLot, 2), ")");
+      return fallbackLot;
+     }
+   double cached = DdLotCacheGet(channelKey);
+   if(cached > 0.0 && TotalOurLots() > 0.0)
+      return cached; // never resize while positions are open
+
+   double reservoir = DdReservoir();
+   if(InpDdStepPct > 0.0)
+     {
+      double unit = DdAllowance() * InpDdStepPct / 100.0;
+      if(unit > 0.0)
+         reservoir = MathFloor(reservoir / unit) * unit;
+     }
+   double lot = (reservoir * InpDdUtilizationPct / 100.0) / per001 * 0.01;
+   if(InpDdMaxLot > 0.0)
+      lot = MathMin(lot, InpDdMaxLot);
+   lot = NormalizeLot(symbol, lot);
+   double vmin = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   if(lot < vmin || lot <= 0.0)
+     {
+      Print("[TradinGo] DD_SIZING below broker minimum — channel=", channelKey,
+            " reservoir=", DoubleToString(reservoir, 2),
+            " computed=", DoubleToString(lot, 2),
+            " min=", DoubleToString(vmin, 2), " -> opens blocked for this signal");
+      DdLotCacheSet(channelKey, 0.0);
+      return 0.0;
+     }
+   if(MathAbs(lot - cached) > 1e-8)
+      Print("[TradinGo] DD_SIZING channel=", channelKey,
+            " reservoir=", DoubleToString(reservoir, 2),
+            " util=", DoubleToString(InpDdUtilizationPct, 1), "%",
+            " float_per_0.01=", DoubleToString(per001, 2),
+            " lot=", DoubleToString(lot, 2),
+            " (was ", DoubleToString(cached, 2), ")");
+   DdLotCacheSet(channelKey, lot);
+   return lot;
+  }
+
 //+------------------------------------------------------------------+
 bool IsOpenBlocked(const string symbol)
   {
+   if(g_ddHalted)
+     {
+      Print("[TradinGo] OPEN blocked — DD_HALT latched (equity floor guard). ",
+            "Manual reset required: delete GlobalVariable '", TG_DD_HALT_NAME, "'.");
+      return true;
+     }
+   if(g_haltFlag)
+     {
+      Print("[TradinGo] OPEN blocked — kill switch flag '", InpHaltFlagFile, "' present");
+      return true;
+     }
+   if(DdGuardEnabled())
+     {
+      double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+      double blockLevel = DdLevelForConsumedPct(InpDdBlockNewAtPct);
+      if(equity <= blockLevel)
+        {
+         Print("[TradinGo] OPEN blocked — equity=", DoubleToString(equity, 2),
+               " <= block_level=", DoubleToString(blockLevel, 2),
+               " (", DoubleToString(InpDdBlockNewAtPct, 0), "% of DD allowance consumed)");
+         return true;
+        }
+     }
    if(g_bridgeStale)
      {
       Print("[TradinGo] OPEN blocked — bridge heartbeat STALE (opens suspended; updates/closes still allowed)");
@@ -2347,6 +2725,8 @@ int OnInit()
       GlobalVariableSet(TG_LOCK_NAME, (double)TimeCurrent());
 
    ParseChannels();
+   DdInit();
+   CheckHaltFlag();
    g_trade.SetDeviationInPoints(InpMaxSlippagePoints);
    EventSetMillisecondTimer(InpPollMs);
    if(InpUseAbsolutePath && StringLen(InpSignalsPath) >= 2 &&
@@ -2356,7 +2736,7 @@ int OnInit()
             "FileOpen (MT5 sandbox, err=5004). Use junction under MQL5\\Files ",
             "and set InpUseAbsolutePath=false, InpSignalsPath=tradingo\\");
      }
-   Print("[TradinGo] EA v2.11 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v2.12 started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints,
@@ -2380,6 +2760,16 @@ int OnInit()
          " journal_prefix=", InpJournalPrefix,
          " single_instance_lock=", InpSingleInstanceLock,
          " lock_stale_sec=", InpLockStaleSec);
+   Print("[TradinGo] v2.12 prop guards | dd_max_pct=", DoubleToString(InpDdMaxPct, 2),
+         " dd_close_at_pct=", DoubleToString(InpDdCloseAtPct, 1),
+         " dd_block_new_at_pct=", DoubleToString(InpDdBlockNewAtPct, 1),
+         " halt_flag_file=", (StringLen(InpHaltFlagFile) > 0 ? InpHaltFlagFile : "<off>"),
+         " kill_switch=", (g_haltFlag ? "ON" : "off"),
+         " dd_sizing=", InpDdSizingEnabled,
+         " dd_utilization_pct=", DoubleToString(InpDdUtilizationPct, 1),
+         " dd_step_pct=", DoubleToString(InpDdStepPct, 1),
+         " dd_max_lot=", DoubleToString(InpDdMaxLot, 2),
+         " max_concurrent_lots=", DoubleToString(InpMaxConcurrentLots, 2));
    for(int i = 0; i < g_channelCount; i++)
       Print("[TradinGo]  watch ", g_channelFile[i]);
    if(InpIgnoreExistingOnInit)
@@ -2400,6 +2790,7 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    RefreshInstanceLock();
+   CheckHaltFlag();
    CheckHeartbeat();
    for(int i = 0; i < g_channelCount; i++)
       PollChannel(i);
@@ -2410,6 +2801,7 @@ void OnTimer()
 //+------------------------------------------------------------------+
 void OnTick()
   {
+   CheckEquityFloorGuard();
    CheckFloatingKillSwitch();
    CheckMaxHolding();
    UpdateExcursions();

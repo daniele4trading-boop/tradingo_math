@@ -1175,6 +1175,48 @@ class TestIvanReentry:
             "Rientri piccola da qui a 58.5", CH_IVAN, bridge_state
         ) is None
 
+    def test_frase_di_attesa_non_apre(self, bridge_state):
+        """Caso reale CH_IVAN 31/07 13:51Z: aveva aperto 4 posizioni a mercato."""
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        assert parser_ivan_vip(
+            "Aspettiamo migliori conferme e poi rientriamo con calma🤝",
+            CH_IVAN,
+            bridge_state,
+        ) is None
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "Se torna sui massimi rientriamo",
+            "Quando rompe la resistenza rientriamo",
+            "Magari più tardi rientriamo",
+            "Rientreremo appena si calma",
+            "Vediamo se rientriamo",
+            "Pronti a rientrare",
+            "Aspettiamo, poi entriamo anche noi",
+        ],
+    )
+    def test_rientri_annunciati_non_aprono(self, bridge_state, msg):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        assert parser_ivan_vip(msg, CH_IVAN, bridge_state) is None
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            "Rientrate ora",
+            "Rientriamo subito",
+            "Rientri piccola da qui a 58",
+            "Okay dentro anche da qui",
+            "Rientriamo ora anche se il volume è basso",
+        ],
+    )
+    def test_rientri_operativi_restano_validi(self, bridge_state, msg):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        sig = parser_ivan_vip(msg, CH_IVAN, bridge_state)
+        assert sig is not None, msg
+        assert sig["action"] == "OPEN"
+        assert sig["allow_stack"] is True
+
     def test_entrata_aggiuntiva_a_mercato(self, bridge_state):
         """Caso reale CH_IVAN 31/07 12:10Z: 'Okay dentro anche da qui'."""
         parser_ivan_vip(

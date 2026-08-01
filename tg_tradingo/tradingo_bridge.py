@@ -1207,6 +1207,40 @@ def _is_reentry_intent(upper: str) -> bool:
     )
 
 
+_REENTRY_IMMEDIATE = (
+    r"\bORA\b|\bADESSO\b|\bSUBITO\b|\bDA\s+QUI\b|\bQUI\b|\bA\s+MERCATO\b|"
+    r"\bNOW\b|\bMARKET\b|\bDENTRO\b|\bOK(?:AY|EY)?\b"
+)
+
+_REENTRY_DEFERRED = (
+    r"\bASPETT(?:IAMO|O|ATE|A|ANDO|IAMOCI)\b|\bATTENDIAMO\b|\bPOI\b|\bDOPO\b|"
+    r"\bPIU\s+TARDI\b|\bMAGARI\b|\bFORSE\b|\bSE\b|\bQUANDO\b|\bAPPENA\b|"
+    r"\bEVENTUALMENTE\b|\bIN\s+CASO\b|\bPRONTI\b|\bVALUTIAMO\b|\bVEDIAMO\b|"
+    r"\bPOTREMMO\b|\bPOTREI\b|\bPROBABILMENTE\b|\bSPERIAMO\b|\bCON\s+CALMA\b|"
+    r"\bPAZIENZA\b|\bDOMANI\b|\bLATER\b|\bWAIT\b|\bMAYBE\b"
+)
+
+_REENTRY_NOT_YET = (
+    r"\bRIENTRER(?:EMO|EMMO|O|EI|ESTE|ANNO|A)\b|\bRIAPRIR(?:EMO|EMMO|O|EI|ANNO)\b|"
+    r"\bENTRER(?:EMO|EMMO|O|EI|ANNO)\b"
+)
+
+
+def _is_deferred_reentry(upper: str) -> bool:
+    """True per le frasi di attesa: preannunciano un rientro, non lo ordinano.
+
+    Es. "Aspettiamo migliori conferme e poi rientriamo con calma" — che in
+    produzione aveva aperto quattro posizioni a mercato. Un marcatore operativo
+    esplicito ("ora", "da qui", "a mercato") ha comunque la precedenza.
+    """
+    folded = fold_accents(upper)
+    if re.search(_REENTRY_NOT_YET, folded):
+        return True
+    if not re.search(_REENTRY_DEFERRED, folded):
+        return False
+    return not re.search(_REENTRY_IMMEDIATE, folded)
+
+
 def _expand_short_price(value: float, reference: float | None) -> float:
     """'da qui a 58' con ultimo entry 4054 → 4058 (abbreviazione del canale)."""
     if reference is None or value >= 100:
@@ -1335,7 +1369,7 @@ def parser_sala_oro(text: str, ch: dict, state: BridgeState | None = None) -> di
 
     sl, tps = _parse_oro_sl_tp(upper)
     direction, entry, entry_range = _parse_oro_direction_entry(upper)
-    want_stack = _is_reentry_intent(upper)
+    want_stack = _is_reentry_intent(upper) and not _is_deferred_reentry(upper)
 
     # Ignore solo se il messaggio non porta direzione, livelli né intento di
     # chiusura: le parole di contorno ("ragazzi", "live", …) convivono spesso
@@ -1704,6 +1738,9 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     # "Rientrate ora" / "rientriamo": riapre l'ultimo setup del canale (solo GOLD)
     # nella stessa direzione, a mercato. Senza setup noto non si indovina nulla.
     if not has_setup and _is_reentry_intent(upper):
+        if _is_deferred_reentry(upper):
+            log.info(f"[IVAN] Rientro annunciato ma non operativo, ignorato: {raw[:60]}")
+            return None
         last = state.ivan_last_trade
         if not last or not last.get("direction"):
             log.warning(f"[IVAN] Rientro senza setup precedente: {raw[:60]}")

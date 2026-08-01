@@ -110,6 +110,18 @@ Preset: `mql5/presets/TG_TradinGo_iFunds_10k_dd6.set` e
 `mql5/presets/TG_TradinGo_iFunds_50k_dd6.set` (stessa logica su 50k: floor 47.000,
 allowance 3.000, cap 0,25).
 
+### Preset per terminale
+
+| Preset | Conto | Guard DD | Sizing | Canali | Note |
+|---|---|---|---|---|---|
+| `TG_TradinGo_Vantage_Demo.set` | Vantage demo (Contabo) | off | off | tutti e 5 | riferimento per misurare i canali |
+| `TG_TradinGo_Ultima_iFunds_Demo.set` | Ultima demo (Gamehosting) | 6%, start 10.000 | on, cap 0,05 | ivan, stark | prova delle regole iFunds; `InpMagicOffset=0` per non perdere le posizioni già aperte |
+| `TG_TradinGo_iFunds_10k_dd6.set` | iFunds 10k reale | 6%, start 10.000 | on, cap 0,05 | ivan, stark | `InpMagicOffset=500000` (convive col Vantage sulla stessa VPS) |
+| `TG_TradinGo_Reale_Personale.set` | conti reali personali | 10%, start catturato al primo init | off | da scegliere | lotti, suffisso simbolo e % di perdita massima vanno adattati al conto |
+
+Su tutti: `InpMaxFloatingLossUSD=0` (killswitch flottante spento) e
+`InpKillSwitchCooldownMin=0` (nessun blocco dopo una chiusura di bucket).
+
 ## 6. Runbook
 
 **Avvio**

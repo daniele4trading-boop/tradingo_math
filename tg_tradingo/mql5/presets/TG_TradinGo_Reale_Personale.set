@@ -1,0 +1,77 @@
+; TG_TradinGoEA — preset conti REALI personali (nessuna prop firm)
+; Nessuna regola esterna da rispettare: l'unico limite e' quello che decidi tu.
+; Impostazione di partenza prudente:
+;   - perdita massima accettata 10% dell'equity di partenza
+;     InpDdStartEquity=0 -> l'EA cattura l'equity al primo init e la persiste,
+;     quindi il floor resta statico anche dopo riavvii (es. 5.000 -> floor 4.500)
+;   - chiusura totale + halt all'80% del margine consumato, blocco aperture al 60%
+;   - sizing dal serbatoio DISATTIVO: su conto reale parti da lotti fissi tuoi
+;     e accendilo (InpDdSizingEnabled=true) solo dopo aver visto i primi risultati
+;   - cap esposizione concorrente 0.10 lotti: IVAN apre 4 posizioni per segnale,
+;     il cap e' verificato per posizione (i primi TP passano, l'eccedenza no)
+;   - killswitch flottante spento; se lo vuoi, metti InpMaxFloatingLossUSD pari a
+;     ~1/4 della perdita massima (es. conto 5.000, DD 500 -> 125) con cooldown 0
+;
+; DA ADATTARE PRIMA DELL'USO:
+;   InpLot<CANALE>  lotto per posizione, in base alla taglia del conto
+;                   (riferimento: flottante peggiore misurato per 0.01 lotti ->
+;                    IVAN 39.9 · GOLD 15.0 · ORO 12.4 · STARK 10.4 in valuta conto)
+;   InpChannels     quali canali far girare sul conto
+;   InpSymbolSuffix suffisso del simbolo del broker (es. ".pro", "pm", "m")
+;   InpDdMaxPct     percentuale di perdita massima accettata
+;   InpMagicOffset  lascialo 0 se e' l'unico EA TradinGo sul terminale
+; Richiede EA v2.13+
+; Carica da: Inputs EA -> Load -> questo file
+
+InpSignalsPath=
+InpUseAbsolutePath=false
+InpChannels=ivan,stark
+InpSymbolSuffix=
+InpLotMultiplier=1.0
+InpAddLotFactor=0.5
+InpLotIvan=0.01
+InpLotStark=0.01
+InpLotGold=0.01
+InpLotOro=0.01
+InpLotForex=0.01
+InpTagIvan=IT
+InpTagStark=AS
+InpTagGold=SG
+InpTagOro=OR
+InpTagForex=FX
+InpCommentUseTgPrefix=false
+InpMaxSlippagePoints=50
+InpPollMs=500
+InpRangeTolerancePoints=150
+InpOroRangeTolerancePoints=250
+InpLogCancelledSignals=true
+InpClearSignalAfterProcess=true
+InpIgnoreExistingOnInit=true
+InpStackOpensIfFlatBusy=true
+InpStopBufferPoints=20
+InpAutoBreakEvenOnTp1=true
+InpMagicOffset=0
+InpMaxFloatingLossUSD=0.0
+InpKillSwitchCooldownMin=0
+InpMaxHoldingMinutes=0
+InpHeartbeatMaxAgeSec=180
+InpHeartbeatFile=tradingo_heartbeat.json
+InpEquitySampleSec=60
+InpJournalPrefix=journal\\
+InpSingleInstanceLock=true
+InpLockStaleSec=120
+InpDdMaxPct=10.0
+InpDdStartEquity=0.0
+InpDdCloseAtPct=80.0
+InpDdBlockNewAtPct=60.0
+InpHaltFlagFile=tradingo_halt.flag
+InpDdSizingEnabled=false
+InpDdUtilizationPct=50.0
+InpDdStepPct=10.0
+InpDdMaxLot=0.05
+InpDdFloatIvan=39.9
+InpDdFloatStark=10.4
+InpDdFloatGold=15.0
+InpDdFloatOro=12.4
+InpDdFloatForex=20.0
+InpMaxConcurrentLots=0.10

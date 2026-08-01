@@ -1,0 +1,63 @@
+; TG_TradinGoEA — preset Ultima demo (Gamehosting): prova delle regole iFunds
+; Identico al preset iFunds 10k tranne due voci, per non rompere il demo:
+;   - InpMagicOffset=0  (con 500000 l'EA perderebbe di vista le posizioni gia' aperte)
+;   - InpMaxFloatingLossUSD=0  (killswitch flottante spento su entrambi i demo)
+; Regole simulate: equity di partenza 10.000 -> floor 9.400 (DD 6% statico)
+;   chiusura totale + halt a 9.520 | blocco nuove aperture a 9.640
+;   sizing dal serbatoio (util 50%, scatti 10%, cap 0.05 per posizione)
+; Path segnali: junction MQL5\Files\tradingo -> cartella segnali del bridge
+; Richiede EA v2.13+
+; Carica da: Inputs EA -> Load -> questo file
+
+InpSignalsPath=tradingo\\
+InpUseAbsolutePath=false
+InpChannels=ivan,stark
+InpSymbolSuffix=
+InpLotMultiplier=1.0
+InpAddLotFactor=0.5
+InpLotIvan=0.05
+InpLotStark=0.05
+InpLotGold=0.0
+InpLotOro=0.0
+InpLotForex=0.0
+InpTagIvan=IT
+InpTagStark=AS
+InpTagGold=
+InpTagOro=
+InpTagForex=
+InpCommentUseTgPrefix=false
+InpMaxSlippagePoints=50
+InpPollMs=500
+InpRangeTolerancePoints=150
+InpOroRangeTolerancePoints=250
+InpLogCancelledSignals=true
+InpClearSignalAfterProcess=true
+InpIgnoreExistingOnInit=true
+InpStackOpensIfFlatBusy=true
+InpStopBufferPoints=20
+InpAutoBreakEvenOnTp1=true
+InpMagicOffset=0
+InpMaxFloatingLossUSD=0.0
+InpKillSwitchCooldownMin=0
+InpMaxHoldingMinutes=0
+InpHeartbeatMaxAgeSec=180
+InpHeartbeatFile=tradingo_heartbeat.json
+InpEquitySampleSec=60
+InpJournalPrefix=journal\\
+InpSingleInstanceLock=true
+InpLockStaleSec=120
+InpDdMaxPct=6.0
+InpDdStartEquity=10000.0
+InpDdCloseAtPct=80.0
+InpDdBlockNewAtPct=60.0
+InpHaltFlagFile=tradingo_halt.flag
+InpDdSizingEnabled=true
+InpDdUtilizationPct=50.0
+InpDdStepPct=10.0
+InpDdMaxLot=0.05
+InpDdFloatIvan=39.9
+InpDdFloatStark=10.4
+InpDdFloatGold=15.0
+InpDdFloatOro=12.4
+InpDdFloatForex=20.0
+InpMaxConcurrentLots=0.30

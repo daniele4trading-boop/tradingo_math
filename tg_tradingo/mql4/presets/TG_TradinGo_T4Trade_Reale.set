@@ -8,7 +8,7 @@
 ; DA ADATTARE:
 ;   InpSymbolSuffix  suffisso simbolo T4Trade se presente
 ;   InpChannels      quali canali eseguire su questo conto
-; Richiede EA MT4 v1.00+ (contratto JSON = bridge 2.14)
+; Richiede EA MT4 v1.01+ (contratto JSON = bridge 2.14)
 ; Carica da: Inputs EA -> Load -> questo file
 
 InpSignalsPath=tradingo\\

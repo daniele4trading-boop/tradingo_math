@@ -6,11 +6,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.00"
+#property version   "1.01"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.00"
+#define EA_VERSION "1.01"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -662,11 +662,20 @@ bool TryExecuteWithEntryRange(const string channelFile, const string json,
 //+------------------------------------------------------------------+
 datetime ParseIso8601(const string s)
   {
+   // YYYY-MM-DDTHH:MM:SS (T o spazio); StringToTime vuole "yyyy.mm.dd" e
+   // sui trattini restituisce 0, quindi i campi vanno letti a mano.
    if(StringLen(s) < 19)
       return 0;
-   string norm = s;
-   StringReplace(norm, "T", " ");
-   return StringToTime(StringSubstr(norm, 0, 19));
+   MqlDateTime dt;
+   dt.year = (int)StringToInteger(StringSubstr(s, 0, 4));
+   dt.mon  = (int)StringToInteger(StringSubstr(s, 5, 2));
+   dt.day  = (int)StringToInteger(StringSubstr(s, 8, 2));
+   dt.hour = (int)StringToInteger(StringSubstr(s, 11, 2));
+   dt.min  = (int)StringToInteger(StringSubstr(s, 14, 2));
+   dt.sec  = (int)StringToInteger(StringSubstr(s, 17, 2));
+   if(dt.year < 1970 || dt.mon < 1 || dt.day < 1)
+      return 0;
+   return StructToTime(dt);
   }
 
 //+------------------------------------------------------------------+
@@ -687,15 +696,25 @@ void CheckHeartbeat()
       ok = ReadTextFileContent(InpHeartbeatFile, content);
    if(!ok)
      {
+      if(!g_bridgeStale)
+         Print("[TradinGo] HEARTBEAT file mancante (", InpHeartbeatFile,
+               ") -> bridge STALE, aperture bloccate");
       g_bridgeStale = true;
       return;
      }
-   string ts = JsonGetString(content, "ts");
+   // Il bridge scrive "ts_utc" (bridge_journal.write_heartbeat); gli altri due
+   // nomi restano come fallback difensivo.
+   string ts = JsonGetString(content, "ts_utc");
+   if(ts == "")
+      ts = JsonGetString(content, "ts");
    if(ts == "")
       ts = JsonGetString(content, "timestamp");
    datetime t = ParseIso8601(ts);
    if(t <= 0)
      {
+      if(!g_bridgeStale)
+         Print("[TradinGo] HEARTBEAT ts_utc illeggibile ('", ts,
+               "') -> bridge STALE, aperture bloccate");
       g_bridgeStale = true;
       return;
      }

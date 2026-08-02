@@ -1,0 +1,62 @@
+; TG_TradinGoEA — preset Vantage demo (Contabo), configurazione STANDARD
+; Serve a misurare tutti i canali senza interferenze:
+;   - nessun guard DD (InpDdMaxPct=0 -> log "DD_GUARD disabled")
+;   - killswitch flottante SPENTO (InpMaxFloatingLossUSD=0)
+;   - nessun cooldown dopo chiusura bucket (InpKillSwitchCooldownMin=0)
+;   - lotti 0 = usa fixed_lot dal JSON del bridge (tipico 0.10/TP, 0.20 single)
+; Path segnali: cartella locale MQL5\Files del terminale (nessuna junction)
+; Richiede EA v2.13+
+; Carica da: Inputs EA -> Load -> questo file
+
+InpSignalsPath=
+InpUseAbsolutePath=false
+InpChannels=gold,forex,oro,stark,ivan
+InpSymbolSuffix=
+InpLotMultiplier=1.0
+InpAddLotFactor=0.5
+InpLotIvan=0.0
+InpLotStark=0.0
+InpLotGold=0.0
+InpLotOro=0.0
+InpLotForex=0.0
+InpTagIvan=IT
+InpTagStark=AS
+InpTagGold=
+InpTagOro=
+InpTagForex=
+InpCommentUseTgPrefix=false
+InpMaxSlippagePoints=50
+InpPollMs=500
+InpRangeTolerancePoints=150
+InpOroRangeTolerancePoints=250
+InpLogCancelledSignals=true
+InpClearSignalAfterProcess=true
+InpIgnoreExistingOnInit=true
+InpStackOpensIfFlatBusy=true
+InpStopBufferPoints=20
+InpAutoBreakEvenOnTp1=true
+InpMagicOffset=0
+InpMaxFloatingLossUSD=0.0
+InpKillSwitchCooldownMin=0
+InpMaxHoldingMinutes=0
+InpHeartbeatMaxAgeSec=180
+InpHeartbeatFile=tradingo_heartbeat.json
+InpEquitySampleSec=60
+InpJournalPrefix=journal\\
+InpSingleInstanceLock=true
+InpLockStaleSec=120
+InpDdMaxPct=0.0
+InpDdStartEquity=0.0
+InpDdCloseAtPct=80.0
+InpDdBlockNewAtPct=60.0
+InpHaltFlagFile=tradingo_halt.flag
+InpDdSizingEnabled=false
+InpDdUtilizationPct=50.0
+InpDdStepPct=10.0
+InpDdMaxLot=0.0
+InpDdFloatIvan=39.9
+InpDdFloatStark=10.4
+InpDdFloatGold=15.0
+InpDdFloatOro=12.4
+InpDdFloatForex=20.0
+InpMaxConcurrentLots=0.0

@@ -6,11 +6,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.01"
+#property version   "1.02"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.01"
+#define EA_VERSION "1.02"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -1128,7 +1128,9 @@ bool HandleCloseAllSymbol(const string json)
          double lots = OrderLots();
          double price = (OrderType() == OP_BUY) ? MarketInfo(sym, MODE_BID)
                                                 : MarketInfo(sym, MODE_ASK);
-         OrderClose(ticket, lots, price, InpMaxSlippagePoints, clrRed);
+         if(!OrderClose(ticket, lots, price, InpMaxSlippagePoints, clrRed))
+            Print("[TradinGo] CLOSE_ALL_SYMBOL close failed ticket=", ticket,
+                  " err=", GetLastError());
         }
       return true;
      }
@@ -1300,7 +1302,9 @@ bool HandleCheckAndCloseTp(const string json)
       double lots = OrderLots();
       double price = (OrderType() == OP_BUY) ? MarketInfo(sym, MODE_BID)
                                              : MarketInfo(sym, MODE_ASK);
-      OrderClose(ticket, lots, price, InpMaxSlippagePoints, clrRed);
+      if(!OrderClose(ticket, lots, price, InpMaxSlippagePoints, clrRed))
+         Print("[TradinGo] CHECK_AND_CLOSE_TP close failed ticket=", ticket,
+               " err=", GetLastError());
      }
    return true;
   }

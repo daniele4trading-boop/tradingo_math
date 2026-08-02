@@ -4,7 +4,7 @@ Il parser e le regole restano nel **bridge Python**. L’EA MT4 legge gli stessi
 `signal_ch_*.json` già scritti per Vantage / Gamehosting / iFunds.
 
 Contratto: [`EA_SPEC.md`](EA_SPEC.md) (bridge **2.14**).  
-EA: `tg_tradingo/mql4/TG_TradinGoEA.mq4` versione **1.01**.
+EA: `tg_tradingo/mql4/TG_TradinGoEA.mq4` versione **1.02**.
 
 ## Path Contabo
 
@@ -68,12 +68,12 @@ Per disabilitare oro-vip e stark solo su MT4:
 ## 4. Smoke test
 
 1. Verifica file: `...\MQL4\Files\tradingo\signal_ch_*.json` e `tradingo_heartbeat.json`.
-2. Log Experts: `[TradinGo] EA v1.01 (MT4) started`. Se compare
+2. Log Experts: `[TradinGo] EA v1.02 (MT4) started`. Se compare
    `HEARTBEAT ... bridge STALE`, il bridge non sta scrivendo in questa cartella:
    controlla `mt5_instances` e riavvia il bridge, altrimenti le aperture restano bloccate.
 3. Opzionale: scrivi un OPEN di prova con lotto 0.01 e poi `CLOSE_ALL_SYMBOL`.
 
-## Limitazioni v1.01 MT4
+## Limitazioni v1.02 MT4
 
 - Stesse azioni JSON del MT5 (OPEN*, UPDATE_*, CLOSE_*, BE, CLOSE_SELECTIVE, …).
 - Niente journal MAE/MFE / guard DD iFunds / single-instance lock (restano sull’EA MT5).

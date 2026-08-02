@@ -5,8 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.13"
+#property version   "2.14"
 #property description "JSON signal executor for TG TradinGo bridge"
+
+//--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
+#define EA_VERSION "2.14"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -2822,7 +2825,7 @@ int OnInit()
             "FileOpen (MT5 sandbox, err=5004). Use junction under MQL5\\Files ",
             "and set InpUseAbsolutePath=false, InpSignalsPath=tradingo\\");
      }
-   Print("[TradinGo] EA v2.12 started | channels=", g_channelCount,
+   Print("[TradinGo] EA v", EA_VERSION, " started | channels=", g_channelCount,
          " path=", (StringLen(InpSignalsPath) > 0 ? InpSignalsPath : "<MQL5\\Files>"),
          " abs=", InpUseAbsolutePath,
          " range_tolerance_pts=", InpRangeTolerancePoints,
@@ -2831,11 +2834,11 @@ int OnInit()
          " stack_opens=", InpStackOpensIfFlatBusy,
          " (requires JSON allow_stack)",
          " stop_buffer_pts=", InpStopBufferPoints);
-   Print("[TradinGo] v2.11 lots/tags | ivan=", DoubleToString(InpLotIvan, 2),
+   Print("[TradinGo] v", EA_VERSION, " lots/tags | ivan=", DoubleToString(InpLotIvan, 2),
          "/", InpTagIvan,
          " stark=", DoubleToString(InpLotStark, 2), "/", InpTagStark,
          " comment_tg_prefix=", InpCommentUseTgPrefix);
-   Print("[TradinGo] v2.11 hardening | killswitch currency=ACCOUNT_CURRENCY (",
+   Print("[TradinGo] v", EA_VERSION, " hardening | killswitch currency=ACCOUNT_CURRENCY (",
          AccountInfoString(ACCOUNT_CURRENCY), ")",
          " max_floating_loss=", DoubleToString(InpMaxFloatingLossUSD, 2),
          " cooldown_min=", InpKillSwitchCooldownMin,
@@ -2846,7 +2849,7 @@ int OnInit()
          " journal_prefix=", InpJournalPrefix,
          " single_instance_lock=", InpSingleInstanceLock,
          " lock_stale_sec=", InpLockStaleSec);
-   Print("[TradinGo] v2.12 prop guards | dd_max_pct=", DoubleToString(InpDdMaxPct, 2),
+   Print("[TradinGo] v", EA_VERSION, " prop guards | dd_max_pct=", DoubleToString(InpDdMaxPct, 2),
          " dd_close_at_pct=", DoubleToString(InpDdCloseAtPct, 1),
          " dd_block_new_at_pct=", DoubleToString(InpDdBlockNewAtPct, 1),
          " halt_flag_file=", (StringLen(InpHaltFlagFile) > 0 ? InpHaltFlagFile : "<off>"),

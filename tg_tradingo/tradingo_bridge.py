@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.10
+TG TradinGo Bridge - v2.14 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -62,7 +62,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.10"
+BRIDGE_VERSION = "2.14"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 

@@ -3,6 +3,10 @@
 Questo documento descrive il sistema **Telegram → JSON → MT5** nella repo `tradingo_system`.
 Leggilo prima di modificare parser, config o EA.
 
+**Branch canonico: `main`** (`git fetch origin main && git checkout main && git pull`).
+Versioni correnti — bridge **2.14**, EA **2.14** — e mappa preset → conto in
+[`docs/VERSIONS_AND_PRESETS.md`](docs/VERSIONS_AND_PRESETS.md).
+
 ## Dove sono i file
 
 | Percorso repo | Percorso VPS produzione |

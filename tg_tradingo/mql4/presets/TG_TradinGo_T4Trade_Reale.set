@@ -1,0 +1,42 @@
+; TG_TradinGoEA.mq4 — preset T4Trade conto reale (prova size minimi)
+; Contabo terminal hash: 893F70E9EF760D3B32BDD358B27B8555
+; Bridge scrive in MQL4\Files\tradingo\ (junction o path diretto in mt5_instances)
+;
+; Prova: lotto 0.01 su tutti i canali abilitati.
+; Per escludere oro-vip e stark: InpChannels=gold,forex,ivan
+;
+; DA ADATTARE:
+;   InpSymbolSuffix  suffisso simbolo T4Trade se presente
+;   InpChannels      quali canali eseguire su questo conto
+; Richiede EA MT4 v1.00+ (contratto JSON = bridge 2.14)
+; Carica da: Inputs EA -> Load -> questo file
+
+InpSignalsPath=tradingo\\
+InpUseAbsolutePath=false
+InpChannels=gold,forex,oro,stark,ivan
+InpSymbolSuffix=
+InpLotMultiplier=1.0
+InpAddLotFactor=0.5
+InpLotIvan=0.01
+InpLotStark=0.01
+InpLotGold=0.01
+InpLotOro=0.01
+InpLotForex=0.01
+InpTagIvan=IT
+InpTagStark=AS
+InpTagGold=SG
+InpTagOro=OR
+InpTagForex=FX
+InpCommentUseTgPrefix=false
+InpMaxSlippagePoints=50
+InpPollMs=500
+InpRangeTolerancePoints=150
+InpOroRangeTolerancePoints=250
+InpLogCancelledSignals=true
+InpClearSignalAfterProcess=true
+InpIgnoreExistingOnInit=true
+InpStackOpensIfFlatBusy=true
+InpStopBufferPoints=20
+InpMagicOffset=0
+InpHeartbeatMaxAgeSec=180
+InpHeartbeatFile=tradingo_heartbeat.json

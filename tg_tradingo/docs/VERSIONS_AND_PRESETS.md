@@ -18,11 +18,11 @@ I branch `cursor/*` e `devin/*` sono di lavoro: allinearli a `main` prima di rip
 |---|---|---|
 | Bridge Python | **2.14** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
 | EA MT5 | **2.14** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
+| EA MT4 | **1.00** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.14) |
 
-Le due versioni si muovono insieme: bridge ed EA condividono il contratto JSON descritto in
-[`EA_SPEC.md`](EA_SPEC.md), quindi un cambio di contratto va rilasciato su entrambi.
-Nell'EA tutti i `Print("[TradinGo] v…")` usano `EA_VERSION`: non esistono più versioni
-scritte a mano nei log.
+Bridge ed EA MT5 si muovono insieme sul contratto JSON ([`EA_SPEC.md`](EA_SPEC.md)).
+L’EA MT4 è un consumer aggiuntivo dello stesso JSON (nessun secondo parser).
+Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT4_T4TRADE_SETUP.md).
 
 Contenuto della 2.14 rispetto alla 2.10 del bridge: parser post-audit (PR #21-#28) —
 forme italiane GOLD/FOREX, dedup MSG+EDIT, chiusure selettive `CLOSE_SELECTIVE`,
@@ -42,6 +42,12 @@ Tutti in `tg_tradingo/mql5/presets/`, si caricano da `Inputs → Load` sul chart
 | `TG_TradinGo_Reale_Personale.set` | conti reali personali | 10%, equity catturata al primo attach | off | ivan, stark (da scegliere) | template: lotti, suffisso simbolo e % vanno adattati al broker |
 | `TG_TradinGo_Moneta_10k.set` | Moneta Funded 10k | off | off | ivan, stark | storico: piano abbandonato, lotti fissi 0,02/0,01 |
 | `TG_TradinGo_Gamehosting_Demo.set` | demo su VPS amico | off | off | tutti e 5 | usa la junction `MQL5\Files\tradingo` |
+
+Preset MT4 in `tg_tradingo/mql4/presets/`:
+
+| Preset | Conto | Canali | Note |
+|---|---|---|---|
+| `TG_TradinGo_T4Trade_Reale.set` | T4Trade reale (Contabo) | tutti e 5 (editabili) | lotti 0.01; path `MQL4\Files\tradingo\` |
 
 Dettaglio delle regole iFunds e procedure di test dei guard: [`IFUNDS_SETUP.md`](IFUNDS_SETUP.md).
 

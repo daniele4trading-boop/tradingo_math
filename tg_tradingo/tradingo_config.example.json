@@ -17,6 +17,18 @@
       "name": "TradinGo_Local",
       "enabled": true,
       "signals_path": "C:\\TG_TradinGo\\signals"
+    },
+    {
+      "name": "Contabo_T4Trade_MT4",
+      "enabled": false,
+      "signals_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\893F70E9EF760D3B32BDD358B27B8555\\MQL4\\Files\\tradingo",
+      "notes": "MT4 T4Trade reale — stessi JSON; EA mql4/TG_TradinGoEA.mq4. Abilita su Contabo."
+    },
+    {
+      "name": "Contabo_iFunds_MT5",
+      "enabled": false,
+      "signals_path": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\2CF3572F498D78B167929E1A97715940\\MQL5\\Files\\tradingo",
+      "notes": "MT5 iFunds — predisposizione scrittura JSON prima del login conto. Abilita su Contabo."
     }
   ],
 

@@ -59,7 +59,17 @@ $deployDirs = @(
 $eaSrcRelative = "mql5\TG_TradinGoEA.mq5"
 $eaProdCopyDir = Join-Path $ProdRoot "mql5"
 $eaTerminalExperts = @(
-    "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\AE2CC2E013FDE1E3CDF010AA51C60400\MQL5\Experts"
+    # Vantage demo Contabo
+    "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\AE2CC2E013FDE1E3CDF010AA51C60400\MQL5\Experts",
+    # iFunds MT5 Contabo (JSON pre-wired; compile/attach when account is live)
+    "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\2CF3572F498D78B167929E1A97715940\MQL5\Experts"
+)
+
+# MT4 EA (T4Trade Contabo)
+$eaMt4SrcRelative = "mql4\TG_TradinGoEA.mq4"
+$eaMt4ProdCopyDir = Join-Path $ProdRoot "mql4"
+$eaMt4TerminalExperts = @(
+    "C:\Users\Administrator\AppData\Roaming\MetaQuotes\Terminal\893F70E9EF760D3B32BDD358B27B8555\MQL4\Experts"
 )
 
 # Never overwrite these in production
@@ -298,6 +308,61 @@ else {
         }
         else {
             Write-Host "[DRY-RUN] copy presets *.set"
+        }
+    }
+}
+
+# --- Deploy EA mq4 (no compile) ---
+
+Write-Step "Deploy EA MQ4 (source copy; MetaEditor compile is manual)"
+
+$eaMt4From = Join-Path $src $eaMt4SrcRelative
+if (-not (Test-Path $eaMt4From)) {
+    Write-Host "WARN: MT4 EA not found in repo: $eaMt4From" -ForegroundColor Yellow
+}
+else {
+    $eaMt4Targets = @()
+    $eaMt4Targets += (Join-Path $eaMt4ProdCopyDir "TG_TradinGoEA.mq4")
+    foreach ($expertsDir in $eaMt4TerminalExperts) {
+        if (Test-Path $expertsDir) {
+            $eaMt4Targets += (Join-Path $expertsDir "TG_TradinGoEA.mq4")
+        }
+        else {
+            Write-Host "SKIP MT4 Experts (missing folder): $expertsDir" -ForegroundColor Yellow
+        }
+    }
+
+    foreach ($eaTo in $eaMt4Targets) {
+        if ($DryRun) {
+            Write-Host "[DRY-RUN] copy MT4 EA -> $eaTo"
+            continue
+        }
+        $parent = Split-Path $eaTo -Parent
+        if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+        Copy-Item $eaMt4From $eaTo -Force
+        Write-Host "OK MT4 EA -> $eaTo"
+    }
+    Write-Host "NOTE: open MT4 MetaEditor and compile (F7) TG_TradinGoEA.mq4, then attach EA." -ForegroundColor Yellow
+
+    $presetsMt4Src = Join-Path $src "mql4\presets"
+    if (Test-Path $presetsMt4Src) {
+        $presetsMt4Dst = Join-Path $dst "mql4\presets"
+        if (-not $DryRun) {
+            New-Item -ItemType Directory -Path $presetsMt4Dst -Force | Out-Null
+            Copy-Item (Join-Path $presetsMt4Src "*.set") $presetsMt4Dst -Force -ErrorAction SilentlyContinue
+            Write-Host "OK MT4 presets -> $presetsMt4Dst"
+            foreach ($expertsDir in $eaMt4TerminalExperts) {
+                $mql4 = Split-Path $expertsDir -Parent
+                $termPresets = Join-Path $mql4 "Presets"
+                if (Test-Path $mql4) {
+                    New-Item -ItemType Directory -Path $termPresets -Force | Out-Null
+                    Copy-Item (Join-Path $presetsMt4Src "*.set") $termPresets -Force -ErrorAction SilentlyContinue
+                    Write-Host "OK MT4 presets -> $termPresets"
+                }
+            }
+        }
+        else {
+            Write-Host "[DRY-RUN] copy MT4 presets *.set"
         }
     }
 }

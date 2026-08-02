@@ -1,11 +1,12 @@
 # TG TradinGo — contesto per agenti Cursor / Cloud
 
-Questo documento descrive il sistema **Telegram → JSON → MT5** nella repo `tradingo_system`.
+Questo documento descrive il sistema **Telegram → JSON → MT4/MT5** nella repo `tradingo_system`.
 Leggilo prima di modificare parser, config o EA.
 
 **Branch canonico: `main`** (`git fetch origin main && git checkout main && git pull`).
-Versioni correnti — bridge **2.14**, EA **2.14** — e mappa preset → conto in
+Versioni correnti — bridge **2.14**, EA MT5 **2.14**, EA MT4 **1.00** — e mappa preset → conto in
 [`docs/VERSIONS_AND_PRESETS.md`](docs/VERSIONS_AND_PRESETS.md).
+Setup MT4 T4Trade / path iFunds: [`docs/MT4_T4TRADE_SETUP.md`](docs/MT4_T4TRADE_SETUP.md).
 
 ## Dove sono i file
 
@@ -24,20 +25,20 @@ Versioni correnti — bridge **2.14**, EA **2.14** — e mappa preset → conto 
 ## Architettura
 
 ```
-Telegram (4 canali VIP)
+Telegram (canali VIP)
         │
         ▼
 tradingo_bridge.py  (Telethon, auto-restart)
-        │  parser per canale
+        │  parser per canale (unica fonte di verità)
         ▼
-signal_chN.json  (uno per canale)
+signal_ch_*.json  (uno per canale)
         │
-        ▼
-TG_TradinGoEA.mq5  (legge JSON, esegue ordini MT5)
+        ├─► TG_TradinGoEA.mq5  (MT5: Vantage, Ultima, iFunds, …)
+        └─► TG_TradinGoEA.mq4  (MT4: T4Trade — stesso contratto JSON)
 ```
 
 - Il bridge ascolta **NewMessage** e **MessageEdited** (importante per CH2 naked→completo).
-- Scrive lo stesso payload in tutti i path di `mt5_instances[].signals_path` (scrittura atomica tmp + replace).
+- Scrive lo stesso payload in tutti i path di `mt5_instances[].signals_path` (scrittura atomica tmp + replace), inclusi path MT4 `MQL4\Files\...` se configurati.
 - Deduplica messaggi Telegram su `state/processed_messages.json` (chiave chat_id + message_id + event_type).
 - Stato CH2 naked→UPDATE su `state/bridge_state.json` (persistente al restart).
 - Validazione payload prima della scrittura JSON (action, direction, SL/TP, splits).

@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.14"
+#property version   "2.15"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.14"
+#define EA_VERSION "2.15"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -366,6 +366,21 @@ bool IsOurPosition(const ulong ticket, const int magicBase, const int maxTrades)
          return true;
      }
    return false;
+  }
+
+//+------------------------------------------------------------------+
+ulong FindOurPositionByMagic(const string symbol, const ulong magic)
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(g_pos.Symbol() != symbol)
+         continue;
+      if(g_pos.Magic() == magic)
+         return g_pos.Ticket();
+     }
+   return 0;
   }
 
 //+------------------------------------------------------------------+
@@ -1004,10 +1019,17 @@ bool HandleOpen(const string channelFile, const string json)
    string channelTag = ChannelShortTag(channelFile, json);
    if(action == "OPEN_NOW")
      {
-      return OpenMarket(symbol, direction, lot, 0, 0, TradeMagic(magicBase, 1),
-                        BuildTradeComment(channelTag, 1, json),
-                        channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
-                        distPoints, 1);
+      int nakedCnt = MathMin(MathMax(trades, 1), 5);
+      bool anyNaked = false;
+      for(int i = 1; i <= nakedCnt; i++)
+        {
+         if(OpenMarket(symbol, direction, lot, 0, 0, TradeMagic(magicBase, i),
+                       BuildTradeComment(channelTag, i, json),
+                       channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
+                       distPoints, i))
+            anyNaked = true;
+        }
+      return anyNaked;
      }
 
    int openCnt = CountOurPositions(symbol, magicBase, 5);
@@ -1076,15 +1098,36 @@ bool HandleUpdateOpen(const string channelFile, const string json)
                              channelFile, json, entryStatus, rangeLo, rangeHi, distPoints);
      }
 
-   if(openCnt == 1 && trades > 1)
+   // Il setup completo integra le posizioni già aperte dal naked: SL/TP su
+   // quelle esistenti e apertura delle sole mancanti, senza chiudere e riaprire.
+   int wanted = MathMin(MathMax(trades, 1), 5);
+   string channelTag = ChannelShortTag(channelFile, json);
+   bool any = false;
+   for(int i = 1; i <= wanted; i++)
      {
-      Print("[TradinGo] UPDATE_OPEN split: close 1 reopen ", trades);
-      CloseOurPositions(symbol, magicBase, 5);
-      return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
-                             channelFile, json, "EXECUTED_DIRECT", 0, 0, 0);
+      double tp = ((i - 1) < ArraySize(tps)) ? tps[i - 1] : 0.0;
+      ulong magic = TradeMagic(magicBase, i);
+      ulong ticket = FindOurPositionByMagic(symbol, magic);
+      if(ticket > 0)
+        {
+         if(ModifyPositionSLTP(ticket, sl, tp))
+            any = true;
+         continue;
+        }
+      if(IsOpenBlocked(symbol))
+        {
+         Print("[TradinGo] UPDATE_OPEN: trade ", i, "/", wanted,
+               " mancante ma apertura bloccata");
+         continue;
+        }
+      Print("[TradinGo] UPDATE_OPEN completa il setup — apro trade ", i, "/", wanted);
+      if(OpenMarket(symbol, direction, lot, sl, tp, magic,
+                    BuildTradeComment(channelTag, i, json),
+                    channelFile, json, "EXECUTED_UPDATE_FILL", 0, 0, 0, i))
+         any = true;
      }
 
-   int idx = 0;
+   // Posizioni oltre il numero previsto (rientri): solo il nuovo SL, TP invariato.
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       if(!g_pos.SelectByIndex(i))
@@ -1093,10 +1136,21 @@ bool HandleUpdateOpen(const string channelFile, const string json)
          continue;
       if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
          continue;
-      double tp = (idx < ArraySize(tps)) ? tps[idx] : 0.0;
-      ModifyPositionSLTP(g_pos.Ticket(), sl, tp);
-      idx++;
+      bool covered = false;
+      for(int k = 1; k <= wanted; k++)
+        {
+         if(g_pos.Magic() == TradeMagic(magicBase, k))
+           {
+            covered = true;
+            break;
+           }
+        }
+      if(covered)
+         continue;
+      ModifyPositionSLTP(g_pos.Ticket(), sl, g_pos.TakeProfit());
      }
+   if(!any)
+      Print("[TradinGo] UPDATE_OPEN: nessuna posizione aggiornata o aperta");
    return true;
   }
 

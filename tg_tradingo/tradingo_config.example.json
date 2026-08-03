@@ -46,7 +46,7 @@
         "fixed_lot_single": 0.20,
         "fixed_lot_per_tp": 0.10,
         "tp_levels_expected": 2,
-        "notes": "2 TP standard (raro 3). OPEN_NOW 1x0.20, OPEN completo 2x0.10."
+        "notes": "2 TP standard (raro 3). OPEN_NOW 2x0.10 (naked), OPEN completo 2x0.10."
       }
     },
     {

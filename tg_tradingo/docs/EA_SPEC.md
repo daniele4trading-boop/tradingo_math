@@ -74,11 +74,13 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 
 | TP nel segnale | `trades` | `fixed_lot` |
 |----------------|----------|-------------|
-| 0 (OPEN_NOW) | 1 | 0.20 |
+| 0 (OPEN_NOW) | `tp_levels_expected` del canale (GOLD: 2) | 0.10 ciascuno (0.20 se atteso 1 TP) |
 | 1 TP | 1 | 0.20 |
 | 2+ TP | N | 0.10 ciascuno |
 
-`OPEN_NOW` (GOLD naked): mercato subito, senza SL/TP. Il messaggio successivo è `UPDATE_OPEN` con livelli.
+`OPEN_NOW` (GOLD naked): mercato subito, senza SL/TP, già nel numero di trade previsto
+dal canale. Il messaggio successivo è `UPDATE_OPEN`, che aggiunge SL/TP a quelle posizioni
+senza chiuderle.
 
 ---
 
@@ -88,8 +90,8 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 |--------|------------------|
 | `NONE` | Ignora |
 | `OPEN` | Apri `trades` posizioni (magic_base+1..N), SL/TP da JSON |
-| `OPEN_NOW` | 1 ordine a mercato, senza SL/TP |
-| `UPDATE_OPEN` | Modifica SL/TP su posizioni aperte; se servono più trade, apri/chiudi per allineare a `trades` |
+| `OPEN_NOW` | `trades` ordini a mercato (magic_base+1..N), senza SL/TP |
+| `UPDATE_OPEN` | Per ogni indice 1..`trades`: SL/TP sulla posizione col magic corrispondente, apertura se manca. Posizioni oltre `trades` (rientri) ricevono solo il nuovo SL. Nessuna chiusura+riapertura |
 | `UPDATE_TP` | Modifica TP posizioni del canale/simbolo |
 | `UPDATE_SL` | Modifica SL (FOREX) |
 | `CHECK_AND_CLOSE` | Chiudi se esiste posizione symbol+direction |
@@ -219,7 +221,7 @@ Scrivi TG_TradinGoEA.mq5 per MetaTrader 5 che:
 2. Deduplica con campo timestamp
 3. Implementa tutte le action in EA_SPEC.md
 4. Usa magic_base+i per trade split, fixed_lot × InpLotMultiplier
-5. OPEN_NOW = mercato; UPDATE_OPEN aggiorna SL/TP e splitta se trades>1
+5. OPEN_NOW = mercato (trades posizioni); UPDATE_OPEN aggiunge SL/TP alle esistenti e apre solo le mancanti
 6. entry_range = attendi prezzo nel range prima di OPEN
 7. Un solo file .mq5, include Trade.mqh, niente DLL esterne
 8. Log su Experts con prefisso [TradinGo]

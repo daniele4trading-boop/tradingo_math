@@ -657,6 +657,20 @@ class TestLotRules:
         assert sig["trades"] == 2
         assert sig["fixed_lot"] == 0.10
 
+    def test_open_now_uses_expected_tp_count(self):
+        ch = {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10,
+                            "tp_levels_expected": 2}}
+        sig = apply_lot_rules({"action": "OPEN_NOW", "tp_levels": []}, ch)
+        assert sig["trades"] == 2
+        assert sig["fixed_lot"] == 0.10
+
+    def test_open_now_single_tp_channel(self):
+        ch = {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10,
+                            "tp_levels_expected": 1}}
+        sig = apply_lot_rules({"action": "OPEN_NOW", "tp_levels": []}, ch)
+        assert sig["trades"] == 1
+        assert sig["fixed_lot"] == 0.20
+
     def test_lot_factor(self):
         ch = {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}}
         sig = apply_lot_rules(

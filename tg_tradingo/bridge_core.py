@@ -978,6 +978,12 @@ def apply_lot_rules(signal: dict, ch: dict) -> dict:
 
     lot_factor = float(signal.get("lot_factor", 1.0))
 
+    # Naked open ("sell gold now"): il setup con i TP arriva subito dopo. Apriamo
+    # già il numero di trade previsto dal canale, così il messaggio completo si
+    # limita ad aggiungere SL/TP senza chiudere e riaprire le posizioni.
+    if action == "OPEN_NOW" and n_tp == 0:
+        n_tp = max(1, int(exec_cfg.get("tp_levels_expected", 1) or 1))
+
     if n_tp >= 2:
         signal["trades"] = n_tp
         signal["fixed_lot"] = lot_per_tp * lot_factor

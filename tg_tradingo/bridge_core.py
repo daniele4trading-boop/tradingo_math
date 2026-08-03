@@ -961,7 +961,12 @@ def validate_signal(signal: dict) -> tuple[bool, str]:
 
 
 def apply_lot_rules(signal: dict, ch: dict) -> dict:
-    """Fixed lots: 0.20 with one TP, 0.10 per TP when multiple levels are set."""
+    """Fixed lots: 0.20 with one TP, 0.10 per TP when multiple levels are set.
+
+    OPEN_NOW (naked, no TP yet) uses the channel's ``tp_levels_expected`` so GOLD
+    (expected=2) opens 2x ``fixed_lot_per_tp`` immediately; channels with
+    expected=1 keep a single ``fixed_lot_single`` ticket.
+    """
     exec_cfg = ch.get("execution", {})
     lot_single = float(exec_cfg.get("fixed_lot_single", ch.get("fixed_lot_single", 0.20)))
     lot_per_tp = float(exec_cfg.get("fixed_lot_per_tp", ch.get("fixed_lot_per_tp", 0.10)))
@@ -977,6 +982,22 @@ def apply_lot_rules(signal: dict, ch: dict) -> dict:
     signal.pop("risk_percent", None)
 
     lot_factor = float(signal.get("lot_factor", 1.0))
+
+    if action == "OPEN_NOW" and n_tp == 0:
+        expected = int(
+            exec_cfg.get("tp_levels_expected", ch.get("tp_levels_expected", 1)) or 1
+        )
+        if expected < 1:
+            expected = 1
+        if expected >= 2:
+            signal["trades"] = expected
+            signal["fixed_lot"] = lot_per_tp * lot_factor
+            signal["splits"] = [round(1.0 / expected, 4)] * expected
+        else:
+            signal["trades"] = 1
+            signal["fixed_lot"] = lot_single * lot_factor
+            signal["splits"] = [1.0]
+        return signal
 
     if n_tp >= 2:
         signal["trades"] = n_tp

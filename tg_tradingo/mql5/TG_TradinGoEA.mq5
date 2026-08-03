@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.14"
+#property version   "2.15"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.14"
+#define EA_VERSION "2.15"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -366,6 +366,21 @@ bool IsOurPosition(const ulong ticket, const int magicBase, const int maxTrades)
          return true;
      }
    return false;
+  }
+
+//+------------------------------------------------------------------+
+ulong FindOurPositionByMagic(const string symbol, const ulong magic)
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(g_pos.Symbol() != symbol)
+         continue;
+      if((ulong)g_pos.Magic() == magic)
+         return g_pos.Ticket();
+     }
+   return 0;
   }
 
 //+------------------------------------------------------------------+
@@ -1001,13 +1016,22 @@ bool HandleOpen(const string channelFile, const string json)
          return true;
      }
 
-   string channelTag = ChannelShortTag(channelFile, json);
    if(action == "OPEN_NOW")
      {
-      return OpenMarket(symbol, direction, lot, 0, 0, TradeMagic(magicBase, 1),
-                        BuildTradeComment(channelTag, 1, json),
-                        channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
-                        distPoints, 1);
+      // Naked open: open `trades` market tickets (GOLD expected=2 → TP1/TP2 magic),
+      // SL/TP arrive later via UPDATE_OPEN without close/reopen.
+      int n = trades;
+      if(n <= 0)
+         n = 1;
+      if(n > 5)
+         n = 5;
+      double emptyTps[];
+      ArrayResize(emptyTps, n);
+      for(int i = 0; i < n; i++)
+         emptyTps[i] = 0.0;
+      return OpenSplitTrades(symbol, direction, lot, 0, emptyTps, magicBase,
+                             channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
+                             distPoints);
      }
 
    int openCnt = CountOurPositions(symbol, magicBase, 5);
@@ -1076,26 +1100,62 @@ bool HandleUpdateOpen(const string channelFile, const string json)
                              channelFile, json, entryStatus, rangeLo, rangeHi, distPoints);
      }
 
-   if(openCnt == 1 && trades > 1)
+   // Fill/modify by magic index: never close+reopen (preserves re-entry tickets).
+   // Planned slots 1..N: modify SL/TP if present, else open missing (UPDATE_FILL).
+   // Extra tickets beyond N (allow_stack re-entries): new SL only, TP unchanged.
+   string channelTag = ChannelShortTag(channelFile, json);
+   int n = trades;
+   if(n <= 0)
+      n = MathMax(1, ArraySize(tps));
+   if(n > 5)
+      n = 5;
+
+   bool any = false;
+   for(int i = 1; i <= n; i++)
      {
-      Print("[TradinGo] UPDATE_OPEN split: close 1 reopen ", trades);
-      CloseOurPositions(symbol, magicBase, 5);
-      return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
-                             channelFile, json, "EXECUTED_DIRECT", 0, 0, 0);
+      ulong magic = TradeMagic(magicBase, i);
+      ulong ticket = FindOurPositionByMagic(symbol, magic);
+      double tp = (i - 1 < ArraySize(tps)) ? tps[i - 1] : 0.0;
+      if(ticket > 0)
+        {
+         if(ModifyPositionSLTP(ticket, sl, tp))
+            any = true;
+        }
+      else
+        {
+         if(IsOpenBlocked(symbol))
+            continue;
+         Print("[TradinGo] UPDATE_OPEN fill missing magic=", magic,
+               " slot=", i, "/", n);
+         if(OpenMarket(symbol, direction, lot, sl, tp, magic,
+                       BuildTradeComment(channelTag, i, json),
+                       channelFile, json, "EXECUTED_UPDATE_FILL", 0, 0, 0, i))
+            any = true;
+        }
      }
 
-   int idx = 0;
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       if(!g_pos.SelectByIndex(i))
          continue;
       if(g_pos.Symbol() != symbol)
          continue;
-      if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
+      if(!IsOurPosition(g_pos.Ticket(), magicBase, 8))
          continue;
-      double tp = (idx < ArraySize(tps)) ? tps[idx] : 0.0;
-      ModifyPositionSLTP(g_pos.Ticket(), sl, tp);
-      idx++;
+      ulong mg = (ulong)g_pos.Magic();
+      bool planned = false;
+      for(int k = 1; k <= n; k++)
+        {
+         if(mg == TradeMagic(magicBase, k))
+           {
+            planned = true;
+            break;
+           }
+        }
+      if(planned)
+         continue;
+      // Re-entry / extra: apply SL only, keep existing TP (tp=0 → curTp).
+      ModifyPositionSLTP(g_pos.Ticket(), sl, 0);
      }
    return true;
   }

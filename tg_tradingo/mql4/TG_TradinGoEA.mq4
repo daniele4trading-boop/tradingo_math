@@ -1,16 +1,16 @@
 //+------------------------------------------------------------------+
 //| TG_TradinGoEA.mq4                                                |
 //| Legge gli stessi signal_ch_*.json del bridge Python (contratto   |
-//| EA_SPEC / bridge 2.14) ed esegue ordini su MT4.                  |
+//| EA_SPEC / bridge 2.15) ed esegue ordini su MT4.                  |
 //| Non fa parsing Telegram: solo esecuzione JSON.                   |
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.02"
+#property version   "1.03"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.02"
+#define EA_VERSION "1.03"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -274,6 +274,23 @@ bool SelectOurOrder(const int ticket, const int magicBase, const int maxTrades)
    if(OrderCloseTime() > 0)
       return false;
    return IsOurOrderMagic(OrderMagicNumber(), magicBase, maxTrades);
+  }
+
+//+------------------------------------------------------------------+
+int FindOurOrderByMagic(const string symbol, const int magic)
+  {
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderSymbol() != symbol)
+         continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+         continue;
+      if(OrderMagicNumber() == magic)
+         return OrderTicket();
+     }
+   return -1;
   }
 
 //+------------------------------------------------------------------+
@@ -925,13 +942,20 @@ bool HandleOpen(const string channelFile, const string json)
          return true;
      }
 
-   string channelTag = ChannelShortTag(channelFile, json);
    if(action == "OPEN_NOW")
      {
-      return OpenMarket(symbol, direction, lot, 0, 0, TradeMagic(magicBase, 1),
-                        BuildTradeComment(channelTag, 1, json),
-                        channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
-                        distPoints, 1);
+      int n = trades;
+      if(n <= 0)
+         n = 1;
+      if(n > MAX_TRADES_PER_SIGNAL)
+         n = MAX_TRADES_PER_SIGNAL;
+      double emptyTps[];
+      ArrayResize(emptyTps, n);
+      for(int i = 0; i < n; i++)
+         emptyTps[i] = 0.0;
+      return OpenSplitTrades(symbol, direction, lot, 0, emptyTps, magicBase,
+                             channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
+                             distPoints);
      }
 
    // Align trades count with tp_levels when present
@@ -1006,15 +1030,34 @@ bool HandleUpdateOpen(const string channelFile, const string json)
                              channelFile, json, entryStatus, rangeLo, rangeHi, distPoints);
      }
 
-   if(openCnt == 1 && trades > 1)
+   // Fill/modify by magic: never close+reopen. Missing slots → OPEN fill;
+   // extras beyond planned N → SL only (TP unchanged).
+   string channelTag = ChannelShortTag(channelFile, json);
+   int n = trades;
+   if(n <= 0)
+      n = MathMax(1, ArraySize(tps));
+   if(n > MAX_TRADES_PER_SIGNAL)
+      n = MAX_TRADES_PER_SIGNAL;
+
+   for(int i = 1; i <= n; i++)
      {
-      Print("[TradinGo] UPDATE_OPEN split: close 1 reopen ", trades);
-      CloseOurOrders(symbol, magicBase, MAX_TRADES_PER_SIGNAL);
-      return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
-                             channelFile, json, "EXECUTED_DIRECT", 0, 0, 0);
+      int magic = TradeMagic(magicBase, i);
+      int ticket = FindOurOrderByMagic(symbol, magic);
+      double tp = (i - 1 < ArraySize(tps)) ? tps[i - 1] : 0.0;
+      if(ticket > 0)
+         ModifyOrderSLTP(ticket, sl, tp);
+      else
+        {
+         if(IsOpenBlocked())
+            continue;
+         Print("[TradinGo] UPDATE_OPEN fill missing magic=", magic,
+               " slot=", i, "/", n);
+         OpenMarket(symbol, direction, lot, sl, tp, magic,
+                    BuildTradeComment(channelTag, i, json),
+                    channelFile, json, "EXECUTED_UPDATE_FILL", 0, 0, 0, i);
+        }
      }
 
-   int idx = 0;
    for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
@@ -1023,11 +1066,21 @@ bool HandleUpdateOpen(const string channelFile, const string json)
          continue;
       if(OrderType() != OP_BUY && OrderType() != OP_SELL)
          continue;
-      if(!IsOurOrderMagic(OrderMagicNumber(), magicBase, MAX_TRADES_PER_SIGNAL))
+      if(!IsOurOrderMagic(OrderMagicNumber(), magicBase, 8))
          continue;
-      double tp = (idx < ArraySize(tps)) ? tps[idx] : 0.0;
-      ModifyOrderSLTP(OrderTicket(), sl, tp);
-      idx++;
+      int mg = OrderMagicNumber();
+      bool planned = false;
+      for(int k = 1; k <= n; k++)
+        {
+         if(mg == TradeMagic(magicBase, k))
+           {
+            planned = true;
+            break;
+           }
+        }
+      if(planned)
+         continue;
+      ModifyOrderSLTP(OrderTicket(), sl, 0);
      }
    return true;
   }

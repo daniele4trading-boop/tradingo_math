@@ -665,6 +665,32 @@ class TestLotRules:
         )
         assert sig["fixed_lot"] == 0.05
 
+    def test_open_now_gold_expected_two_splits(self):
+        """GOLD naked OPEN_NOW: 2 tickets x fixed_lot_per_tp (not 1x single)."""
+        ch = {
+            "execution": {
+                "fixed_lot_single": 0.20,
+                "fixed_lot_per_tp": 0.10,
+                "tp_levels_expected": 2,
+            }
+        }
+        sig = apply_lot_rules({"action": "OPEN_NOW", "tp_levels": []}, ch)
+        assert sig["trades"] == 2
+        assert sig["fixed_lot"] == 0.10
+        assert sig["splits"] == [0.5, 0.5]
+
+    def test_open_now_single_expected_keeps_single(self):
+        ch = {
+            "execution": {
+                "fixed_lot_single": 0.20,
+                "fixed_lot_per_tp": 0.10,
+                "tp_levels_expected": 1,
+            }
+        }
+        sig = apply_lot_rules({"action": "OPEN_NOW"}, ch)
+        assert sig["trades"] == 1
+        assert sig["fixed_lot"] == 0.20
+
 
 class TestCH4SalaStark:
     def test_open_markdown(self):

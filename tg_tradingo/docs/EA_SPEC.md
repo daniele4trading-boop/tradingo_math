@@ -88,8 +88,8 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 |--------|------------------|
 | `NONE` | Ignora |
 | `OPEN` | Apri `trades` posizioni (magic_base+1..N), SL/TP da JSON |
-| `OPEN_NOW` | 1 ordine a mercato, senza SL/TP |
-| `UPDATE_OPEN` | Modifica SL/TP su posizioni aperte; se servono più trade, apri/chiudi per allineare a `trades` |
+| `OPEN_NOW` | Apri `trades` ordini a mercato **senza** SL/TP. Da bridge 2.15: per canali con `tp_levels_expected>=2` (GOLD) `trades`/`fixed_lot` sono già quelli multi-TP (`N × fixed_lot_per_tp`), così all’UPDATE_OPEN successivo non serve chiudere/riaprire |
+| `UPDATE_OPEN` | Per ogni slot magic `base+1..N`: se la posizione esiste → modifica SL/TP; se manca → apre solo quella (`EXECUTED_UPDATE_FILL`). Posizioni extra oltre N (rientri) ricevono solo il nuovo SL, TP invariato. **Non** chiude e riapre più il set |
 | `UPDATE_TP` | Modifica TP posizioni del canale/simbolo |
 | `UPDATE_SL` | Modifica SL (FOREX) |
 | `CHECK_AND_CLOSE` | Chiudi se esiste posizione symbol+direction |

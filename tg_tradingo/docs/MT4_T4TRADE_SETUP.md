@@ -3,8 +3,8 @@
 Il parser e le regole restano nel **bridge Python**. L’EA MT4 legge gli stessi
 `signal_ch_*.json` già scritti per Vantage / Gamehosting / iFunds.
 
-Contratto: [`EA_SPEC.md`](EA_SPEC.md) (bridge **2.14**).  
-EA: `tg_tradingo/mql4/TG_TradinGoEA.mq4` versione **1.02**.
+Contratto: [`EA_SPEC.md`](EA_SPEC.md) (bridge **2.15**).  
+EA: `tg_tradingo/mql4/TG_TradinGoEA.mq4` versione **1.03**.
 
 ## Path Contabo
 

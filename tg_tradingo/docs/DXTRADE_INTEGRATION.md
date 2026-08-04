@@ -176,7 +176,11 @@ segreti di questa repo.
 | `dxtrade_probe.py` | diagnostica in sola lettura: permesso API, account code, naming simboli, `lotSize`, hedging vs netting, quote REST | pronto |
 | `tests/test_dxtrade_client.py` | 18 test contro piattaforma finta locale | verde |
 | `tests/test_dxtrade_mapper.py` | 36 test su payload di segnali **reali** del 3 agosto 2026 | verde |
+| `dxtrade_risk.py` | gate di rischio prop: daily limit con reset 00:30 UTC, floor statico, soft stop / flatten, tetto di margine, rifiuto di ordini senza SL o troppo grossi | pronto |
+| `analyze_prop_sizing.py` | rigioca lo storico equity sotto il regolamento e trova la size massima sostenibile | pronto |
 | `tests/test_dxtrade_probe.py` | 6 test end-to-end del probe | verde |
+| `tests/test_dxtrade_risk.py` | 25 test sul gate, con i numeri reali del 31 luglio | verde |
+| `tests/test_analyze_prop_sizing.py` | 11 test sull'analizzatore di sizing | verde |
 
 **Non ancora scritto** (serve una decisione, vedi §6): il worker con la
 macchina a stati, lo store `positionCode`, il journal DXtrade e l'aggancio a
@@ -197,34 +201,148 @@ python dxtrade_mapper.py docs/fixtures/signal_ch_gold_update_open_215.example.js
 ### Provare con credenziali (sola lettura)
 
 ```bash
-export DXTRADE_BASE_URL="https://dx.broker.com/dxsca-web"
+export DXTRADE_BASE_URL="https://dx.velotrade.com/dxsca-web"
 export DXTRADE_USERNAME="..." DXTRADE_PASSWORD="..."
-export DXTRADE_ACCOUNT="default:12345"
-python dxtrade_probe.py --symbols XAUUSD,EURUSD
+export DXTRADE_ACCOUNT="..."          # opzionale: altrimenti lo scopre
+python dxtrade_probe.py --symbols XAU,XAUUSD,EURUSD
 ```
+
+### Ricalcolare la size sostenibile
+
+```bash
+# la cartella e' MQL5\Files\journal\equity del terminale Vantage
+python analyze_prop_sizing.py --equity-dir /percorso/journal/equity \
+    --initial 10000 --daily-pct 3 --dd-pct 3
+```
+
+---
+
+## 5-bis. Conto di prova: Velotrade 1-Step Pro 10k
+
+Il conto scelto per la prova è un **Velotrade 1-Step Pro da 10.000 USD** in
+fase di challenge. Velotrade gira proprio su DXtrade e la documentazione API è
+su `https://dx.velotrade.com/developers/`, con base URL
+`https://dx.velotrade.com/dxsca-web`. L'accesso API è incluso in ogni account,
+senza fee né approvazione, e il trading automatico è permesso.
+
+### Regolamento
+
+| Regola | Valore su 10k |
+|--------|---------------|
+| Profit target | +10% = **1.000 USD** |
+| Daily loss limit | 3% = **300 USD**, reset alle **00:30 UTC** |
+| Max drawdown | 3% **statico**: floor fisso a **9.700 USD**, non si muove mai |
+| Giorni minimi | 5 |
+| Limite di tempo | nessuno |
+| Regola di consistenza | nessuna |
+
+Il primo giorno è il momento più critico: daily limit e floor coincidono
+entrambi a 9.700, quindi una sola sessione storta chiude l'account.
+
+### Strumenti e leva
+
+Gold c'è, con simbolo **`XAU`** (commodities), leva **3x in challenge** e 2x da
+funded. `EURUSD` è disponibile a 50x. La leva bassa sull'oro è un vincolo più
+stringente del rischio: con 10k e 3x il notional massimo è 30.000 USD, cioè
+**~7 once d'oro in tutto** a 4.030 USD/oz, e usando il 60% dell'equity a
+margine si scende a **4 once contemporanee**.
+
+### Size sostenibile secondo i dati reali
+
+`analyze_prop_sizing.py` rigioca lo storico di equity del conto Vantage con il
+regolamento Velotrade. Sulle 7 giornate dal 27 luglio al 3 agosto, ai lotti
+attuali (0.10 per TP):
+
+| Giorno | P&L | Peggior escursione intraday |
+|--------|-----|------------------------------|
+| 27 lug | +8.39 | −83.86 |
+| 28 lug | +6.73 | −219.49 |
+| 29 lug | −159.13 | −251.45 |
+| 30 lug | +830.43 | −90.77 |
+| **31 lug** | −490.91 | **−1416.46** |
+| 2 ago | +267.08 | 0.00 |
+| 3 ago | +543.47 | −64.32 |
+| **Totale** | **+1006.06** | |
+
+Il 31 luglio è la giornata che vincola tutto: −1.416 USD di escursione
+intraday, quasi tutti da IvanTrades (il segnale `90e2279b4b` andò a SL su
+4 ticket insieme, −474 USD di flottante).
+
+* **k massimo teorico** che sopravvive: **0.212** → 0.021 lotti per TP
+* **k con margine di sicurezza 50%**: **0.106** → 0.011 lotti per TP
+* **vincolo di margine** (60% equity, leva 3x): **k ≤ 0.15** circa
+
+Le tre soglie convergono su un'unica conclusione operativa: **1 oncia per
+ticket** (l'equivalente di 0.01 lotti), che è anche il minimo operabile.
+
+A quella size la settimana avrebbe reso **+100.61 USD (+1,01%)**, con equity
+minima a 9.927 e 227 USD di margine dal floor. Il rovescio: al ritmo medio di
++14 USD al giorno servono **~70 giornate** per arrivare al target del 10%.
+Non c'è limite di tempo, quindi è fattibile, ma va detto chiaramente che
+questa strategia e un floor statico del 3% non sono un accoppiamento naturale.
+
+Raddoppiando a 2 once per ticket il periodo passerebbe comunque (+201 USD,
+equity minima 9.854), ma il 31 luglio avrebbe consumato il 94% del limite
+giornaliero: un margine troppo sottile per un dato che viene da 7 giornate.
+
+### Contributo per canale (stessa settimana, conto Vantage)
+
+| Canale | Posizioni | Winrate | P&L | Peggior segnale (flottante) |
+|--------|-----------|---------|-----|------------------------------|
+| IvanTrades | 60 | 51% | +1002.05 | −474.46 |
+| Sala ORO | 36 | 53% | +199.46 | −236.51 |
+| Sala FOREX | 4 | 75% | +42.08 | −170.35 |
+| Sala GOLD | 30 | 46% | −114.92 | −314.14 |
+| Sala Stark | 19 | 63% | −122.26 | −149.77 |
+
+IvanTrades produce praticamente tutto il risultato del periodo, ed è anche il
+canale con il rischio concentrato più alto (4 ticket che vanno a SL insieme).
+Su un conto con 300 USD di floor la scelta dei canali pesa quanto la size.
+
+### Gate di rischio
+
+`dxtrade_risk.py` implementa il regolamento come guardia pre-ordine e continua:
+
+| Soglia | Comportamento |
+|--------|---------------|
+| 50% del daily limit (−150) | stop alle nuove aperture, posizioni lasciate correre |
+| 75% del daily limit (−225) | chiusura di tutto e stop fino al reset delle 00:30 UTC |
+| meno di 60 USD dal floor | chiusura preventiva, indipendentemente dal daily |
+| equity ≤ 9.700 | breach, tutto chiuso |
+| margine oltre il 60% dell'equity | ordine rifiutato |
+| ordine senza stop loss | ordine rifiutato |
+
+Il gate rifiuta anche gli ordini il cui rischio a stop non entra nello spazio
+rimasto: il segnale IvanTrades tipo (4 ticket, SL a 12 USD di distanza) passa a
+1 oncia per ticket (48 USD di rischio) e viene bloccato a 10 once (480 USD).
+
+Un punto poco intuitivo ma decisivo: **il daily si resetta, il floor no**.
+Dopo una giornata da −240 il daily riparte pieno a 300, ma dal floor restano
+60 USD: il gate blocca comunque, perché un solo segnale rischia più di così.
 
 ---
 
 ## 6. Punti aperti da decidere prima del worker
 
-1. **Quale broker/host.** `base_url`, `domain` e `account code` sono specifici:
-   servono host reale e credenziali (demo va benissimo per partire).
-2. **Permesso REST API abilitato?** Se l'utente non ce l'ha, ogni chiamata
-   risponde `404 / errorCode 2`. Il probe lo rileva subito.
-3. **Hedging o netting.** È la domanda più importante: il nostro modello apre
-   N posizioni sullo stesso simbolo e lato (una per TP). Su un account
-   **netting** collasserebbero in una posizione netta e lo schema multi-TP non
-   funziona; servirebbe una sola posizione con chiusure parziali ai livelli.
-   Il probe dà un indizio, ma la conferma richiede due ordini di prova sullo
-   stesso lato in demo.
-4. **Naming simboli.** `XAU/USD` è lo standard DXtrade, ma alcuni broker usano
-   varianti. Il probe prova i candidati e segnala quando serve una mappatura
-   esplicita.
+1. **Credenziali Velotrade** (`DXTRADE_USERNAME` / `DXTRADE_PASSWORD` e il
+   `domain`, di solito `default`). Servono per far girare il probe sul conto
+   vero e chiudere i punti 2-5.
+2. **Hedging o netting.** È la domanda tecnica più importante: il nostro
+   modello apre N posizioni sullo stesso simbolo e lato (una per TP). Su un
+   account **netting** collasserebbero in una posizione netta e lo schema
+   multi-TP non funziona; servirebbe una sola posizione con chiusure parziali
+   ai livelli. Il probe dà un indizio, la conferma richiede due ordini di prova
+   sullo stesso lato.
+3. **Contratto dell'oro.** Serve `lotSize` e `quantityIncrement` di `XAU` da
+   `GET /instruments/XAU`: da lì dipende se "1 oncia" è davvero la size minima
+   o se si può scendere sotto.
+4. **Naming simboli.** La pagina strumenti di Velotrade elenca `XAU`, ma il
+   simbolo nell'API potrebbe essere `XAU/USD`. Il probe prova i candidati.
 5. **Quote per `entry_range`.** Se `POST /marketdata` non è abilitato, la
    valutazione del range richiede il WebSocket della Push API.
-6. **Regole del conto.** Se è un conto funded/prop: verificare che l'automazione
-   sia permessa e replicare i limiti (daily loss, max holding) come già fa il
-   kill-switch dell'EA.
+6. **Quali canali replicare.** Su 300 USD di floor, mandare tutti e cinque i
+   canali significa sommare rischi indipendenti. I dati della settimana
+   suggeriscono di partire con IvanTrades e ORO, ma è una scelta tua.
 
 ---
 

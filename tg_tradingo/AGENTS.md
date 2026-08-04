@@ -69,7 +69,8 @@ signal_ch_*.json  (uno per canale)
 - `start_tradingo.bat` — avvio bridge
 - `webapp/` — dashboard monitor mobile (FastAPI, porta 8600 via Tailscale) — vedi `docs/WEBAPP.md`
 - `start_webapp.bat` — avvio webapp monitor
-- `dxtrade_client.py` / `dxtrade_mapper.py` / `dxtrade_probe.py` — integrazione DXtrade REST (fondamenta, non ancora agganciata al bridge) — vedi `docs/DXTRADE_INTEGRATION.md`
+- `dxtrade_client.py` / `dxtrade_mapper.py` / `dxtrade_probe.py` / `dxtrade_risk.py` — integrazione DXtrade REST + gate di rischio prop (fondamenta, non ancora agganciate al bridge) — vedi `docs/DXTRADE_INTEGRATION.md`
+- `analyze_prop_sizing.py` — size massima sostenibile su conto prop, ricavata dallo storico equity
 - `README.md` — guida operativa
 
 ### Config (NON versionare segreti)

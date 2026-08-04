@@ -1,0 +1,10 @@
+config.json
+logs/
+reports/
+state/
+KILL_SWITCH
+spread_samples.jsonl
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/

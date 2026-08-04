@@ -41,7 +41,7 @@ Ogni conto è una voce di `accounts` e produce un riquadro nella sezione **Conti
     "signal_stats": "C:\\Users\\...\\AE2CC2E0...\\MQL5\\Files\\tradingo_signal_stats.csv" },
   { "id": "ultima", "label": "Ultima demo iFunds (Gamehosting)",
     "ea_journal_dir": "\\\\100.74.9.8\\tradingo_journal",
-    "start_date": "2026-08-04" }
+    "start_date": "2026-08-05" }
 ]
 ```
 

@@ -213,3 +213,14 @@ def _journal(tmp_path):
     for path in (tmp_path / "logs").glob("journal_*.jsonl"):
         out += [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     return out
+
+
+def test_non_positive_risk_never_becomes_an_order():
+    """Difesa in profondita': un RiskConfig costruito a mano bypassa validate()."""
+    from pattern_go.risk import AccountState, RiskConfig, RiskManager
+
+    state = AccountState(balance=10_000.0, equity=10_000.0, day_start_balance=10_000.0)
+    for fraction in (-0.05, 0.0):
+        cfg = RiskConfig(initial_balance=10_000.0, cap_size=11_000.0, risk_fraction=fraction)
+        rm = RiskManager(cfg)
+        assert rm.quantity(state, 3.67) == (0.0, "risk_non_positive")

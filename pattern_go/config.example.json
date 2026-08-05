@@ -36,7 +36,7 @@
   "strategies": {
     "M5": {
       "timeframe": "M5",
-      "enabled": true,
+      "enabled": false,
       "bias_window": 24,
       "max_hold": 48,
       "day_bars": 288,

@@ -141,7 +141,12 @@ class RiskManager:
         """
         if sl_distance <= 0:
             return 0.0, "sl_distance<=0"
-        raw = self.risk_amount(state) / sl_distance
+        risk_amount = self.risk_amount(state)
+        if risk_amount <= 0:
+            # senza questo, `round_below_min_to_min` trasformerebbe un rischio
+            # nullo o negativo in un ordine al lotto minimo
+            return 0.0, "risk_non_positive"
+        raw = risk_amount / sl_distance
         step = self.cfg.quantity_increment
         rounded = math.floor(raw / step) * step
         rounded = round(rounded, 8)

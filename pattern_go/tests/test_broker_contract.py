@@ -224,3 +224,27 @@ def test_non_positive_risk_never_becomes_an_order():
         cfg = RiskConfig(initial_balance=10_000.0, cap_size=11_000.0, risk_fraction=fraction)
         rm = RiskManager(cfg)
         assert rm.quantity(state, 3.67) == (0.0, "risk_non_positive")
+
+
+def test_heartbeat_is_written_periodically_and_not_every_tick(tmp_path):
+    """Un servizio vivo ma fermo deve restare distinguibile da uno senza setup."""
+    client = FakeClient()
+    cfg = make_config(tmp_path)
+    runner = Runner(cfg, client)
+    runner.startup()
+    runner.tick()
+    runner.tick()
+    beats = [r for r in _journal(tmp_path) if r["event"] == "HEARTBEAT"]
+    assert len(beats) == 1
+    beat = beats[0]
+    assert beat["decision"] == "ALLOW" and "spread" in beat
+    assert set(beat["strategies"]["M5"]) == {"last_bar", "session", "pending", "trade"}
+
+
+def test_heartbeat_can_be_disabled(tmp_path):
+    cfg = make_config(tmp_path)
+    object.__setattr__(cfg.runtime, "heartbeat_seconds", 0.0)
+    runner = Runner(cfg, FakeClient())
+    runner.startup()
+    runner.tick()
+    assert not [r for r in _journal(tmp_path) if r["event"] == "HEARTBEAT"]

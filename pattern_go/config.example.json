@@ -64,6 +64,7 @@
   },
   "runtime": {
     "poll_seconds": 10.0,
+    "heartbeat_seconds": 900.0,
     "warmup_bars": 400,
     "kill_switch_file": "KILL_SWITCH",
     "kill_switch_closes_positions": true,

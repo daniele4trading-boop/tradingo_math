@@ -41,7 +41,7 @@ def test_effective_floor_is_the_higher_of_static_and_daily(rm):
 def test_reservoir_and_risk_amount_at_activation(rm):
     s = state(10_000.0, day_start_balance=10_000.0)
     assert rm.reservoir(s) == pytest.approx(300.0)
-    assert rm.risk_amount(s) == pytest.approx(15.0)
+    assert rm.risk_amount(s) == pytest.approx(9.0)
 
 
 def test_static_reservoir_is_frozen_at_cap_size(rm):
@@ -55,14 +55,14 @@ def test_reservoir_is_the_tighter_of_static_and_daily(rm):
     # conto molto in profitto: il daily floor (11.640) morde piu' del floor statico
     s = state(12_000.0, balance=12_000.0, day_start_balance=12_000.0)
     assert rm.reservoir(s) == pytest.approx(360.0)
-    assert rm.risk_amount(s) == pytest.approx(18.0)
+    assert rm.risk_amount(s) == pytest.approx(10.8)
 
 
 def test_reservoir_shrinks_within_a_losing_day(rm):
     s = state(9_900.0, balance=10_000.0, day_start_balance=10_000.0)
     # equity 9.900 con floor 9.700: resta meno margine di inizio giornata
     assert rm.reservoir(s) == pytest.approx(200.0)
-    assert rm.risk_amount(s) == pytest.approx(10.0)
+    assert rm.risk_amount(s) == pytest.approx(6.0)
 
 
 def test_quantity_on_gold_is_in_ounces(rm):
@@ -70,7 +70,7 @@ def test_quantity_on_gold_is_in_ounces(rm):
     s = state(10_000.0, day_start_balance=10_000.0)
     qty, reason = rm.quantity(s, sl_distance=3.67)
     assert reason == "ok"
-    assert qty == pytest.approx(4.08)
+    assert qty == pytest.approx(2.45)
     assert qty * 3.67 <= rm.risk_amount(s)
 
 
@@ -162,3 +162,33 @@ def test_roll_day_resets_halt_and_rebases_the_daily_floor(rm):
     # nuovo daily floor 9506 < floor statico 9700: vince lo statico
     assert rm.effective_floor(s) == pytest.approx(9_700.0)
     assert not rm.roll_day(s, datetime(2026, 8, 5, 2, 0, tzinfo=UTC))
+
+
+def test_quantity_is_capped_by_available_margin(rm):
+    """XAU ha marginRate 0.16666: uno stop stretto chiede piu' nozionale del margine."""
+    s = state(10_000.0, day_start_balance=10_000.0, margin_free=1_000.0)
+    qty, reason = rm.quantity(s, sl_distance=0.10, price=4_200.0)
+    assert reason == "capped_by_margin"
+    # meta' del margine libero, al 16,666% di margine su un prezzo di 4.200
+    assert qty == pytest.approx(0.71, abs=0.01)
+    assert qty * 4_200.0 * rm.cfg.margin_rate <= 0.5 * 1_000.0
+
+
+def test_quantity_ignores_the_margin_cap_when_it_is_not_binding(rm):
+    s = state(10_000.0, day_start_balance=10_000.0, margin_free=8_000.0)
+    assert rm.quantity(s, sl_distance=3.67, price=4_200.0) == (2.45, "ok")
+
+
+def test_consecutive_losses_in_one_day_cannot_break_the_daily_limit(rm):
+    """Perdite piene consecutive nello stesso giorno UTC: il guard chiude prima di -300."""
+    equity = balance = 10_000.0
+    for _ in range(50):
+        s = state(equity, balance=balance, day_start_balance=10_000.0)
+        decision, _ = rm.evaluate(s)
+        if decision != ALLOW:
+            break
+        qty, _ = rm.quantity(s, sl_distance=3.67)
+        # la perdita reale eccede il rischio pianificato: slippage misurato ~1,1R
+        equity = balance = equity - 1.2 * qty * 3.67
+    assert decision == BLOCK_NEW  # il blocco scatta al 60% dell'allowance, prima del limite
+    assert equity > 10_000.0 - 300.0

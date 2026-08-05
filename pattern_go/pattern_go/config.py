@@ -129,6 +129,13 @@ def validate(cfg: Config) -> Config:
             f"account.cap_size ({r.cap_size}) non puo' essere sotto initial_balance "
             f"({r.initial_balance}): il serbatoio sarebbe nullo"
         )
+    if not 0 < r.max_margin_utilisation <= 1:
+        problems.append(
+            "risk.max_margin_utilisation deve stare in (0, 1], "
+            f"trovato {r.max_margin_utilisation}"
+        )
+    if r.margin_rate <= 0:
+        problems.append(f"risk.margin_rate deve essere positivo, trovato {r.margin_rate}")
     if r.min_quantity <= 0 or r.quantity_increment <= 0:
         problems.append("risk.min_quantity e risk.quantity_increment devono essere positivi")
     if r.max_open_positions < 1 or r.max_open_positions_per_strategy < 1:
@@ -178,6 +185,8 @@ def load_config(path: str | Path) -> Config:
         min_quantity=float(r.get("min_quantity", 0.01)),
         quantity_increment=float(r.get("quantity_increment", 0.01)),
         round_below_min_to_min=bool(r.get("round_below_min_to_min", True)),
+        margin_rate=float(r.get("margin_rate", 0.16666)),
+        max_margin_utilisation=float(r.get("max_margin_utilisation", 0.5)),
     )
 
     runtime = RuntimeConfig(**raw.get("runtime", {}))

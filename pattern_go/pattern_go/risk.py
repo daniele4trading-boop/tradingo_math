@@ -28,7 +28,7 @@ class RiskConfig:
     max_dd_pct: float = 0.03
     daily_loss_pct: float = 0.03
     daily_reset_utc: time = time(0, 30)
-    risk_fraction: float = 0.05
+    risk_fraction: float = 0.03
     block_new_at_allowance_used: float = 0.60
     close_all_at_allowance_used: float = 0.80
     max_open_positions: int = 2
@@ -36,6 +36,8 @@ class RiskConfig:
     min_quantity: float = 0.01
     quantity_increment: float = 0.01
     round_below_min_to_min: bool = True
+    margin_rate: float = 0.16666
+    max_margin_utilisation: float = 0.5
 
 
 @dataclass
@@ -45,6 +47,7 @@ class AccountState:
     equity: float
     balance: float
     open_positions: int = 0
+    margin_free: float | None = None
     day_start_balance: float | None = None
     day_key: date | None = None
     halted_until_reset: bool = False
@@ -134,7 +137,21 @@ class RiskManager:
     def risk_amount(self, state: AccountState) -> float:
         return self.cfg.risk_fraction * self.reservoir(state)
 
-    def quantity(self, state: AccountState, sl_distance: float) -> tuple[float, str]:
+    def max_quantity_by_margin(self, state: AccountState, price: float) -> float | None:
+        """Tetto imposto dal margine: XAU su Velotrade ha marginRate 0.16666 (leva 1:6).
+
+        Con uno stop molto stretto il sizing a rischio fisso chiede una quantita'
+        grande: senza tetto il nozionale supera il margine libero e l'ordine viene
+        rifiutato dal broker (o consuma tutto il margine per la seconda strategia).
+        """
+        if state.margin_free is None or price <= 0 or self.cfg.margin_rate <= 0:
+            return None
+        budget = self.cfg.max_margin_utilisation * state.margin_free
+        return budget / (price * self.cfg.margin_rate)
+
+    def quantity(
+        self, state: AccountState, sl_distance: float, price: float | None = None
+    ) -> tuple[float, str]:
         """Quantita' in once per XAU (lotSize=1: 1 unita' = 1 USD per 1 USD di prezzo).
 
         Ritorna (quantita', motivo). Quantita' 0 significa "non operare".
@@ -147,6 +164,11 @@ class RiskManager:
             # nullo o negativo in un ordine al lotto minimo
             return 0.0, "risk_non_positive"
         raw = risk_amount / sl_distance
+        reason = "ok"
+        if price is not None:
+            cap = self.max_quantity_by_margin(state, price)
+            if cap is not None and cap < raw:
+                raw, reason = cap, "capped_by_margin"
         step = self.cfg.quantity_increment
         rounded = math.floor(raw / step) * step
         rounded = round(rounded, 8)
@@ -154,7 +176,7 @@ class RiskManager:
             if self.cfg.round_below_min_to_min:
                 return self.cfg.min_quantity, "rounded_up_to_min"
             return 0.0, "below_min_quantity"
-        return rounded, "ok"
+        return rounded, reason
 
     # --- guard --------------------------------------------------------------
 

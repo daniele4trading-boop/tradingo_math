@@ -1,0 +1,76 @@
+{
+  "account": {
+    "initial_balance": 10000.0,
+    "cap_size": 11000.0,
+    "currency": "USD",
+    "prop_firm": "Velotrade",
+    "challenge": "PRO 1-Step 10k"
+  },
+  "risk": {
+    "max_dd_pct": 0.03,
+    "daily_loss_pct": 0.03,
+    "daily_reset_utc": "00:30",
+    "risk_fraction": 0.05,
+    "block_new_at_allowance_used": 0.60,
+    "close_all_at_allowance_used": 0.80,
+    "max_open_positions": 2,
+    "max_open_positions_per_strategy": 1,
+    "min_quantity": 0.01,
+    "quantity_increment": 0.01,
+    "round_below_min_to_min": true
+  },
+  "broker": {
+    "base_url": "https://dx.velotrade.com/dxsca-web",
+    "domain": "default",
+    "account": "default:130000638",
+    "username_env": "DXTRADE_USERNAME",
+    "password_env": "DXTRADE_PASSWORD",
+    "symbol": "XAU",
+    "timeout": 20.0,
+    "max_retries": 5
+  },
+  "sessions": [
+    { "name": "london", "time": "09:00", "tz": "Europe/Rome" },
+    { "name": "newyork", "time": "09:30", "tz": "America/New_York" }
+  ],
+  "strategies": {
+    "M5": {
+      "timeframe": "M5",
+      "enabled": false,
+      "bias_window": 24,
+      "max_hold": 48,
+      "day_bars": 288,
+      "tp_fallback_r": 1.5,
+      "tp_min_r": 0.5,
+      "filters": {
+        "body2_frac_min": 0.741,
+        "risk_spread_mult_min": 4.941,
+        "range2_over_range1_min": 1.142,
+        "range2_over_range1_max": 1.872
+      }
+    },
+    "M15": {
+      "timeframe": "M15",
+      "enabled": true,
+      "bias_window": 32,
+      "max_hold": 96,
+      "day_bars": 96,
+      "tp_fallback_r": 1.5,
+      "tp_min_r": 0.5,
+      "filters": {
+        "risk_spread_mult_min": 8.625
+      }
+    }
+  },
+  "runtime": {
+    "poll_seconds": 10.0,
+    "warmup_bars": 400,
+    "kill_switch_file": "KILL_SWITCH",
+    "kill_switch_closes_positions": true,
+    "log_dir": "logs",
+    "state_file": "state/pattern_go_state.json",
+    "report_dir": "reports",
+    "log_max_bytes": 20000000,
+    "log_backup_count": 30
+  }
+}

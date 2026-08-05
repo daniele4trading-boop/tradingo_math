@@ -1,0 +1,25 @@
+[project]
+name = "pattern-go"
+version = "0.1.0"
+description = "Pattern GO — trading automatico su oro (XAU) via API DXtrade / Velotrade"
+requires-python = ">=3.11"
+dependencies = ["requests>=2.31"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "B008",
+    # str+Enum: i valori vengono serializzati direttamente nel journal JSON
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["RUF015"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

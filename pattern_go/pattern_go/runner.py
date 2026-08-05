@@ -75,6 +75,7 @@ class Runner:
         self._close_counter: dict[str, int] = {}
         self._stop = False
         self._last_report_day = None
+        self._last_heartbeat: datetime | None = None
 
         for s in cfg.strategies:
             if not s.enabled:
@@ -207,6 +208,37 @@ class Runner:
         self._check_protective_exits(quote)
         for name, engine in self.engines.items():
             self._advance_strategy(name, engine, quote, allow_new=decision == ALLOW)
+        self._heartbeat(now, quote, decision)
+
+    def _heartbeat(self, now: datetime, quote: Quote, decision: str) -> None:
+        """Traccia periodicamente che il ciclo gira.
+
+        Senza, un servizio vivo ma fermo (nessuna barra nuova) e' indistinguibile da
+        uno che semplicemente non trova setup: il journal resta vuoto in entrambi i casi.
+        """
+        every = self.cfg.runtime.heartbeat_seconds
+        if every <= 0:
+            return
+        last = self._last_heartbeat
+        if last is not None and (now - last).total_seconds() < every:
+            return
+        self._last_heartbeat = now
+        self.journal.write(
+            "HEARTBEAT",
+            equity=self.state.equity,
+            balance=self.state.balance,
+            spread=round(quote.spread, 5),
+            decision=decision,
+            strategies={
+                name: {
+                    "last_bar": engine.bars[-1].time.isoformat() if engine.bars else None,
+                    "session": engine.session.spec.name if engine.session else None,
+                    "pending": engine.pending is not None,
+                    "trade": engine.trade is not None,
+                }
+                for name, engine in self.engines.items()
+            },
+        )
 
     def _check_protective_exits(self, quote: Quote) -> None:
         """SL e TP sono gestiti qui, non dal broker.

@@ -42,6 +42,7 @@ class BrokerConfig:
 @dataclass(frozen=True)
 class RuntimeConfig:
     poll_seconds: float = 10.0
+    heartbeat_seconds: float = 900.0
     warmup_bars: int = 400
     kill_switch_file: str = "KILL_SWITCH"
     kill_switch_closes_positions: bool = True

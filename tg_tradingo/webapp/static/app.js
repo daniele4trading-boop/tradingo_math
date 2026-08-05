@@ -51,51 +51,37 @@ function renderLights(lights) {
   $("lights").innerHTML = html || '<div class="card">Nessun check configurato</div>';
 }
 
-function renderEquity(equity, pnl) {
-  const latest = (equity && equity.latest) || null;
-  $("eq-value").textContent = latest ? latest.equity.toFixed(2) : "—";
-  const delta = equity ? equity.delta_today : null;
-  const dEl = $("eq-delta");
-  dEl.textContent = delta === null || delta === undefined ? "—" : fmtMoney(delta);
-  dEl.className = "equity-delta " + pnlClass(delta);
-  $("eq-float").textContent = latest ? fmtMoney(latest.floating) : "—";
-  $("eq-float").className = "equity-value sm " + pnlClass(latest && latest.floating);
-  $("eq-opens").textContent = latest ? String(latest.open_positions) : "—";
+function sparkline(points) {
+  if (!points || points.length < 2) return "";
+  const vals = points.map((p) => p.equity);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const span = max - min || 1;
+  const w = 320;
+  const h = 72;
+  const pad = 4;
+  const coords = points
+    .map((p, i) => {
+      const x = pad + (i / (points.length - 1)) * (w - 2 * pad);
+      const y = h - pad - ((p.equity - min) / span) * (h - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const stroke = vals[vals.length - 1] >= vals[0] ? "#d4af37" : "#ef4444";
+  return `<polyline fill="none" stroke="${stroke}" stroke-width="2" points="${coords}" />`;
+}
 
-  // sparkline
-  const svg = $("eq-chart");
-  const pts = (equity && equity.points) || [];
-  if (pts.length < 2) {
-    svg.innerHTML = "";
-  } else {
-    const vals = pts.map((p) => p.equity);
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const span = max - min || 1;
-    const w = 320;
-    const h = 72;
-    const pad = 4;
-    const coords = pts
-      .map((p, i) => {
-        const x = pad + (i / (pts.length - 1)) * (w - 2 * pad);
-        const y = h - pad - ((p.equity - min) / span) * (h - 2 * pad);
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(" ");
-    const last = vals[vals.length - 1];
-    const first = vals[0];
-    const stroke = last >= first ? "#d4af37" : "#ef4444";
-    svg.innerHTML =
-      `<polyline fill="none" stroke="${stroke}" stroke-width="2" points="${coords}" />`;
-  }
-
-  const totals = (pnl && pnl.totals) || {};
+function accountCard(acc) {
+  const equity = acc.equity || {};
+  const latest = equity.latest || null;
+  const delta = equity.delta_today;
+  const totals = (acc.pnl && acc.pnl.totals) || {};
   const windows = [
     { key: "d1", label: "Oggi" },
     { key: "d7", label: "7g" },
     { key: "d30", label: "30g" },
   ];
-  $("pnl-totals").innerHTML = windows
+  const chips = windows
     .map((w) => {
       const b = totals[w.key] || { pnl: 0, trades: 0 };
       return `<div class="pnl-chip">
@@ -105,6 +91,50 @@ function renderEquity(equity, pnl) {
       </div>`;
     })
     .join("");
+  const err = (acc.sources && acc.sources.error) || null;
+  const note = err
+    ? `<div class="detail">journal non leggibile: ${esc(err)}</div>`
+    : acc.start_date
+      ? `<div class="detail">storico dal ${esc(acc.start_date)}</div>`
+      : "";
+  return `<div class="card account-card">
+    <div class="head">
+      <span class="name">${esc(acc.label || acc.id)}</span>
+      <span class="badge">${esc(acc.id)}</span>
+    </div>
+    <div class="equity-head">
+      <div>
+        <div class="equity-label">Equity</div>
+        <div class="equity-value">${latest ? latest.equity.toFixed(2) : "—"}</div>
+      </div>
+      <div>
+        <div class="equity-label">Oggi</div>
+        <div class="equity-delta ${pnlClass(delta)}">${
+          delta === null || delta === undefined ? "—" : fmtMoney(delta)
+        }</div>
+      </div>
+      <div>
+        <div class="equity-label">Floating</div>
+        <div class="equity-value sm ${pnlClass(latest && latest.floating)}">${
+          latest ? fmtMoney(latest.floating) : "—"
+        }</div>
+      </div>
+      <div>
+        <div class="equity-label">Aperti</div>
+        <div class="equity-value sm">${latest ? String(latest.open_positions) : "—"}</div>
+      </div>
+    </div>
+    <svg class="equity-chart" viewBox="0 0 320 72" preserveAspectRatio="none">${sparkline(
+      equity.points
+    )}</svg>
+    <div class="pnl-totals">${chips}</div>
+    ${note}
+  </div>`;
+}
+
+function renderAccounts(accounts) {
+  const html = (accounts || []).map(accountCard).join("");
+  $("accounts").innerHTML = html || '<div class="card">Nessun conto configurato</div>';
 }
 
 function renderChannels(channels) {
@@ -145,15 +175,21 @@ function renderChannels(channels) {
   $("channels").innerHTML = html || '<div class="card">Nessun canale configurato</div>';
 }
 
-function renderOpens(opens) {
-  if (!opens || !opens.length) {
+function renderOpens(accounts) {
+  const rows = [];
+  (accounts || []).forEach((acc) => {
+    (acc.open_positions || []).forEach((o) => rows.push({ ...o, account: acc.label || acc.id }));
+  });
+  if (!rows.length) {
     $("opens").innerHTML = '<tr><td class="raw">Nessuna posizione aperta (da journal)</td></tr>';
     return;
   }
-  $("opens").innerHTML = opens
+  rows.sort((a, b) => String(b.open_time_utc || "").localeCompare(String(a.open_time_utc || "")));
+  $("opens").innerHTML = rows
     .map(
       (o) => `<tr>
         <td class="ts">${fmtTs(o.open_time_utc)}</td>
+        <td class="ch">${esc(o.account)}</td>
         <td class="ch">${esc((o.channel || "").replace("CH_", ""))}</td>
         <td>${esc(o.direction)} ${esc(o.symbol)} · ${esc(o.volume)}</td>
         <td class="raw">@${esc(o.fill)} SL ${esc(o.sl)} TP ${esc(o.tp)}
@@ -187,10 +223,14 @@ async function refresh() {
     const data = await res.json();
     $("overall").className = `overall-dot dot ${data.overall || "off"}`;
     $("updated").textContent = "agg. " + fmtTs(data.generated_utc);
+    const accounts = data.accounts && data.accounts.length
+      ? data.accounts
+      : [{ id: "main", label: "Conto", pnl: data.pnl, equity: data.equity,
+           open_positions: data.open_positions, sources: data.sources }];
     renderLights(data.lights || {});
-    renderEquity(data.equity, data.pnl);
+    renderAccounts(accounts);
     renderChannels(data.channels || []);
-    renderOpens(data.open_positions || []);
+    renderOpens(accounts);
     renderEvents(data.events || []);
   } catch (err) {
     $("updated").textContent = "offline?";

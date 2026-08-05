@@ -127,8 +127,43 @@ class Collector:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._tradingo_cfg = self._load_tradingo_config()
+        self.accounts = self._load_accounts()
 
     # ── config ───────────────────────────────────────────────────────────
+
+    def _load_accounts(self) -> list[dict]:
+        """Accounts to report on.
+
+        `accounts` in webapp_config wins; without it the legacy single
+        `checks.ea_journal_dir` becomes the only account, so an old config keeps
+        working unchanged.
+        """
+        raw = self.cfg.get("accounts")
+        if isinstance(raw, list) and raw:
+            out = []
+            for idx, acc in enumerate(raw):
+                if not acc.get("ea_journal_dir"):
+                    continue
+                out.append(
+                    {
+                        "id": acc.get("id") or f"acc{idx + 1}",
+                        "label": acc.get("label") or acc.get("id") or f"Conto {idx + 1}",
+                        "ea_journal_dir": acc["ea_journal_dir"],
+                        "signal_stats": acc.get("signal_stats"),
+                        "start_date": acc.get("start_date"),
+                    }
+                )
+            if out:
+                return out
+        return [
+            {
+                "id": "main",
+                "label": self.checks.get("ea_journal_label", "Conto locale"),
+                "ea_journal_dir": self.checks.get("ea_journal_dir"),
+                "signal_stats": self.checks.get("signal_stats"),
+                "start_date": None,
+            }
+        ]
 
     def _load_tradingo_config(self) -> dict:
         path = self.cfg.get("tradingo_config")
@@ -176,7 +211,9 @@ class Collector:
         lights["friend_heartbeat"] = self._check_friend_heartbeat()
 
         channels, events = self._read_journal_today()
-        phase2 = self._build_phase2()
+        accounts = [self._build_account(acc) for acc in self.accounts]
+        # The first account drives the legacy top-level fields and the per-channel PnL.
+        phase2 = accounts[0]["data"] if accounts else self._empty_phase2("no account")
         self._merge_pnl_into_channels(channels, phase2)
 
         worst = STATUS_OK
@@ -197,25 +234,46 @@ class Collector:
             "equity": phase2.get("equity"),
             "exec": phase2.get("exec"),
             "sources": phase2.get("sources"),
+            "accounts": [
+                {
+                    "id": acc["id"],
+                    "label": acc["label"],
+                    "start_date": acc["start_date"],
+                    "pnl": acc["data"].get("pnl"),
+                    "open_positions": acc["data"].get("open_positions") or [],
+                    "equity": acc["data"].get("equity"),
+                    "exec": acc["data"].get("exec"),
+                    "sources": acc["data"].get("sources"),
+                }
+                for acc in accounts
+            ],
         }
 
-    def _build_phase2(self) -> dict:
+    def _build_account(self, acc: dict) -> dict:
+        return {**acc, "data": self._build_phase2(acc)}
+
+    @staticmethod
+    def _empty_phase2(error: str) -> dict:
+        return {
+            "pnl": None,
+            "open_positions": [],
+            "equity": {"points": [], "latest": None, "delta_today": None},
+            "exec": {"totals": {}, "by_channel": {}},
+            "sources": {"error": error},
+        }
+
+    def _build_phase2(self, acc: dict) -> dict:
         try:
             return build_phase2(
-                ea_journal_dir=self.checks.get("ea_journal_dir"),
-                signal_stats_path=self.checks.get("signal_stats"),
+                ea_journal_dir=acc.get("ea_journal_dir"),
+                signal_stats_path=acc.get("signal_stats"),
                 lookback_days=int(self.cfg.get("pnl_lookback_days", 30)),
                 equity_days=int(self.cfg.get("equity_days", 3)),
+                start_date=acc.get("start_date"),
             )
         except Exception as exc:  # noqa: BLE001
-            log.warning("phase2 build failed: %s", exc)
-            return {
-                "pnl": None,
-                "open_positions": [],
-                "equity": {"points": [], "latest": None, "delta_today": None},
-                "exec": {"totals": {}, "by_channel": {}},
-                "sources": {"error": str(exc)},
-            }
+            log.warning("phase2 build failed for %s: %s", acc.get("id"), exc)
+            return self._empty_phase2(str(exc))
 
     @staticmethod
     def _merge_pnl_into_channels(channels: list[dict], phase2: dict) -> None:

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>TG TradinGo — Monitor</title>
-<link rel="stylesheet" href="/static/style.css?v=2">
+<link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
 <header>
@@ -21,29 +21,8 @@
   <h2>Infrastruttura</h2>
   <div class="grid" id="lights"></div>
 
-  <h2>Conto</h2>
-  <div class="card" id="equity-card">
-    <div class="equity-head">
-      <div>
-        <div class="equity-label">Equity</div>
-        <div class="equity-value" id="eq-value">—</div>
-      </div>
-      <div>
-        <div class="equity-label">Oggi</div>
-        <div class="equity-delta" id="eq-delta">—</div>
-      </div>
-      <div>
-        <div class="equity-label">Floating</div>
-        <div class="equity-value sm" id="eq-float">—</div>
-      </div>
-      <div>
-        <div class="equity-label">Aperti</div>
-        <div class="equity-value sm" id="eq-opens">—</div>
-      </div>
-    </div>
-    <svg id="eq-chart" class="equity-chart" viewBox="0 0 320 72" preserveAspectRatio="none"></svg>
-    <div class="pnl-totals" id="pnl-totals"></div>
-  </div>
+  <h2>Conti</h2>
+  <div class="grid accounts" id="accounts"></div>
 
   <h2>Canali</h2>
   <div class="grid" id="channels"></div>
@@ -61,6 +40,6 @@
 
 <footer>TG TradinGo Monitor — Fase 2 (PnL + sola lettura)</footer>
 
-<script src="/static/app.js?v=2"></script>
+<script src="/static/app.js?v=4"></script>
 </body>
 </html>

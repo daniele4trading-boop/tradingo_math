@@ -78,19 +78,55 @@ def _timed_read_csv(path: Path, timeout_sec: float = 5.0) -> list[dict]:
             return []
 
 
-def load_trades_range(trades_dir: Path, days: int) -> list[dict]:
-    """Load trades_YYYYMMDD.csv for the last `days` UTC days (inclusive of today)."""
+def _day_before(start_date: str | None, day: str) -> bool:
+    """True when the YYYYMMDD `day` precedes `start_date`."""
+    if not start_date:
+        return False
+    return day < start_date[:10].replace("-", "")
+
+
+def _row_before(start_date: str | None, *values: str | None) -> bool:
+    """True when the first usable ISO timestamp precedes `start_date`.
+
+    `start_date` is either a day (`2026-08-05`) or an instant
+    (`2026-08-05T10:05:00Z`): with an instant the same UTC day is cut at the
+    minute, which is what a mid-day account reset needs.
+    """
+    if not start_date or "T" not in start_date:
+        return False
+    for v in values:
+        if v:
+            return v < start_date
+    return False
+
+
+def load_trades_range(
+    trades_dir: Path, days: int, start_date: str | None = None
+) -> list[dict]:
+    """Load trades_YYYYMMDD.csv for the last `days` UTC days (inclusive of today).
+
+    `start_date` (YYYY-MM-DD or full ISO instant) ignores the history before an
+    account reset.
+    """
     if not trades_dir:
         return []
     now = datetime.now(timezone.utc)
     rows: list[dict] = []
     for i in range(days):
         day = (now - timedelta(days=i)).strftime("%Y%m%d")
-        rows.extend(_timed_read_csv(trades_dir / f"trades_{day}.csv"))
+        if _day_before(start_date, day):
+            continue
+        rows.extend(
+            r
+            for r in _timed_read_csv(trades_dir / f"trades_{day}.csv")
+            if not _row_before(start_date, r.get("ts_utc"), r.get("open_time_utc"))
+        )
     return rows
 
 
-def load_equity_range(equity_dir: Path, days: int) -> list[dict]:
+def load_equity_range(
+    equity_dir: Path, days: int, start_date: str | None = None
+) -> list[dict]:
     if not equity_dir:
         return []
     now = datetime.now(timezone.utc)
@@ -98,7 +134,13 @@ def load_equity_range(equity_dir: Path, days: int) -> list[dict]:
     # chronological: oldest day first
     for i in range(days - 1, -1, -1):
         day = (now - timedelta(days=i)).strftime("%Y%m%d")
-        rows.extend(_timed_read_csv(equity_dir / f"equity_{day}.csv"))
+        if _day_before(start_date, day):
+            continue
+        rows.extend(
+            r
+            for r in _timed_read_csv(equity_dir / f"equity_{day}.csv")
+            if not _row_before(start_date, r.get("ts_utc"))
+        )
     return rows
 
 
@@ -297,6 +339,7 @@ def build_phase2(
     signal_stats_path: str | None = None,
     lookback_days: int = 30,
     equity_days: int = 3,
+    start_date: str | None = None,
 ) -> dict[str, Any]:
     """Full Phase-2 payload for the dashboard API."""
     root = Path(ea_journal_dir) if ea_journal_dir else None
@@ -311,9 +354,13 @@ def build_phase2(
     else:
         stats_path = None
 
-    trades = load_trades_range(trades_dir, lookback_days) if trades_dir else []
+    trades = (
+        load_trades_range(trades_dir, lookback_days, start_date) if trades_dir else []
+    )
     # For open positions we need enough history that an OPEN from days ago still shows
-    equity_rows = load_equity_range(equity_dir, equity_days) if equity_dir else []
+    equity_rows = (
+        load_equity_range(equity_dir, equity_days, start_date) if equity_dir else []
+    )
     stats_rows = load_signal_stats(stats_path)
 
     return {
@@ -328,5 +375,6 @@ def build_phase2(
             "trades_rows": len(trades),
             "equity_rows": len(equity_rows),
             "stats_rows": len(stats_rows),
+            "start_date": start_date,
         },
     }

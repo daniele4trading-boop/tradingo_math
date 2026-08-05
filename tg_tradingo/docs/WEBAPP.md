@@ -30,7 +30,30 @@ C:\TG_TradinGo\start_webapp.bat
 
 ## Fase 2 — fonti dati
 
-Da `checks.ea_journal_dir` (MQL5\\Files\\journal):
+Ogni conto è una voce di `accounts` e produce un riquadro nella sezione **Conti**
+(equity, oggi/7g/30g, floating, posizioni aperte). Senza `accounts` la webapp usa
+`checks.ea_journal_dir` come conto unico, quindi una config vecchia resta valida.
+
+```json
+"accounts": [
+  { "id": "vantage", "label": "Vantage demo (Contabo)",
+    "ea_journal_dir": "C:\\Users\\...\\AE2CC2E0...\\MQL5\\Files\\journal",
+    "signal_stats": "C:\\Users\\...\\AE2CC2E0...\\MQL5\\Files\\tradingo_signal_stats.csv" },
+  { "id": "ultima", "label": "Ultima demo iFunds (Gamehosting)",
+    "ea_journal_dir": "\\\\100.74.9.8\\tradingo_journal",
+    "start_date": "2026-08-05" }
+]
+```
+
+- `start_date` scarta la storia precedente: accetta un giorno (`2026-08-05`) o un
+  istante (`2026-08-05T10:05:00Z`, utile dopo un reset a metà giornata). Serve dopo un reset saldo,
+  altrimenti equity e PnL includono la storia del conto vecchio.
+- I conti remoti arrivano via share SMB in sola lettura sulla cartella journal
+  dell'EA (sul Gamehosting: share `tradingo_journal`). Il mount va fatto nella
+  stessa sessione di logon della webapp — lo fa `run_webapp_task.cmd`.
+- Il primo conto della lista alimenta anche il PnL per canale nella sezione Canali.
+
+Da `accounts[].ea_journal_dir` (MQL5\\Files\\journal):
 
 | Path | Uso |
 |------|-----|

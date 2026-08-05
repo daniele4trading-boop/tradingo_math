@@ -45,7 +45,8 @@ Ogni conto è una voce di `accounts` e produce un riquadro nella sezione **Conti
 ]
 ```
 
-- `start_date` (YYYY-MM-DD) scarta i giorni precedenti: serve dopo un reset saldo,
+- `start_date` scarta la storia precedente: accetta un giorno (`2026-08-05`) o un
+  istante (`2026-08-05T10:05:00Z`, utile dopo un reset a metà giornata). Serve dopo un reset saldo,
   altrimenti equity e PnL includono la storia del conto vecchio.
 - I conti remoti arrivano via share SMB in sola lettura sulla cartella journal
   dell'EA (sul Gamehosting: share `tradingo_journal`). Il mount va fatto nella

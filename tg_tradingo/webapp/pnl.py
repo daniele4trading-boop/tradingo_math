@@ -79,10 +79,25 @@ def _timed_read_csv(path: Path, timeout_sec: float = 5.0) -> list[dict]:
 
 
 def _day_before(start_date: str | None, day: str) -> bool:
-    """True when the YYYYMMDD `day` precedes `start_date` (YYYY-MM-DD)."""
+    """True when the YYYYMMDD `day` precedes `start_date`."""
     if not start_date:
         return False
-    return day < start_date.replace("-", "")
+    return day < start_date[:10].replace("-", "")
+
+
+def _row_before(start_date: str | None, *values: str | None) -> bool:
+    """True when the first usable ISO timestamp precedes `start_date`.
+
+    `start_date` is either a day (`2026-08-05`) or an instant
+    (`2026-08-05T10:05:00Z`): with an instant the same UTC day is cut at the
+    minute, which is what a mid-day account reset needs.
+    """
+    if not start_date or "T" not in start_date:
+        return False
+    for v in values:
+        if v:
+            return v < start_date
+    return False
 
 
 def load_trades_range(
@@ -90,7 +105,8 @@ def load_trades_range(
 ) -> list[dict]:
     """Load trades_YYYYMMDD.csv for the last `days` UTC days (inclusive of today).
 
-    `start_date` (YYYY-MM-DD) ignores the history before an account reset.
+    `start_date` (YYYY-MM-DD or full ISO instant) ignores the history before an
+    account reset.
     """
     if not trades_dir:
         return []
@@ -100,7 +116,11 @@ def load_trades_range(
         day = (now - timedelta(days=i)).strftime("%Y%m%d")
         if _day_before(start_date, day):
             continue
-        rows.extend(_timed_read_csv(trades_dir / f"trades_{day}.csv"))
+        rows.extend(
+            r
+            for r in _timed_read_csv(trades_dir / f"trades_{day}.csv")
+            if not _row_before(start_date, r.get("ts_utc"), r.get("open_time_utc"))
+        )
     return rows
 
 
@@ -116,7 +136,11 @@ def load_equity_range(
         day = (now - timedelta(days=i)).strftime("%Y%m%d")
         if _day_before(start_date, day):
             continue
-        rows.extend(_timed_read_csv(equity_dir / f"equity_{day}.csv"))
+        rows.extend(
+            r
+            for r in _timed_read_csv(equity_dir / f"equity_{day}.csv")
+            if not _row_before(start_date, r.get("ts_utc"))
+        )
     return rows
 
 

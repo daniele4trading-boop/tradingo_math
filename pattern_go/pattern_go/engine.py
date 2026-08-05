@@ -303,6 +303,7 @@ class StrategyEngine:
             entry_time=self.bars[-1].time if self.bars else order.signal_bar_time,
             client_order_id=order.client_order_id,
             theoretical_entry_price=order.trigger_price,
+            position_id=position_id,
         )
         return self.trade
 

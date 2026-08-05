@@ -186,7 +186,41 @@ def test_instrument_reports_gold_quantity_granularity():
     assert (instrument.lot_size, instrument.quantity_increment) == (1.0, 0.01)
 
 
-def test_stop_order_carries_a_deterministic_order_code_and_sl_tp():
+def test_stop_order_has_no_legs_and_no_attached_orders():
+    """Velotrade rifiuta con 400 sia `legs` sia gli SL/TP in `orderRequests`."""
+    session, c = _spy_client()
+    captured = _capture(session)
+    c.place_stop_order(
+        symbol="XAU",
+        side="SELL",
+        quantity=4.08,
+        stop_price=3975.0,
+        client_order_id="PG-M5-S-20260804T073500",
+    )
+    assert captured["orderCode"] == "PG-M5-S-20260804T073500"
+    assert captured["type"] == "STOP" and captured["side"] == "SELL"
+    assert captured["stopPrice"] == 3975.0 and captured["positionEffect"] == "OPEN"
+    assert "legs" not in captured and "orderRequests" not in captured
+
+
+def test_close_position_sends_the_position_code():
+    """Senza `positionCode` il broker risponde errorCode 33 e la posizione resta aperta."""
+    session, c = _spy_client()
+    captured = _capture(session)
+    c.close_position(
+        symbol="XAU",
+        side="SELL",
+        quantity=4.08,
+        client_order_id="PG-M5-S-20260804T073500-X-1",
+        position_code="2534869",
+    )
+    assert captured["positionCode"] == "2534869"
+    assert captured["side"] == "BUY" and captured["positionEffect"] == "CLOSE"
+    assert captured["type"] == "MARKET" and captured["tif"] == "IOC"
+    assert "legs" not in captured
+
+
+def _spy_client():
     session = FakeSession(
         [FakeResponse(payload={"sessionToken": "tok"}), FakeResponse(payload={"orderId": 7})]
     )
@@ -198,6 +232,10 @@ def test_stop_order_carries_a_deterministic_order_code_and_sl_tp():
         session=session,
     )
     c.login()
+    return session, c
+
+
+def _capture(session):
     captured = {}
     original = session.request
 
@@ -206,22 +244,7 @@ def test_stop_order_carries_a_deterministic_order_code_and_sl_tp():
         return original(method, url, json=json, **kw)
 
     session.request = spy
-    c.place_stop_order(
-        symbol="XAU",
-        side="SELL",
-        quantity=4.08,
-        stop_price=3975.0,
-        client_order_id="PG-M5-S-20260804T073500",
-        stop_loss=3990.0,
-        take_profit=3952.5,
-    )
-    assert captured["orderCode"] == "PG-M5-S-20260804T073500"
-    assert captured["type"] == "STOP" and captured["side"] == "SELL"
-    codes = {r["orderCode"]: r["side"] for r in captured["orderRequests"]}
-    assert codes == {
-        "PG-M5-S-20260804T073500-SL": "BUY",
-        "PG-M5-S-20260804T073500-TP": "BUY",
-    }
+    return captured
 
 
 def _metrics():

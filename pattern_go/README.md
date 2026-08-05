@@ -85,7 +85,7 @@ Limiti di esposizione: **1 posizione per strategia, 2 in totale** (1 M5 + 1 M15)
 
 ## Assunzioni e punti aperti
 
-Verificato direttamente contro l'API (sola lettura, nessun ordine inviato):
+Verificato direttamente contro l'API in lettura:
 
 - base URL `https://dx.velotrade.com/dxsca-web`, login con `username`/`domain`/`password`,
   header `Authorization: DXAPI <sessionToken>`, sessione con timeout 30 minuti;
@@ -96,26 +96,33 @@ Verificato direttamente contro l'API (sola lettura, nessun ordine inviato):
   la granularità è 100× più fine di MT4 (il problema del lotto minimo non esiste);
 - quote e candele M5/M15 disponibili via `POST /marketdata`.
 
-Assunzioni **non ancora verificate in esecuzione**, da confermare col primo ordine demo:
+Verificato con 3 ordini demo da 0,01 once (conto riportato a zero posizioni, costo −0,08 USD):
 
-1. **payload degli ordini**: lo stop d'ingresso viene inviato come ordine `STOP` con SL e TP
-   come richieste collegate. La forma esatta accettata da questo broker (ordine OCO/bracket
-   vs. due ordini separati) va confermata con un ordine demo di quantità minima;
-2. **rilevamento del fill**: dedotto confrontando le posizioni del broker prima/dopo, perché
-   non c'è ancora uno stream di esecuzioni. Il prezzo di fill usato per lo slippage è
-   `openPrice` della nuova posizione;
-3. **SL/TP lato broker**: se il broker non accettasse gli ordini collegati, SL e TP vanno
-   gestiti dal runner (uscita a mercato), con slippage maggiore;
-4. **spread**: il filtro `risk_spread_mult` è il parametro che decide la tradabilità. Prima
-   misura alle 22:11 UTC (rollover): 162 punti — a quel livello M5 non entrerebbe mai. Nei
-   minuti successivi lo spread è tornato a 1–42 punti (mediano 16,5), compatibile coi filtri.
-   Serve il campione su 24h di `spread_sampler.py` prima di trarre conclusioni;
-5. **timezone delle sessioni**: le sessioni sono definite con timezone IANA
-   (`Europe/Rome`, `America/New_York`), quindi seguono la DST; l'orario di apertura deve
-   cadere esattamente su un'apertura di barra del timeframe.
+- **`toTime` è obbligatorio** sulle candele: senza, `errorCode 32` e il servizio non parte;
+- gli ordini **non accettano il campo `legs`**, e **non accettano SL/TP collegati** via
+  `orderRequests` (`400 Order request is incorrect`). L'ingresso è quindi uno `STOP` nudo e
+  **SL e TP sono sorvegliati dal runner** (`_check_protective_exits`), con uscita a mercato:
+  lo slippage sulle uscite è atteso più alto di quello del backtest;
+- la chiusura richiede **`positionCode` top-level**, altrimenti `errorCode 33` e la posizione
+  resta aperta;
+- il prezzo di fill è nel campo `openPrice` di `positions()`;
+- il broker rifiuta `orderCode` duplicati: ogni tentativo di chiusura ne usa uno nuovo.
 
-Il runner **non è ancora stato eseguito contro il conto demo**: nessun ordine è stato
-inviato, né in demo né in reale.
+Restano da verificare in esercizio:
+
+1. **il comportamento sotto carico**: fill parziali, richieste concorrenti, riconnessione dopo
+   una disconnessione lunga;
+2. **la latenza del ciclo di protezione**: SL e TP sono controllati a ogni `poll_seconds`
+   (default 10 s), quindi un movimento veloce può far uscire oltre il livello;
+3. **spread e slippage**: prime misure su ~30 minuti — spread mediano 3 punti (medio 11,5, picchi
+   a 106 in rollover) e slippage 62 punti su un fill in mercato mosso, 0 su uno in mercato fermo.
+   Il primo valore da solo supererebbe la soglia di disattivazione di M5 (30 punti medi): serve il
+   campione su 24h di `spread_sampler.py` e un numero maggiore di fill prima di decidere;
+4. **timezone delle sessioni**: definite con timezone IANA (`Europe/Rome`, `America/New_York`),
+   quindi seguono la DST; l'orario di apertura deve cadere su un'apertura di barra del timeframe.
+
+Il runner **non è mai stato eseguito in continuo**: finora solo `--dry-run` e i 3 ordini demo
+di verifica. Nessun ordine reale.
 
 ## Deploy sul VPS (da autorizzare)
 

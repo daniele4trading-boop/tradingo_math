@@ -72,6 +72,7 @@ class Runner:
         self.strategy_cfg: dict[str, StrategyConfig] = {}
         self.instrument: Instrument | None = None
         self._known_position_ids: set[str] = set()
+        self._close_counter: dict[str, int] = {}
         self._stop = False
         self._last_report_day = None
 
@@ -203,8 +204,30 @@ class Runner:
             return
 
         quote = self.client.quote(self.cfg.broker.symbol)
+        self._check_protective_exits(quote)
         for name, engine in self.engines.items():
             self._advance_strategy(name, engine, quote, allow_new=decision == ALLOW)
+
+    def _check_protective_exits(self, quote: Quote) -> None:
+        """SL e TP sono gestiti qui, non dal broker.
+
+        Velotrade rifiuta gli ordini di protezione collegati allo stop d'ingresso,
+        quindi il livello viene sorvegliato a ogni ciclo e l'uscita e' a mercato: lo
+        slippage sulle uscite e' quindi atteso piu' alto di quello del backtest.
+        """
+        for engine in self.engines.values():
+            trade = engine.trade
+            if trade is None:
+                continue
+            price = quote.bid if trade.side is Side.LONG else quote.ask
+            if trade.side is Side.LONG:
+                hit_sl, hit_tp = price <= trade.stop_loss, price >= trade.take_profit
+            else:
+                hit_sl, hit_tp = price >= trade.stop_loss, price <= trade.take_profit
+            if hit_sl:
+                self._close(engine, ExitReason.STOP_LOSS.value)
+            elif hit_tp:
+                self._close(engine, ExitReason.TAKE_PROFIT.value)
 
     def _advance_strategy(
         self, name: str, engine: StrategyEngine, quote: Quote, allow_new: bool
@@ -249,8 +272,6 @@ class Runner:
                 quantity=order.quantity,
                 stop_price=order.trigger_price,
                 client_order_id=order.client_order_id,
-                stop_loss=order.stop_loss,
-                take_profit=order.take_profit,
             )
         except Exception as exc:
             self.journal.order_event(
@@ -281,12 +302,22 @@ class Runner:
             return
         quote = self.client.quote(self.cfg.broker.symbol)
         exit_price = quote.bid if trade.side is Side.LONG else quote.ask
+        position_code = trade.position_id or self._lookup_position_code(trade)
+        if position_code is None:
+            self.journal.write(
+                "CLOSE_FAILED",
+                strategy=trade.strategy,
+                client_order_id=trade.client_order_id,
+                error="positionCode sconosciuto: nessuna posizione corrispondente",
+            )
+            return
         try:
             self.client.close_position(
                 symbol=self.cfg.broker.symbol,
                 side="BUY" if trade.side is Side.LONG else "SELL",
                 quantity=trade.quantity,
-                client_order_id=f"{trade.client_order_id}-X",
+                client_order_id=f"{trade.client_order_id}-X-{self._close_attempts(trade)}",
+                position_code=position_code,
             )
         except Exception as exc:
             self.journal.write(
@@ -323,6 +354,21 @@ class Runner:
             self._save_state()
             return
 
+    def _lookup_position_code(self, trade) -> str | None:
+        """Recupera il codice posizione dal broker quando non e' noto (es. riavvio)."""
+        for position in self.client.positions():
+            if str(position.get("symbol") or position.get("instrument")) == self.cfg.broker.symbol:
+                code = position.get("positionCode") or position.get("id")
+                if code is not None:
+                    return str(code)
+        return None
+
+    def _close_attempts(self, trade) -> int:
+        """Il broker rifiuta orderCode duplicati: ogni tentativo ne usa uno nuovo."""
+        key = trade.client_order_id
+        self._close_counter[key] = self._close_counter.get(key, 0) + 1
+        return self._close_counter[key]
+
     # --- guard e utilita' ----------------------------------------------------
 
     def kill_switch_active(self) -> bool:
@@ -338,9 +384,12 @@ class Runner:
                 self._close(engine, reason.value)
 
     def _closed_bars(self, timeframe: str, frm: datetime) -> list:
+        # `toTime` e' obbligatorio: senza, il broker risponde
+        # `errorCode 32 Incorrect request parameters: <toTime> for event type Candle`
+        now = datetime.now(UTC)
         minutes = TIMEFRAME_MINUTES[timeframe]
-        bars = self.client.candles(self.cfg.broker.symbol, timeframe, frm)
-        cutoff = datetime.now(UTC) - timedelta(minutes=minutes)
+        bars = self.client.candles(self.cfg.broker.symbol, timeframe, frm, now)
+        cutoff = now - timedelta(minutes=minutes)
         return [b for b in bars if b.time <= cutoff]
 
     def _new_closed_bars(self, engine: StrategyEngine, timeframe: str) -> list:

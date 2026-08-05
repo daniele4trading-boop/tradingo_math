@@ -81,10 +81,75 @@ def _resolve_secret(raw: dict[str, Any], key: str) -> str:
     return str(value)
 
 
+class ConfigError(ValueError):
+    """Configurazione non valida: il servizio non deve partire."""
+
+
+def _section(raw: dict[str, Any], name: str) -> dict[str, Any]:
+    section = raw.get(name)
+    if not isinstance(section, dict):
+        raise ConfigError(f"sezione '{name}' mancante o non valida nella configurazione")
+    return section
+
+
+def validate(cfg: Config) -> Config:
+    """Blocca all'avvio le configurazioni che produrrebbero ordini insensati.
+
+    Senza questi controlli una `risk_fraction` negativa arriva fino in fondo: il
+    rischio calcolato e' negativo, ma `round_below_min_to_min` lo trasforma comunque
+    in un ordine al lotto minimo.
+    """
+    r = cfg.risk
+    problems: list[str] = []
+    if not 0 < r.risk_fraction <= 1:
+        problems.append(f"risk.risk_fraction deve stare in (0, 1], trovato {r.risk_fraction}")
+    for name, value in (
+        ("max_dd_pct", r.max_dd_pct),
+        ("daily_loss_pct", r.daily_loss_pct),
+    ):
+        if not 0 < value < 1:
+            problems.append(f"risk.{name} deve stare in (0, 1), trovato {value}")
+    for name, value in (
+        ("block_new_at_allowance_used", r.block_new_at_allowance_used),
+        ("close_all_at_allowance_used", r.close_all_at_allowance_used),
+    ):
+        if not 0 < value <= 1:
+            problems.append(f"risk.{name} deve stare in (0, 1], trovato {value}")
+    if r.block_new_at_allowance_used > r.close_all_at_allowance_used:
+        problems.append(
+            "risk.block_new_at_allowance_used deve precedere close_all_at_allowance_used"
+        )
+    if r.initial_balance <= 0:
+        problems.append(
+            f"account.initial_balance deve essere positivo, trovato {r.initial_balance}"
+        )
+    if r.cap_size < r.initial_balance:
+        problems.append(
+            f"account.cap_size ({r.cap_size}) non puo' essere sotto initial_balance "
+            f"({r.initial_balance}): il serbatoio sarebbe nullo"
+        )
+    if r.min_quantity <= 0 or r.quantity_increment <= 0:
+        problems.append("risk.min_quantity e risk.quantity_increment devono essere positivi")
+    if r.max_open_positions < 1 or r.max_open_positions_per_strategy < 1:
+        problems.append("i limiti di posizioni aperte devono essere almeno 1")
+    if not cfg.strategies:
+        problems.append("nessuna strategia configurata")
+    if not cfg.sessions:
+        problems.append("nessuna sessione configurata")
+    for s in cfg.strategies:
+        if min(s.bias_window, s.max_hold, s.day_bars) < 1:
+            problems.append(f"strategie.{s.name}: bias_window/max_hold/day_bars devono essere >= 1")
+        if s.tp_fallback_r <= 0:
+            problems.append(f"strategie.{s.name}: tp_fallback_r deve essere positivo")
+    if problems:
+        raise ConfigError("configurazione non valida:\n- " + "\n- ".join(problems))
+    return cfg
+
+
 def load_config(path: str | Path) -> Config:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
 
-    b = raw["broker"]
+    b = _section(raw, "broker")
     broker = BrokerConfig(
         base_url=b["base_url"],
         domain=b.get("domain", "default"),
@@ -96,10 +161,11 @@ def load_config(path: str | Path) -> Config:
         max_retries=int(b.get("max_retries", 5)),
     )
 
-    r = raw["risk"]
+    r = _section(raw, "risk")
+    account = _section(raw, "account")
     risk = RiskConfig(
-        initial_balance=float(raw["account"]["initial_balance"]),
-        cap_size=float(raw["account"]["cap_size"]),
+        initial_balance=float(account["initial_balance"]),
+        cap_size=float(account["cap_size"]),
         max_dd_pct=float(r["max_dd_pct"]),
         daily_loss_pct=float(r["daily_loss_pct"]),
         daily_reset_utc=_parse_time(r.get("daily_reset_utc", "00:30")),
@@ -116,7 +182,7 @@ def load_config(path: str | Path) -> Config:
     runtime = RuntimeConfig(**raw.get("runtime", {}))
 
     strategies = []
-    for name, s in raw["strategies"].items():
+    for name, s in _section(raw, "strategies").items():
         f = s.get("filters", {})
         strategies.append(
             StrategyConfig(
@@ -143,11 +209,13 @@ def load_config(path: str | Path) -> Config:
         for s in raw["sessions"]
     ]
 
-    return Config(
-        broker=broker,
-        risk=risk,
-        runtime=runtime,
-        strategies=strategies,
-        sessions=sessions,
-        raw=raw,
+    return validate(
+        Config(
+            broker=broker,
+            risk=risk,
+            runtime=runtime,
+            strategies=strategies,
+            sessions=sessions,
+            raw=raw,
+        )
     )

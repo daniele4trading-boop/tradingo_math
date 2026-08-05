@@ -290,10 +290,12 @@ class DXTradeClient:
         quantity: float,
         stop_price: float,
         client_order_id: str,
-        stop_loss: float | None = None,
-        take_profit: float | None = None,
     ) -> dict[str, Any]:
-        """Stop order di ingresso, con SL/TP allegati come ordini condizionali.
+        """Stop order di ingresso, senza ordini collegati.
+
+        Velotrade rifiuta con `400 Order request is incorrect` sia il campo `legs`
+        sia gli SL/TP allegati via `orderRequests` (verificato con ordini demo), per
+        cui protezioni e obiettivo sono gestiti dal runner.
 
         `client_order_id` deve essere deterministico: DXtrade rifiuta i duplicati,
         quindi un retry dopo un timeout non apre una seconda posizione.
@@ -308,44 +310,25 @@ class DXTradeClient:
             "side": side,
             "stopPrice": stop_price,
             "tif": "GTC",
-            "legs": [{"instrumentId": symbol, "ratioQuantity": 1, "symbol": symbol}],
         }
-        if stop_loss is not None or take_profit is not None:
-            body["orderRequests"] = []
-            if stop_loss is not None:
-                body["orderRequests"].append(
-                    {
-                        "orderCode": f"{client_order_id}-SL",
-                        "type": "STOP",
-                        "side": _opposite(side),
-                        "quantity": quantity,
-                        "stopPrice": stop_loss,
-                        "positionEffect": "CLOSE",
-                        "instrument": symbol,
-                        "tif": "GTC",
-                    }
-                )
-            if take_profit is not None:
-                body["orderRequests"].append(
-                    {
-                        "orderCode": f"{client_order_id}-TP",
-                        "type": "LIMIT",
-                        "side": _opposite(side),
-                        "quantity": quantity,
-                        "limitPrice": take_profit,
-                        "positionEffect": "CLOSE",
-                        "instrument": symbol,
-                        "tif": "GTC",
-                    }
-                )
         return self._request("POST", f"/accounts/{self.account}/orders", json_body=body) or {}
 
     def cancel_order(self, order_code: str) -> Any:
         return self._request("DELETE", f"/accounts/{self.account}/orders/{order_code}")
 
     def close_position(
-        self, symbol: str, side: str, quantity: float, client_order_id: str
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        client_order_id: str,
+        position_code: str,
     ) -> dict[str, Any]:
+        """Chiude a mercato la posizione indicata.
+
+        `positionCode` top-level e' obbligatorio: senza, il broker risponde
+        `errorCode 33 Incorrect request. <positionCode>` e la posizione resta aperta.
+        """
         body = {
             "account": self.account,
             "orderCode": client_order_id,
@@ -353,9 +336,9 @@ class DXTradeClient:
             "instrument": symbol,
             "quantity": quantity,
             "positionEffect": "CLOSE",
+            "positionCode": position_code,
             "side": _opposite(side),
             "tif": "IOC",
-            "legs": [{"instrumentId": symbol, "ratioQuantity": 1, "symbol": symbol}],
         }
         return self._request("POST", f"/accounts/{self.account}/orders", json_body=body) or {}
 

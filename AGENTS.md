@@ -6,7 +6,7 @@ Questa repo GitHub (`daniele4trading-boop/tradingo_system`) contiene **tre siste
 |---------|-----------|----------|---------------------|
 | **TG TradinGo** (Telegram → MT5 copy) | `tg_tradingo/` | `C:\TG_TradinGo\` | [`tg_tradingo/AGENTS.md`](tg_tradingo/AGENTS.md) |
 | **StatArb** (pairs trading MT5) | root (`core/`, `engine/`, …) | `C:\StatArb\` | [`CHECKLIST_LUNEDI.md`](CHECKLIST_LUNEDI.md), moduli 0–8 |
-| **Pattern GO** (oro su DXtrade/Velotrade) | `pattern_go/` | `C:\PatternGO\` (non ancora deployato) | [`pattern_go/AGENTS.md`](pattern_go/AGENTS.md) |
+| **Pattern GO** (oro su DXtrade/Velotrade) | `pattern_go/` | `C:\PatternGO\` (task `PatternGO_AtLogon`) | [`pattern_go/AGENTS.md`](pattern_go/AGENTS.md) |
 
 ## Prima di lavorare
 

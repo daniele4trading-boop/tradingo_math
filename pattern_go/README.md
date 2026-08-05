@@ -124,19 +124,34 @@ Restano da verificare in esercizio:
 Il runner **non è mai stato eseguito in continuo**: finora solo `--dry-run` e i 3 ordini demo
 di verifica. Nessun ordine reale.
 
-## Deploy sul VPS (da autorizzare)
+## Deploy sul VPS
 
-Non ancora eseguito. Procedura prevista sul Contabo (`144.91.76.28:2222`, Windows Server),
-in una cartella separata da `C:\TG_TradinGo\`:
+In esercizio sul Contabo (`144.91.76.28:2222`, Windows Server), in una cartella separata da
+`C:\TG_TradinGo\`. **Attiva la sola M15**: M5 ha la soglia di slippage piu' stretta (30 punti
+medi) e i fill reali non sono ancora abbastanza per giudicarla.
 
-1. `C:\PatternGO\` con il codice e un virtualenv Python 3.11+;
-2. `config.json` sul VPS (non in repo), credenziali in variabili d'ambiente del servizio;
-3. Scheduled Task Windows all'avvio, con riavvio automatico, che lancia
-   `python -m pattern_go --config C:\PatternGO\config.json`;
-4. log in `C:\PatternGO\logs\`, report in `C:\PatternGO\reports\`;
-5. controllo giornaliero con `analyze_logs`: se lo slippage medio su M5 supera 30 punti, o
-   il costo round-trip stimato supera il break-even (85 punti M5, 151 M15), la strategia va
-   fermata — `analyze_logs` esce con codice 1 in questi casi.
+| Cosa | Dove |
+|------|------|
+| Codice | `C:\PatternGO\repo\` (clone del repo) |
+| Configurazione | `C:\PatternGO\config.json` (fuori dal repo) |
+| Credenziali | variabili d'ambiente utente `DXTRADE_USERNAME` / `DXTRADE_PASSWORD` |
+| Avvio | scheduled task `PatternGO_AtLogon` -> `C:\PatternGO\run_pattern_go.cmd` |
+| Log / report / stato | `C:\PatternGO\logs\`, `reports\`, `state\` |
+| Kill switch | crea `C:\PatternGO\KILL_SWITCH` |
+
+Il task riparte da solo a ogni logon e dopo un crash (fino a 999 riavvii, uno al minuto).
+
+```powershell
+Get-ScheduledTask PatternGO_AtLogon | Select-Object State
+Get-Content C:\PatternGO\logs\service.log -Tail 20
+Stop-ScheduledTask PatternGO_AtLogon          # ferma il servizio
+```
+
+Aggiornamento del codice: `cd C:\PatternGO\repo && git pull`, poi riavvia il task.
+
+Controllo giornaliero con `analyze_logs`: se lo slippage medio su M5 supera 30 punti, o il costo
+round-trip stimato supera il break-even (85 punti M5, 151 M15), la strategia va fermata —
+`analyze_logs` esce con codice 1 in questi casi.
 
 ## Test
 

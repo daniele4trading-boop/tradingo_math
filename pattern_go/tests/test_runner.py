@@ -126,7 +126,7 @@ def test_startup_reconciles_and_logs_the_floor(tmp_path):
     startup = [r for r in records if r["event"] == "STARTUP"][0]
     assert startup["static_floor"] == 9_700.0
     assert startup["reservoir"] == 300.0
-    assert startup["risk_amount"] == 15.0
+    assert startup["risk_amount"] == 9.0
 
 
 def test_reconcile_does_not_duplicate_a_position_after_restart(tmp_path):

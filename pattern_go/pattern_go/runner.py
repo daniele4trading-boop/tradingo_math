@@ -120,6 +120,7 @@ class Runner:
         self.state.equity = metrics.equity
         self.state.balance = metrics.balance
         self.state.open_positions = metrics.open_positions
+        self.state.margin_free = metrics.margin_free
         self._load_state()
         self.risk.roll_day(self.state, datetime.now(UTC))
         self.reconcile()
@@ -184,6 +185,7 @@ class Runner:
         self.state.equity = metrics.equity
         self.state.balance = metrics.balance
         self.state.open_positions = metrics.open_positions
+        self.state.margin_free = metrics.margin_free
 
         if self.kill_switch_active():
             self.journal.write("KILL_SWITCH", closes=self.cfg.runtime.kill_switch_closes_positions)
@@ -273,7 +275,7 @@ class Runner:
         def sizer(sl_distance: float) -> tuple[float, str]:
             if not allow_new:
                 return 0.0, "risk_blocked"
-            return self.risk.quantity(self.state, sl_distance)
+            return self.risk.quantity(self.state, sl_distance, price=quote.mid)
 
         for bar in new_bars:
             intents = engine.on_bar(bar, quote.spread, sizer)

@@ -74,6 +74,7 @@ class AccountMetrics:
     open_pl: float
     open_positions: int
     open_orders: int
+    margin_free: float | None = None
 
 
 class DXTradeClient:
@@ -271,6 +272,9 @@ class DXTradeClient:
             open_pl=float(m.get("openPL", 0.0)),
             open_positions=int(m.get("openPositionsCount", 0)),
             open_orders=int(m.get("openOrdersCount", 0)),
+            margin_free=(
+                float(m["marginFree"]) if m.get("marginFree") is not None else None
+            ),
         )
 
     def positions(self) -> list[dict[str, Any]]:

@@ -152,7 +152,7 @@ def test_example_config_loads_and_carries_the_velotrade_rules(monkeypatch):
     monkeypatch.setenv("DXTRADE_PASSWORD", "p")
     cfg = load_config(Path(__file__).parent.parent / "config.example.json")
     assert cfg.risk.max_dd_pct == 0.03 and cfg.risk.daily_loss_pct == 0.03
-    assert cfg.risk.risk_fraction == 0.05
+    assert cfg.risk.risk_fraction == 0.03
     assert cfg.risk.max_open_positions == 2
     assert cfg.broker.symbol == "XAU"
     assert {s.name for s in cfg.strategies} == {"M5", "M15"}

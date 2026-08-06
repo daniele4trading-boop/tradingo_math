@@ -68,13 +68,16 @@ Sizing (nessun valore hardcoded, tutto in `config.json`):
 
 ```
 serbatoio  = min( min(saldo, cap_size) − 9.700 ,  equity − floor_effettivo )
-rischio $  = risk_fraction × serbatoio            # risk_fraction = 0.05
+rischio $  = risk_fraction × serbatoio            # risk_fraction = 0.03
 quantità   = rischio $ / distanza_SL              # arrotondata a 0.01 per difetto
+quantità  ≤ max_margin_utilisation × margine_libero / (prezzo × margin_rate)
 ```
 
-All'attivazione: serbatoio 300 USD → 15 USD di rischio per trade → con SL mediano di
-backtest (3,67 USD) circa **4,08 once**. Poiché il rischio è una *frazione* del
-serbatoio, 200 perdite piene consecutive non possono portare il saldo sotto il floor
+All'attivazione: serbatoio 300 USD → 9 USD di rischio per trade → con SL mediano di
+backtest (3,67 USD) circa **2,45 once**. XAU su Velotrade ha `marginRate = 0.16666`
+(leva 1:6): con stop molto stretti il tetto di margine morde prima del rischio.
+
+Poiché il rischio è una *frazione* del serbatoio, 200 perdite piene consecutive non possono portare il saldo sotto il floor
 (verificato nei test). Se la quantità calcolata scende sotto `min_quantity` viene
 alzata a **0,01** (scelta esplicita: `round_below_min_to_min`).
 

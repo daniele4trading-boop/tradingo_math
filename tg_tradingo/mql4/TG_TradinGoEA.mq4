@@ -1,16 +1,16 @@
 //+------------------------------------------------------------------+
 //| TG_TradinGoEA.mq4                                                |
 //| Legge gli stessi signal_ch_*.json del bridge Python (contratto   |
-//| EA_SPEC / bridge 2.15) ed esegue ordini su MT4.                  |
+//| EA_SPEC / bridge 2.16) ed esegue ordini su MT4.                  |
 //| Non fa parsing Telegram: solo esecuzione JSON.                   |
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.03"
+#property version   "1.04"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.03"
+#define EA_VERSION "1.04"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -42,6 +42,12 @@ input bool   InpClearSignalAfterProcess = true;
 input bool   InpIgnoreExistingOnInit    = true;
 input bool   InpStackOpensIfFlatBusy    = true;
 input int    InpStopBufferPoints        = 20;
+// Off-market guard: skip an open whose entry/SL/TP are farther than this % from
+// the current price (channel posting stale or wrong-scale levels). 0 = off.
+input double InpMaxLevelDeviationPct     = 2.0;
+// Seconds within which orders opened together count as one batch
+// (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
+input int    InpBatchWindowSec           = 120;
 input int    InpMagicOffset             = 0;
 input int    InpHeartbeatMaxAgeSec      = 180;
 input string InpHeartbeatFile           = "tradingo_heartbeat.json";
@@ -755,6 +761,33 @@ bool IsOpenBlocked()
   }
 
 //+------------------------------------------------------------------+
+//| Off-market guard: the channel sometimes posts levels of another    |
+//| price context ("sell 4039 tp 4030" with gold at 4237). Without     |
+//| this check the stops get clamped to the legal side and the order    |
+//| opens only to be closed at once, paying the spread.                |
+//+------------------------------------------------------------------+
+bool LevelsNearMarket(const double price, const double sl, const double tp,
+                      const double entry, double &outWorstPct)
+  {
+   outWorstPct = 0.0;
+   if(InpMaxLevelDeviationPct <= 0.0 || price <= 0.0)
+      return true;
+   double levels[3];
+   levels[0] = sl;
+   levels[1] = tp;
+   levels[2] = entry;
+   for(int i = 0; i < 3; i++)
+     {
+      if(levels[i] <= 0.0)
+         continue;
+      double devPct = MathAbs(levels[i] - price) / price * 100.0;
+      if(devPct > outWorstPct)
+         outWorstPct = devPct;
+     }
+   return (outWorstPct <= InpMaxLevelDeviationPct);
+  }
+
+//+------------------------------------------------------------------+
 bool OpenMarket(const string symbol, const string direction, const double lot,
                 const double sl, const double tp, const int magic,
                 const string comment,
@@ -770,6 +803,19 @@ bool OpenMarket(const string symbol, const string direction, const double lot,
    if(price <= 0.0)
      {
       Print("[TradinGo] no quote for ", symbol);
+      return false;
+     }
+   double devPct = 0.0;
+   if(!LevelsNearMarket(price, sl, tp, SignalEntryFromJson(json, rangeLo, rangeHi),
+                        devPct))
+     {
+      Print("[TradinGo] OPEN skipped — off-market levels price=", price,
+            " sl=", sl, " tp=", tp,
+            " deviation=", DoubleToString(devPct, 2), "%",
+            " max=", DoubleToString(InpMaxLevelDeviationPct, 2), "%");
+      AppendSignalStat(channelFile, json, symbol, direction, "CANCELLED_OFF_MARKET",
+                       rangeLo, rangeHi, SignalEntryFromJson(json, rangeLo, rangeHi),
+                       0.0, distancePoints, tpIndex, magic);
       return false;
      }
    double nsl = sl;
@@ -1192,10 +1238,88 @@ bool HandleCloseAllSymbol(const string json)
   }
 
 //+------------------------------------------------------------------+
+//| CLOSE_SELECTIVE keep=ALL_BUT_NEWEST: chiude solo l'ultimo blocco   |
+//| aperto ("Chiudo la rientry"), lasciando il setup principale.       |
+//| Blocco = ordini aperti entro InpBatchWindowSec dal più recente. Se |
+//| tutti gli ordini sono nello stesso blocco non c'è nessun rientro   |
+//| da chiudere e il comando non fa nulla.                             |
+//+------------------------------------------------------------------+
+bool CloseNewestBatch(const string json)
+  {
+   string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
+   int magicBase = JsonGetInt(json, "magic_base");
+
+   datetime newest = 0;
+   datetime oldest = 0;
+   int total = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderSymbol() != symbol)
+         continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+         continue;
+      if(!IsOurOrderMagic(OrderMagicNumber(), magicBase, MAX_TRADES_PER_SIGNAL))
+         continue;
+      datetime t = OrderOpenTime();
+      if(total == 0 || t > newest)
+         newest = t;
+      if(total == 0 || t < oldest)
+         oldest = t;
+      total++;
+     }
+   if(total == 0)
+     {
+      Print("[TradinGo] CLOSE_SELECTIVE keep=ALL_BUT_NEWEST ", symbol,
+            " — nessun ordine nostro aperto");
+      return true;
+     }
+
+   int window = (InpBatchWindowSec > 0 ? InpBatchWindowSec : 120);
+   if((int)(newest - oldest) <= window)
+     {
+      Print("[TradinGo] CLOSE_SELECTIVE keep=ALL_BUT_NEWEST ", symbol,
+            " ignorata — un solo blocco aperto (", total, " ordini)");
+      return true;
+     }
+
+   int closed = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+         continue;
+      if(OrderSymbol() != symbol)
+         continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL)
+         continue;
+      if(!IsOurOrderMagic(OrderMagicNumber(), magicBase, MAX_TRADES_PER_SIGNAL))
+         continue;
+      if((int)(newest - OrderOpenTime()) > window)
+         continue;
+      int ticket = OrderTicket();
+      double lots = OrderLots();
+      double cprice = (OrderType() == OP_BUY) ? MarketInfo(symbol, MODE_BID)
+                                              : MarketInfo(symbol, MODE_ASK);
+      if(OrderClose(ticket, lots, cprice, InpMaxSlippagePoints, clrRed))
+         closed++;
+      else
+         Print("[TradinGo] CLOSE_SELECTIVE close failed ticket=", ticket,
+               " err=", GetLastError());
+     }
+   Print("[TradinGo] CLOSE_SELECTIVE ", symbol,
+         " keep=ALL_BUT_NEWEST newest=", TimeToString(newest, TIME_DATE | TIME_SECONDS),
+         " closed=", closed, "/", total);
+   return true;
+  }
+
+//+------------------------------------------------------------------+
 bool HandleCloseSelective(const string json)
   {
    string keep = JsonGetString(json, "keep");
    StringToUpper(keep);
+   if(keep == "ALL_BUT_NEWEST")
+      return CloseNewestBatch(json);
    if(keep != "BEST" && keep != "HIGHEST" && keep != "LOWEST")
      {
       Print("[TradinGo] CLOSE_SELECTIVE ignorata — keep non valido: '", keep, "'");

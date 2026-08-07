@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.15 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.16 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -35,6 +35,7 @@ from bridge_core import (
     match_break_even_intent,
     match_close_all_intent,
     match_close_price_followup,
+    match_move_sl_price,
     match_partial_close_intent,
     match_selective_close_intent,
     validate_signal,
@@ -62,7 +63,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.15"
+BRIDGE_VERSION = "2.16"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -1214,11 +1215,38 @@ _REENTRY_IMMEDIATE = (
 
 _REENTRY_DEFERRED = (
     r"\bASPETT(?:IAMO|O|ATE|A|ANDO|IAMOCI)\b|\bATTENDIAMO\b|\bPOI\b|\bDOPO\b|"
-    r"\bPIU\s+TARDI\b|\bMAGARI\b|\bFORSE\b|\bSE\b|\bQUANDO\b|\bAPPENA\b|"
-    r"\bEVENTUALMENTE\b|\bIN\s+CASO\b|\bPRONTI\b|\bVALUTIAMO\b|\bVEDIAMO\b|"
-    r"\bPOTREMMO\b|\bPOTREI\b|\bPROBABILMENTE\b|\bSPERIAMO\b|\bCON\s+CALMA\b|"
-    r"\bPAZIENZA\b|\bDOMANI\b|\bLATER\b|\bWAIT\b|\bMAYBE\b"
+    r"\bPIU\s+TARDI\b|\bPRONTI\b|\bCON\s+CALMA\b|"
+    r"\bPAZIENZA\b|\bDOMANI\b|\bLATER\b|\bWAIT\b|"
+    # Annuncio di una zona/livello: descrive dove si rientrerà, non ordina nulla
+    # ("Zona reentry 56-53" aveva aperto a mercato).
+    r"\bZON[AE]\b|\bAREA\b|\bLIVELL[OI]\b|\bRANGE\b|\bZONE\b"
 )
+
+# Condizionali forti: l'ordine è subordinato a un evento futuro, quindi non vale
+# nemmeno con un marcatore operativo nella frase ("Se ritraccia rientriamo qui").
+# Valgono solo se precedono il verbo di rientro: in "Rientriamo ora anche se il
+# volume è basso" la subordinata non annulla l'ordine già dato.
+_REENTRY_CONDITIONAL = (
+    r"\bSE\b|\bQUANDO\b|\bAPPENA\b|\bIN\s+CASO\b|\bEVENTUALMENTE\b|"
+    r"\bMAGARI\b|\bFORSE\b|\bPROBABILMENTE\b|\bSPERIAMO\b|\bVALUTIAMO\b|"
+    r"\bVALUTO\b|\bVEDIAMO\b|\bPOTREMMO\b|\bPOTREI\b|\bMAYBE\b|\bIF\b"
+)
+# Condizione di prezzo futura: vale in qualunque posizione della frase.
+_REENTRY_CONDITIONAL_ALWAYS = r"\bRITRA[CX]\w*|\bPULLBACK\b|\bSTORNO\b"
+_REENTRY_VERB = (
+    r"\bRIENTR\w*|\bRIAPR\w*|\bRE[- ]?ENTR\w*|\bDENTRO\b|\bENTR(?:IAMO|ATE|A)\b|"
+    r"\bAGGIUNG\w*"
+)
+
+
+def _conditional_precedes_reentry(folded: str) -> bool:
+    """True se un condizionale ('se', 'quando', …) apre la frase del rientro."""
+    m_cond = re.search(_REENTRY_CONDITIONAL, folded)
+    if not m_cond:
+        return False
+    m_verb = re.search(_REENTRY_VERB, folded)
+    return m_verb is None or m_cond.start() < m_verb.start()
+
 
 _REENTRY_NOT_YET = (
     r"\bRIENTRER(?:EMO|EMMO|O|EI|ESTE|ANNO|A)\b|\bRIAPRIR(?:EMO|EMMO|O|EI|ANNO)\b|"
@@ -1235,6 +1263,10 @@ def _is_deferred_reentry(upper: str) -> bool:
     """
     folded = fold_accents(upper)
     if re.search(_REENTRY_NOT_YET, folded):
+        return True
+    if re.search(_REENTRY_CONDITIONAL_ALWAYS, folded):
+        return True
+    if _conditional_precedes_reentry(folded):
         return True
     if not re.search(_REENTRY_DEFERRED, folded):
         return False
@@ -1735,9 +1767,16 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         log.debug(f"[IVAN] Ignorato ({pat}): {raw[:60]}")
         return None
 
+    # Un ordine di chiusura che nomina il rientro ("chiudo la rientry") non deve
+    # passare dal ramo di apertura: il verbo di chiusura ha la precedenza.
+    close_first = (
+        match_selective_close_intent(upper) is not None
+        or match_close_all_intent(upper)[0]
+    )
+
     # "Rientrate ora" / "rientriamo": riapre l'ultimo setup del canale (solo GOLD)
     # nella stessa direzione, a mercato. Senza setup noto non si indovina nulla.
-    if not has_setup and _is_reentry_intent(upper):
+    if not has_setup and not close_first and _is_reentry_intent(upper):
         if _is_deferred_reentry(upper):
             log.info(f"[IVAN] Rientro annunciato ma non operativo, ignorato: {raw[:60]}")
             return None
@@ -1803,6 +1842,26 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
             "magic_base":  ch["magic_base"],
             "raw_message": raw,
         }
+
+    # "Spostiamo lo stop a 4255": lo stop va aggiornato sulle posizioni aperte.
+    # Senza questo ramo il messaggio era UNPARSED e le posizioni restavano sullo
+    # SL originale.
+    if not has_setup:
+        new_sl = match_move_sl_price(upper)
+        if new_sl is not None:
+            last = state.ivan_last_trade
+            direction = (last or {}).get("direction")
+            if last:
+                state.set_ivan_last_trade({**last, "sl": new_sl})
+            log.info(f"[IVAN] UPDATE_SL XAUUSD {direction} SL={new_sl}")
+            return {
+                "action":      "UPDATE_SL",
+                "direction":   direction,
+                "symbol":      "XAUUSD",
+                "new_sl":      new_sl,
+                "magic_base":  ch["magic_base"],
+                "raw_message": raw,
+            }
 
     close_sig = _maybe_close_from_text(upper, ch, raw, state)
     if close_sig:

@@ -1243,6 +1243,54 @@ class TestIvanReentry:
         assert sig["action"] == "OPEN"
         assert sig["allow_stack"] is True
 
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            # Casi reali CH_IVAN 06/08: avevano aperto 4+1 posizioni a mercato
+            # riusando SL/TP del setup vecchio, richiuse subito dall'EA.
+            "Se ritraxcia un minimo rientriamo anche qui in sala",
+            "Se ritraccia rientriamo da qui",
+            "Zona reentry 56-53",
+            "Zona rientro 4256-4253",
+            "Valuto un rientro da qui",
+        ],
+    )
+    def test_annunci_condizionali_non_aprono(self, bridge_state, msg):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        assert parser_ivan_vip(msg, CH_IVAN, bridge_state) is None, msg
+
+    def test_chiudo_la_rientry_non_chiude_il_setup_base(self, bridge_state):
+        """Caso reale CH_IVAN 06/08 15:50Z: aveva chiuso anche il segnale principale."""
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        sig = parser_ivan_vip("Chiudo la rientry", CH_IVAN, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "CLOSE_SELECTIVE"
+        assert sig["keep"] == "ALL_BUT_NEWEST"
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+
+    def test_chiusura_totale_resta_totale(self, bridge_state):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        sig = parser_ivan_vip("Chiudiamo tutto, anche i rientri", CH_IVAN, bridge_state)
+        assert sig["action"] == "CLOSE_ALL_SYMBOL"
+
+    def test_spostiamo_lo_stop_a_prezzo(self, bridge_state):
+        """Caso reale CH_IVAN 06/08 12:43Z: era UNPARSED, lo SL restava a 4250."""
+        parser_ivan_vip(
+            "XAUUSD BUY 4265\nTP 1 4270\nTP 2 4273\nSL @ 4250", CH_IVAN, bridge_state
+        )
+        sig = parser_ivan_vip(
+            "Per chi non è rientrato da sotto. Spostiamo lo stop a 4255",
+            CH_IVAN,
+            bridge_state,
+        )
+        assert sig is not None
+        assert sig["action"] == "UPDATE_SL"
+        assert sig["new_sl"] == 4255.0
+        assert sig["direction"] == "BUY"
+        ok, reason = validate_signal(sig)
+        assert ok, reason
+
     def test_entrata_aggiuntiva_a_mercato(self, bridge_state):
         """Caso reale CH_IVAN 31/07 12:10Z: 'Okay dentro anche da qui'."""
         parser_ivan_vip(

@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.15"
+#property version   "2.16"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.15"
+#define EA_VERSION "2.16"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -49,6 +49,12 @@ input bool   InpClearSignalAfterProcess = true;
 input bool   InpIgnoreExistingOnInit = true; // skip+clear JSON already present at attach
 input bool   InpStackOpensIfFlatBusy = true; // honor JSON allow_stack when positions already open
 input int    InpStopBufferPoints   = 20;     // extra pts beyond stops/freeze level (avoid 10016)
+// Off-market guard: skip an open whose entry/SL/TP are farther than this % from
+// the current price (channel posting stale or wrong-scale levels). 0 = off.
+input double InpMaxLevelDeviationPct = 2.0;
+// Seconds within which positions opened together count as one batch
+// (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
+input int    InpBatchWindowSec      = 120;
 input bool   InpAutoBreakEvenOnTp1 = true;
 input ulong  InpMagicOffset        = 0;
 
@@ -730,6 +736,34 @@ bool StopsOnCorrectSide(const string direction, const double price,
   }
 
 //+------------------------------------------------------------------+
+//| Off-market guard: the channel sometimes posts levels of another   |
+//| price context ("sell 4039 tp 4030" with gold at 4237). Without    |
+//| this check the stops get clamped to the legal side and the        |
+//| position opens only to be closed at once, paying the spread.      |
+//+------------------------------------------------------------------+
+bool LevelsNearMarket(const string symbol, const double price,
+                      const double sl, const double tp, const double entry,
+                      double &outWorstPct)
+  {
+   outWorstPct = 0.0;
+   if(InpMaxLevelDeviationPct <= 0.0 || price <= 0.0)
+      return true;
+   double levels[3];
+   levels[0] = sl;
+   levels[1] = tp;
+   levels[2] = entry;
+   for(int i = 0; i < 3; i++)
+     {
+      if(levels[i] <= 0.0)
+         continue;
+      double devPct = MathAbs(levels[i] - price) / price * 100.0;
+      if(devPct > outWorstPct)
+         outWorstPct = devPct;
+     }
+   return (outWorstPct <= InpMaxLevelDeviationPct);
+  }
+
+//+------------------------------------------------------------------+
 bool OpenMarket(const string symbol, const string direction, const double lot,
                 const double sl, const double tp, const ulong magic,
                 const string comment,
@@ -756,6 +790,21 @@ bool OpenMarket(const string symbol, const string direction, const double lot,
    if(nsl > 0.0 || ntp > 0.0)
       AdjustStopsToMinDistance(symbol, direction, nsl, ntp);
    double price = (direction == "BUY") ? g_sym.Ask() : g_sym.Bid();
+   double devPct = 0.0;
+   if(!LevelsNearMarket(symbol, price,
+                        sl, tp, SignalEntryFromJson(json, rangeLo, rangeHi), devPct))
+     {
+      Print("[TradinGo] Open skipped ", symbol, " ", direction,
+            " off-market levels price=", DoubleToString(price, (int)g_sym.Digits()),
+            " sl=", DoubleToString(sl, (int)g_sym.Digits()),
+            " tp=", DoubleToString(tp, (int)g_sym.Digits()),
+            " deviation=", DoubleToString(devPct, 2), "%",
+            " max=", DoubleToString(InpMaxLevelDeviationPct, 2), "%");
+      AppendSignalStat(channelFile, json, symbol, direction, "CANCELLED_OFF_MARKET",
+                       rangeLo, rangeHi, SignalEntryFromJson(json, rangeLo, rangeHi),
+                       0.0, distancePoints, tpIndex, magic);
+      return false;
+     }
    if((nsl > 0.0 || ntp > 0.0) && !StopsOnCorrectSide(direction, price, nsl, ntp))
      {
       Print("[TradinGo] Open skipped ", symbol, " ", direction,
@@ -1249,6 +1298,76 @@ bool HandleCloseAllSymbol(const string json)
   }
 
 //+------------------------------------------------------------------+
+//| CLOSE_SELECTIVE keep=ALL_BUT_NEWEST: chiude solo l'ultimo blocco  |
+//| aperto ("Chiudo la rientry"), lasciando il setup principale.      |
+//| Blocco = posizioni aperte entro InpBatchWindowSec dalla più       |
+//| recente. Se tutte le posizioni sono nello stesso blocco non c'è   |
+//| nessun rientro da chiudere e il comando non fa nulla.             |
+//+------------------------------------------------------------------+
+bool CloseNewestBatch(const string json)
+  {
+   string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
+   int magicBase = JsonGetInt(json, "magic_base");
+
+   datetime newest = 0;
+   datetime oldest = 0;
+   int total = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(g_pos.Symbol() != symbol)
+         continue;
+      if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
+         continue;
+      datetime t = (datetime)g_pos.Time();
+      if(total == 0 || t > newest)
+         newest = t;
+      if(total == 0 || t < oldest)
+         oldest = t;
+      total++;
+     }
+   if(total == 0)
+     {
+      Print("[TradinGo] CLOSE_SELECTIVE keep=ALL_BUT_NEWEST ", symbol,
+            " — nessuna posizione nostra aperta");
+      return true;
+     }
+
+   int window = (InpBatchWindowSec > 0 ? InpBatchWindowSec : 120);
+   if((int)(newest - oldest) <= window)
+     {
+      Print("[TradinGo] CLOSE_SELECTIVE keep=ALL_BUT_NEWEST ", symbol,
+            " ignorata — un solo blocco aperto (", total, " posizioni)");
+      return true;
+     }
+
+   int closed = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      if(!g_pos.SelectByIndex(i))
+         continue;
+      if(g_pos.Symbol() != symbol)
+         continue;
+      if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
+         continue;
+      if((int)(newest - (datetime)g_pos.Time()) > window)
+         continue;
+      ulong ticket = g_pos.Ticket();
+      SetTrackReason(ticket, "CLOSE_SELECTIVE_ALL_BUT_NEWEST");
+      if(g_trade.PositionClose(ticket))
+         closed++;
+      else
+         Print("[TradinGo] CLOSE_SELECTIVE close failed ticket=", ticket,
+               " err=", GetLastError());
+     }
+   Print("[TradinGo] CLOSE_SELECTIVE ", symbol,
+         " keep=ALL_BUT_NEWEST newest=", TimeToString(newest, TIME_DATE | TIME_SECONDS),
+         " closed=", closed, "/", total);
+   return true;
+  }
+
+//+------------------------------------------------------------------+
 //| CLOSE_SELECTIVE: chiude solo una parte delle entry.               |
 //| keep=BEST     tiene le entry migliori per la direzione            |
 //|               (SELL: prezzo più alto, BUY: prezzo più basso)      |
@@ -1260,6 +1379,8 @@ bool HandleCloseSelective(const string json)
   {
    string keep = JsonGetString(json, "keep");
    StringToUpper(keep);
+   if(keep == "ALL_BUT_NEWEST")
+      return CloseNewestBatch(json);
    if(keep != "BEST" && keep != "HIGHEST" && keep != "LOWEST")
      {
       Print("[TradinGo] CLOSE_SELECTIVE ignorata — keep non valido: '", keep, "'");

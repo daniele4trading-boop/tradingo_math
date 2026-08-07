@@ -102,10 +102,11 @@ ACTIONS_REQUIRING_SYMBOL = frozenset({
 })
 
 # CLOSE_SELECTIVE: quali posizioni restano aperte.
-#   BEST    -> tiene le entry migliori per la direzione (SELL: prezzo alto, BUY: basso)
-#   HIGHEST -> tiene le entry con prezzo più alto (chiude quelle sotto)
-#   LOWEST  -> tiene le entry con prezzo più basso (chiude quelle sopra)
-SELECTIVE_KEEP_MODES = frozenset({"BEST", "HIGHEST", "LOWEST"})
+#   BEST            -> tiene le entry migliori per la direzione (SELL: prezzo alto, BUY: basso)
+#   HIGHEST         -> tiene le entry con prezzo più alto (chiude quelle sotto)
+#   LOWEST          -> tiene le entry con prezzo più basso (chiude quelle sopra)
+#   ALL_BUT_NEWEST  -> chiude solo l'ultimo blocco aperto (il rientro), tiene il resto
+SELECTIVE_KEEP_MODES = frozenset({"BEST", "HIGHEST", "LOWEST", "ALL_BUT_NEWEST"})
 
 def make_signal_id(chat_id: int | str, message_id: int | str, event_type: str) -> str:
     """Short deterministic id for JSON + MT5 comment (fits in 31-char budget)."""
@@ -146,6 +147,11 @@ _SELECTIVE_WORST = (
 )
 _SELECTIVE_BEST = (
     r"(?:PIU\s+PREMIUM|MIGLIOR[EI]|PIU\s+FORT[EI]|BEST|STRONGEST)"
+)
+# "chiudo la rientry": chiude solo le posizioni del rientro, non il setup base.
+_SELECTIVE_REENTRY_NOUN = (
+    r"(?:RIENTR(?:O|I|Y|IES|ATA|ATE)|RE[- ]?ENTR(?:Y|IES|IE)|REENTRAT[AE]|"
+    r"SECOND[AO]\s+(?:ENTRATA|ENTRY|POSIZIONE)|ULTIM[AO]\s+(?:ENTRATA|ENTRY|RIENTRO))"
 )
 # "lasciamo/teniamo solo quelle …": il qualificatore descrive ciò che RESTA.
 SELECTIVE_KEEP_MAX_WORDS = 10
@@ -194,7 +200,18 @@ def match_selective_close_intent(upper: str) -> str | None:
         r"(?:CHIUDIAMO|CHIDUAMO|CHIUDAMO|CHIUDIAM|CHIUDETE|CHIUDERE|CHIUDO|"
         r"CHIUDI|USCIAMO|USCITE|ESCIAMO|CLOSE|CLOSING|EXIT)"
     )
-    if not re.search(rf"(?:^|[^\w]){close_verb}(?:[^\w]|$)", text) or not has_noun:
+    has_close_verb = re.search(rf"(?:^|[^\w]){close_verb}(?:[^\w]|$)", text) is not None
+    # "Chiudo la rientry" / "chiudiamo il rientro": va chiuso l'ultimo blocco
+    # aperto, non tutto il simbolo (in produzione portava via anche il setup base).
+    # Il complemento deve seguire il verbo: "chiudiamo tutto" resta una chiusura
+    # totale anche se la frase parla di rientri.
+    if not re.search(r"\bTUTT[OIE]\b|\bALL\b|\bEVERYTHING\b", text) and re.search(
+        rf"{close_verb}\s+(?:LA|IL|LE|I|GLI|LO|SOLO|SOLTANTO|THE)?\s*"
+        rf"{_SELECTIVE_REENTRY_NOUN}",
+        text,
+    ):
+        return "ALL_BUT_NEWEST"
+    if not has_close_verb or not has_noun:
         return None
     if re.search(_SELECTIVE_WORST, text):
         return "BEST"          # chiudi le peggiori → restano le migliori
@@ -332,6 +349,52 @@ def match_break_even_intent(upper: str) -> bool:
 def match_partial_close_intent(upper: str) -> bool:
     """True se il testo chiede una chiusura parziale / a metà."""
     return any(re.search(p, upper) for p in PARTIAL_CLOSE_WORDS)
+
+
+# Spostamento dello stop a un prezzo esplicito: "spostiamo lo stop a 4255",
+# "portiamo lo SL a 4255", "stop loss a 4255". Registro additivo.
+_MOVE_SL_VERB = (
+    r"(?:SPOST(?:IAMO|O|ATE|A|ARE)|MUOV(?:IAMO|O|ETE|I|ERE)|"
+    r"PORT(?:IAMO|O|ATE|A|ARE)|ALZ(?:IAMO|O|ATE|A|ARE)|"
+    r"ABBASS(?:IAMO|O|ATE|A|ARE)|METT(?:IAMO|O|ETE|I|ERE)|SETT(?:IAMO|O|ATE|A)|"
+    r"MOVE|MOVING|SET)"
+)
+_MOVE_SL_NOUN = r"(?:STOP\s*LOSS|STOPLOSS|STOP|\bSL\b)"
+
+
+def match_move_sl_price(upper: str) -> float | None:
+    """Prezzo di un ordine "sposta lo stop a X", ``None`` se non è quel comando.
+
+    Il break-even ha un recognizer suo (:func:`match_break_even_intent`) e va
+    valutato prima: qui serve il caso con prezzo esplicito, che in produzione
+    finiva UNPARSED ("Spostiamo lo stop a 4255" → le posizioni restavano sullo
+    SL originale).
+    """
+    if not upper or not upper.strip():
+        return None
+    text = _fold_accents_upper(upper)
+    m = re.search(
+        rf"{_MOVE_SL_VERB}\s+(?:LO\s+|IL\s+|LA\s+|GLI\s+|THE\s+)?{_MOVE_SL_NOUN}"
+        r"\s*(?:A|AL|SU|SUI|IN|TO|@)?\s*(\d{3,5}(?:[.,]\d+)?)\b",
+        text,
+    )
+    if not m:
+        # "Stop loss a 4255" senza verbo: solo se il messaggio è corto, così una
+        # frase narrativa con numeri non muove gli stop.
+        words = re.findall(r"[A-Za-z\u00c0-\u00ff]+", text)
+        if len(words) > 6:
+            return None
+        m = re.search(
+            rf"(?:^|[^\w]){_MOVE_SL_NOUN}\s*(?:A|AL|SU|IN|TO|@)\s*(\d{{3,5}}(?:[.,]\d+)?)\b",
+            text,
+        )
+        if not m:
+            return None
+    try:
+        val = float(m.group(1).replace(",", "."))
+    except ValueError:
+        return None
+    return val if val >= 100 else None
 
 
 def match_close_price_followup(upper: str) -> float | None:

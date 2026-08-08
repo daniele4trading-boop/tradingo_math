@@ -70,6 +70,7 @@
     "warmup_bars": 400,
     "kill_switch_file": "KILL_SWITCH",
     "kill_switch_closes_positions": true,
+    "startup_retry_max_seconds": 300.0,
     "resume_open_trades": true,
     "close_unknown_positions": true,
     "log_dir": "logs",

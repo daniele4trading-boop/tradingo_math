@@ -104,7 +104,7 @@ class Runner:
             signal.signal(sig, lambda *_: setattr(self, "_stop", True))
 
     def run(self) -> None:
-        self.startup()
+        self.startup_with_retry()
         while not self._stop:
             try:
                 self.tick()
@@ -113,6 +113,30 @@ class Runner:
                 self.journal.write("ERROR", where="tick")
             time_module.sleep(self.cfg.runtime.poll_seconds)
         self.journal.write("SHUTDOWN")
+
+    def startup_with_retry(self) -> None:
+        """Riprova lo startup finche' il broker non risponde, senza terminare.
+
+        Un `503 no healthy upstream` del gateway Velotrade (tipico a mercato chiuso)
+        faceva uscire il processo con exit code 1: il task pianificato non lo
+        rimetteva in piedi e il servizio restava giu' fino a un intervento manuale.
+        """
+        delay = self.cfg.runtime.poll_seconds
+        while not self._stop:
+            try:
+                self.startup()
+                return
+            except Exception as exc:
+                LOG.warning("startup fallito (%s), riprovo tra %.0fs", exc, delay)
+                self.journal.write("STARTUP_RETRY", error=str(exc), retry_in=delay)
+                self._sleep(delay)
+                delay = min(delay * 2, self.cfg.runtime.startup_retry_max_seconds)
+
+    def _sleep(self, seconds: float) -> None:
+        """Attesa interrompibile: un SIGTERM durante il backoff ferma il servizio."""
+        deadline = time_module.monotonic() + seconds
+        while not self._stop and time_module.monotonic() < deadline:
+            time_module.sleep(min(1.0, deadline - time_module.monotonic()))
 
     def startup(self) -> None:
         self.client.login()

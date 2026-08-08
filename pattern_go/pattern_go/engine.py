@@ -307,6 +307,23 @@ class StrategyEngine:
         )
         return self.trade
 
+    def adopt_trade(self, trade: OpenTrade) -> OpenTrade:
+        """Riprende in gestione un trade sopravvissuto a un riavvio del servizio.
+
+        `entry_bar_index` viene riancorato alla barra dell'ingresso presente nel
+        warmup, altrimenti `max_hold` ripartirebbe da zero a ogni riavvio.
+        """
+        index = len(self.bars) - 1
+        for i, bar in enumerate(self.bars):
+            if bar.time <= trade.entry_time:
+                index = i
+            else:
+                break
+        trade.entry_bar_index = index
+        self.trade = trade
+        self.pending = None
+        return trade
+
     def on_trade_closed(self) -> None:
         self.trade = None
         self.last_exit_index = len(self.bars) - 1

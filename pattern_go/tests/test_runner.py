@@ -212,6 +212,107 @@ def test_only_closed_bars_reach_the_engine(tmp_path):
     assert bars == [closed]
 
 
+def _fill_and_open(runner, client, price=3974.5):
+    """Porta il runner ad avere un trade aperto sorvegliato, come in produzione."""
+    engine = runner.engines["M5"]
+    quote = client.quote("XAU")
+    for bar in short_setup_bars():
+        runner._execute(engine, engine.on_bar(bar, 0.1, lambda _sl: (1.0, "ok")), quote)
+    client._positions = [
+        {
+            "positionCode": "P9",
+            "openPrice": price,
+            "symbol": "XAU",
+            "side": "SELL",
+            "quantity": 1.0,
+        }
+    ]
+    runner._detect_fill(engine)
+    runner._save_state()
+    return engine.trade
+
+
+def test_open_trade_is_resumed_after_a_restart(tmp_path):
+    cfg = make_config(tmp_path)
+    client = FakeClient()
+    runner = Runner(cfg, client)
+    runner.startup()
+    trade = _fill_and_open(runner, client)
+
+    restarted = Runner(cfg, FakeClient(bars=short_setup_bars()))
+    restarted.client._positions = list(client._positions)
+    restarted.startup()
+    resumed = restarted.engines["M5"].trade
+    assert resumed is not None
+    assert (resumed.position_id, resumed.side, resumed.stop_loss, resumed.take_profit) == (
+        "P9",
+        trade.side,
+        trade.stop_loss,
+        trade.take_profit,
+    )
+    assert "P9" in restarted._known_position_ids
+    assert [r for r in _journal(tmp_path) if r["event"] == "TRADE_RESUMED"]
+
+
+def test_resumed_trade_is_protected_by_the_stop(tmp_path):
+    cfg = make_config(tmp_path)
+    client = FakeClient()
+    runner = Runner(cfg, client)
+    runner.startup()
+    _fill_and_open(runner, client)
+
+    restarted = Runner(cfg, FakeClient(bars=short_setup_bars()))
+    restarted.client._positions = list(client._positions)
+    restarted.startup()
+    trade = restarted.engines["M5"].trade
+    assert trade is not None
+    trade.stop_loss = 3990.0  # gia' superato dalla quote corrente (short)
+    restarted._check_protective_exits(restarted.client.quote("XAU"))
+    assert restarted.client.closed and restarted.engines["M5"].trade is None
+    closed = [r for r in _journal(tmp_path) if r["event"] == "TRADE_CLOSED"][0]
+    assert closed["exit_reason"] == "STOP_LOSS"
+
+
+def test_trade_closed_while_offline_is_not_resumed(tmp_path):
+    cfg = make_config(tmp_path)
+    client = FakeClient()
+    runner = Runner(cfg, client)
+    runner.startup()
+    _fill_and_open(runner, client)
+
+    restarted = Runner(cfg, FakeClient(bars=short_setup_bars()))  # broker senza posizioni
+    restarted.startup()
+    assert restarted.engines["M5"].trade is None
+    assert [r for r in _journal(tmp_path) if r["event"] == "TRADE_VANISHED"]
+
+
+ORPHAN = {
+    "positionCode": "ORPHAN",
+    "openPrice": 4000.0,
+    "symbol": "XAU",
+    "side": "BUY",
+    "quantity": 0.5,
+}
+
+
+def test_position_nobody_watches_is_closed_at_startup(tmp_path):
+    client = FakeClient()
+    client._positions = [dict(ORPHAN)]
+    runner = Runner(make_config(tmp_path), client)
+    runner.startup()
+    assert client.closed and client.closed[0]["position_code"] == "ORPHAN"
+    events = [r["event"] for r in _journal(tmp_path)]
+    assert "UNKNOWN_POSITION" in events and "UNKNOWN_POSITION_CLOSED" in events
+
+
+def test_unknown_positions_are_left_alone_when_disabled(tmp_path):
+    client = FakeClient()
+    client._positions = [dict(ORPHAN)]
+    runner = Runner(make_config(tmp_path, close_unknown_positions=False), client)
+    runner.startup()
+    assert client.closed == []
+
+
 def _journal(tmp_path):
     out = []
     for path in (tmp_path / "logs").glob("journal_*.jsonl"):

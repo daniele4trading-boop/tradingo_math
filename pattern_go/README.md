@@ -55,6 +55,12 @@ Kill switch: crea il file indicato in `runtime.kill_switch_file` (default `KILL_
 Con `kill_switch_closes_positions: true` chiude tutto e blocca il ciclo; per riprendere,
 cancella il file.
 
+Riavvii: SL e TP vivono nel processo, non sul broker, quindi allo startup il runner
+ricarica dallo stato l'eventuale trade aperto e ne riprende la sorveglianza
+(`TRADE_RESUMED`). Una posizione sul simbolo che nessun engine riconosce viene segnalata
+come `UNKNOWN_POSITION` e chiusa a mercato; per lasciarla aperta metti
+`runtime.close_unknown_positions: false`.
+
 ## Regole del conto implementate
 
 | Regola Velotrade PRO 1-Step | Implementazione |

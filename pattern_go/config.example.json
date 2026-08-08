@@ -70,6 +70,8 @@
     "warmup_bars": 400,
     "kill_switch_file": "KILL_SWITCH",
     "kill_switch_closes_positions": true,
+    "resume_open_trades": true,
+    "close_unknown_positions": true,
     "log_dir": "logs",
     "state_file": "state/pattern_go_state.json",
     "report_dir": "reports",

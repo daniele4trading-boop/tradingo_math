@@ -35,7 +35,7 @@ from .engine import (
 from .journal import Journal
 from .report import write_daily_report
 from .risk import ALLOW, CLOSE_ALL, AccountState, RiskManager
-from .types import ExitReason, Side
+from .types import ExitReason, OpenTrade, Side
 
 LOG = logging.getLogger("pattern_go.runner")
 
@@ -72,6 +72,7 @@ class Runner:
         self.strategy_cfg: dict[str, StrategyConfig] = {}
         self.instrument: Instrument | None = None
         self._known_position_ids: set[str] = set()
+        self._saved_trades: dict[str, dict[str, Any]] = {}
         self._close_counter: dict[str, int] = {}
         self._stop = False
         self._last_report_day = None
@@ -125,6 +126,7 @@ class Runner:
         self.risk.roll_day(self.state, datetime.now(UTC))
         self.reconcile()
         self.warmup()
+        self.resume_open_trades()
         self.journal.write(
             "STARTUP",
             symbol=self.instrument.symbol,
@@ -166,6 +168,94 @@ class Runner:
             position_ids=sorted(self._known_position_ids),
             order_codes=[o.get("orderCode") for o in orders],
         )
+
+    def resume_open_trades(self) -> None:
+        """Riprende la sorveglianza di SL/TP sulle posizioni aperte prima del riavvio.
+
+        Senza questo passo un riavvio (o la morte del processo) lascia la posizione sul
+        broker senza nessuno che ne controlli i livelli, dato che Velotrade non accetta
+        SL/TP collegati all'ordine d'ingresso.
+        """
+        if not self.cfg.runtime.resume_open_trades:
+            return
+        positions = {
+            str(p.get("positionCode") or p.get("id")): p
+            for p in self.client.positions()
+            if str(p.get("symbol") or p.get("instrument")) == self.cfg.broker.symbol
+        }
+        for name, engine in self.engines.items():
+            saved = self._saved_trades.get(name)
+            if saved is None or engine.trade is not None:
+                continue
+            position = positions.pop(str(saved.get("position_id")), None)
+            if position is None:
+                self.journal.write(
+                    "TRADE_VANISHED",
+                    strategy=name,
+                    client_order_id=saved.get("client_order_id"),
+                    position_id=saved.get("position_id"),
+                )
+                continue
+            trade = engine.adopt_trade(self._trade_from_saved(name, saved, position))
+            self._known_position_ids.add(str(trade.position_id))
+            self.journal.write(
+                "TRADE_RESUMED",
+                strategy=name,
+                client_order_id=trade.client_order_id,
+                position_id=trade.position_id,
+                side=trade.side.value,
+                quantity=trade.quantity,
+                entry_price=trade.entry_price,
+                stop_loss=trade.stop_loss,
+                take_profit=trade.take_profit,
+                entry_time=trade.entry_time.isoformat(),
+            )
+        for code, position in positions.items():
+            self.journal.write(
+                "UNKNOWN_POSITION",
+                position_id=code,
+                side=position.get("side"),
+                quantity=position.get("quantity"),
+                closing=self.cfg.runtime.close_unknown_positions,
+            )
+            if self.cfg.runtime.close_unknown_positions:
+                self._close_unknown(position)
+        self._save_state()
+
+    def _trade_from_saved(
+        self, name: str, saved: dict[str, Any], position: dict[str, Any]
+    ) -> OpenTrade:
+        entry_price = float(saved["entry_price"])
+        return OpenTrade(
+            strategy=name,
+            side=Side(saved["side"]),
+            quantity=float(position.get("quantity") or saved["quantity"]),
+            entry_price=entry_price,
+            stop_loss=float(saved["stop_loss"]),
+            take_profit=float(saved["take_profit"]),
+            risk=float(saved["risk"]),
+            entry_bar_index=0,
+            entry_time=datetime.fromisoformat(saved["entry_time"]),
+            client_order_id=str(saved["client_order_id"]),
+            theoretical_entry_price=float(saved.get("theoretical_entry_price", entry_price)),
+            position_id=str(saved.get("position_id") or "") or None,
+        )
+
+    def _close_unknown(self, position: dict[str, Any]) -> None:
+        """Chiude a mercato una posizione che nessun engine sta sorvegliando."""
+        code = str(position.get("positionCode") or position.get("id"))
+        side = str(position.get("side") or "").upper()
+        try:
+            self.client.close_position(
+                symbol=self.cfg.broker.symbol,
+                side="BUY" if side == "BUY" else "SELL",
+                quantity=float(position.get("quantity") or 0.0),
+                client_order_id=f"PG-ORPHAN-{code}",
+                position_code=code,
+            )
+            self.journal.write("UNKNOWN_POSITION_CLOSED", position_id=code)
+        except Exception as exc:
+            self.journal.write("CLOSE_FAILED", position_id=code, error=str(exc))
 
     # --- ciclo -------------------------------------------------------------
 
@@ -467,6 +557,7 @@ class Runner:
                 name: {
                     "pending": e.pending.client_order_id if e.pending else None,
                     "trade": e.trade.client_order_id if e.trade else None,
+                    "open_trade": _trade_to_dict(e.trade),
                 }
                 for name, e in self.engines.items()
             },
@@ -483,3 +574,25 @@ class Runner:
         self.state.day_start_balance = data.get("day_start_balance")
         self.state.halted_until_reset = bool(data.get("halted_until_reset", False))
         self._known_position_ids = set(data.get("known_position_ids") or [])
+        self._saved_trades = {
+            name: s["open_trade"]
+            for name, s in (data.get("strategies") or {}).items()
+            if isinstance(s, dict) and s.get("open_trade")
+        }
+
+
+def _trade_to_dict(trade: OpenTrade | None) -> dict[str, Any] | None:
+    if trade is None:
+        return None
+    return {
+        "side": trade.side.value,
+        "quantity": trade.quantity,
+        "entry_price": trade.entry_price,
+        "stop_loss": trade.stop_loss,
+        "take_profit": trade.take_profit,
+        "risk": trade.risk,
+        "entry_time": trade.entry_time.isoformat(),
+        "client_order_id": trade.client_order_id,
+        "theoretical_entry_price": trade.theoretical_entry_price,
+        "position_id": trade.position_id,
+    }

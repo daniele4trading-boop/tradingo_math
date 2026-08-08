@@ -46,6 +46,8 @@ class RuntimeConfig:
     warmup_bars: int = 400
     kill_switch_file: str = "KILL_SWITCH"
     kill_switch_closes_positions: bool = True
+    resume_open_trades: bool = True
+    close_unknown_positions: bool = True
     log_dir: str = "logs"
     state_file: str = "state/pattern_go_state.json"
     report_dir: str = "reports"

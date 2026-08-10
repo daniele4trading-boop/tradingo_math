@@ -23,7 +23,8 @@ aperture a 9.640 (60%).
 |---|---|
 | Controllo su `ACCOUNT_EQUITY` a ogni tick | `CheckEquityFloorGuard()`, chiamata da `OnTick()` |
 | Equity ≤ livello `InpDdCloseAtPct` → chiude **tutte** le posizioni TG e latch dell'halt | `CloseAllOurPositions("KILLSWITCH_EQUITY_FLOOR")` + `DdSetHalted(true)` |
-| Equity ≤ livello `InpDdBlockNewAtPct` → blocca solo le **nuove aperture** | `IsOpenBlocked()` |
+| Equity ≤ livello `InpDdBlockNewAtPct` → blocca solo le **nuove aperture** (se `InpDdRecoveryLot=0`) | `IsOpenBlocked()` |
+| Equity ≤ livello `InpDdBlockNewAtPct` con `InpDdRecoveryLot>0` → **recovery**: continua ad aprire a quel lotto | `DdRecoveryActive()`, `DdSizedLot()` |
 | L'halt sopravvive al riavvio del terminale | GlobalVariable `TG_TRADINGO_DD_HALT` |
 | Reset manuale obbligatorio | cancellare la GlobalVariable `TG_TRADINGO_DD_HALT` |
 | Errori di chiusura loggati a livello ERROR | `CloseAllOurPositions()` |
@@ -31,6 +32,25 @@ aperture a 9.640 (60%).
 Si chiude **prima** del floor per costruzione: al floor esatto il breach è già avvenuto,
 perché i fill arrivano dopo la decisione. Le chiusure sono marcate nel journal con
 `close_reason=KILLSWITCH_EQUITY_FLOOR`.
+
+### Recovery sotto la soglia di blocco
+
+Bloccare tutto sotto il 60% dell'allowance è uno stallo definitivo: senza posizioni
+aperte l'equity non può risalire, quindi il conto resta fermo per sempre a meno di un
+intervento manuale. Con `InpDdRecoveryLot > 0` l'EA continua invece a eseguire i
+segnali, ma alla size minima indicata (tipicamente 0,01 per posizione), così può
+recuperare fino a rientrare sopra la soglia.
+
+```
+equity > block_level            -> sizing normale (fisso o dal serbatoio)
+close_level < equity <= block   -> lot = max(InpDdRecoveryLot, volume_min)
+equity <= close_level           -> chiude tutto + halt (invariato)
+```
+
+Lo stato è ricalcolato a ogni tentativo di apertura sull'equity corrente: rientrando
+sopra la soglia il sizing normale torna da solo. Il passaggio ON/OFF è loggato una
+sola volta come `DD_RECOVERY ON/OFF`. Il recovery non tocca le altre protezioni:
+halt latch, kill switch, `InpMaxConcurrentLots` e il floor restano attivi.
 
 `InpDdStartEquity=0` fa catturare l'equity al primo init e la persiste in
 `TG_TRADINGO_DD_START`: sul conto iFunds è però meglio scriverla esplicitamente
@@ -97,7 +117,8 @@ restano aperti e solo il volume oltre il cap viene rifiutato, con riga
 | `InpDdMaxPct` | 0.0 | 6.0 | piano scelto |
 | `InpDdStartEquity` | 0.0 | 10000.0 | floor statico esplicito |
 | `InpDdCloseAtPct` | 80.0 | 80.0 | chiusura a 9.520 |
-| `InpDdBlockNewAtPct` | 60.0 | 60.0 | stop alle nuove entrate a 9.640 |
+| `InpDdBlockNewAtPct` | 60.0 | 60.0 | soglia di guardia a 9.640 |
+| `InpDdRecoveryLot` | 0.0 | 0.01 | sotto 9.640 si continua a 0,01 invece di fermarsi |
 | `InpHaltFlagFile` | `tradingo_halt.flag` | idem | kill switch manuale |
 | `InpDdSizingEnabled` | false | true | sizing dal serbatoio attivo |
 | `InpDdUtilizationPct` | 50.0 | 50.0 | scelta operativa |
@@ -115,7 +136,7 @@ allowance 3.000, cap 0,25).
 | Preset | Conto | Guard DD | Sizing | Canali | Note |
 |---|---|---|---|---|---|
 | `TG_TradinGo_Vantage_Demo.set` | Vantage demo (Contabo) | off | off | tutti e 5 | riferimento per misurare i canali |
-| `TG_TradinGo_Ultima_iFunds_Demo.set` | Ultima demo (Gamehosting) | 6%, start 10.000 | on, cap 0,05 | ivan, stark | prova delle regole iFunds; `InpMagicOffset=0` per non perdere le posizioni già aperte |
+| `TG_TradinGo_Ultima_iFunds_Demo.set` | Ultima demo (Gamehosting) | 6%, start 10.000, recovery 0,01 | on, util 15%, cap 0,10 | ivan, stark | prova delle regole iFunds; `InpMagicOffset=0` per non perdere le posizioni già aperte |
 | `TG_TradinGo_iFunds_10k_dd6.set` | iFunds 10k reale | 6%, start 10.000 | on, cap 0,05 | ivan, stark | `InpMagicOffset=500000` (convive col Vantage sulla stessa VPS) |
 | `TG_TradinGo_Reale_Personale.set` | conti reali personali | 10%, start catturato al primo init | off | da scegliere | lotti, suffisso simbolo e % di perdita massima vanno adattati al conto |
 

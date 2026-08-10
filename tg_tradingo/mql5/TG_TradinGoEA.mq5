@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.16"
+#property version   "2.17"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.16"
+#define EA_VERSION "2.17"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -77,6 +77,9 @@ input double InpDdMaxPct             = 0.0;   // e.g. 6.0 -> floor = start*(1-6%
 input double InpDdStartEquity        = 0.0;   // 0 = capture equity at first init (persisted)
 input double InpDdCloseAtPct         = 80.0;  // % of allowance consumed -> close all + halt
 input double InpDdBlockNewAtPct      = 60.0;  // % of allowance consumed -> block new opens
+// Recovery mode: below the block level, instead of refusing every signal, keep
+// trading at this lot so the account can climb back above it. 0 = off (block).
+input double InpDdRecoveryLot        = 0.0;   // e.g. 0.01 -> minimum-size recovery trades
 // Manual kill switch: presence of this file blocks new opens (no restart needed).
 // Existing positions stay under normal management. "" = disabled.
 input string InpHaltFlagFile         = "tradingo_halt.flag";
@@ -1657,6 +1660,7 @@ bool     g_bridgeStale = false;
 double   g_ddStart      = 0.0;  // static reference equity (never recomputed)
 double   g_ddPeakClosed = 0.0;  // peak of closed equity (balance), never decreases
 bool     g_ddHalted     = false;
+bool     g_ddRecoveryOn = false;
 bool     g_haltFlag     = false;
 datetime g_lastHaltCheck = 0;
 string   g_ddLotKey[];
@@ -1942,6 +1946,37 @@ double DdReservoir()
   }
 
 //+------------------------------------------------------------------+
+//| Between the block level and the close-all level the account is    |
+//| not dead: opens continue at InpDdRecoveryLot instead of stopping. |
+//+------------------------------------------------------------------+
+bool DdRecoveryActive()
+  {
+   if(InpDdRecoveryLot <= 0.0 || !DdGuardEnabled() || g_ddHalted)
+      return false;
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   return (equity <= DdLevelForConsumedPct(InpDdBlockNewAtPct));
+  }
+
+//+------------------------------------------------------------------+
+void DdLogRecoveryState(const bool active, const double equity)
+  {
+   if(active == g_ddRecoveryOn)
+      return;
+   g_ddRecoveryOn = active;
+   if(active)
+      Print("[TradinGo] DD_RECOVERY ON — equity=", DoubleToString(equity, 2),
+            " <= block_level=", DoubleToString(DdLevelForConsumedPct(InpDdBlockNewAtPct), 2),
+            ": opens continue at lot=", DoubleToString(InpDdRecoveryLot, 2),
+            " until equity recovers (close_all still at ",
+            DoubleToString(DdLevelForConsumedPct(InpDdCloseAtPct), 2), ")");
+   else
+      Print("[TradinGo] DD_RECOVERY OFF — equity=", DoubleToString(equity, 2),
+            " back above block_level=",
+            DoubleToString(DdLevelForConsumedPct(InpDdBlockNewAtPct), 2),
+            ": normal sizing restored");
+  }
+
+//+------------------------------------------------------------------+
 void DdSetHalted(const bool halted)
   {
    g_ddHalted = halted;
@@ -2161,6 +2196,8 @@ void DdLotCacheSet(const string key, const double lot)
 //+------------------------------------------------------------------+
 double DdSizedLot(const string symbol, const string channelKey, const double fallbackLot)
   {
+   if(DdRecoveryActive())
+      return MathMax(InpDdRecoveryLot, SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN));
    if(!InpDdSizingEnabled || !DdGuardEnabled())
       return fallbackLot;
    double per001 = DdFloatPer001(channelKey);
@@ -2224,7 +2261,8 @@ bool IsOpenBlocked(const string symbol)
      {
       double equity = AccountInfoDouble(ACCOUNT_EQUITY);
       double blockLevel = DdLevelForConsumedPct(InpDdBlockNewAtPct);
-      if(equity <= blockLevel)
+      DdLogRecoveryState(DdRecoveryActive(), equity);
+      if(equity <= blockLevel && !DdRecoveryActive())
         {
          Print("[TradinGo] OPEN blocked — equity=", DoubleToString(equity, 2),
                " <= block_level=", DoubleToString(blockLevel, 2),
@@ -3033,6 +3071,7 @@ int OnInit()
    Print("[TradinGo] v", EA_VERSION, " prop guards | dd_max_pct=", DoubleToString(InpDdMaxPct, 2),
          " dd_close_at_pct=", DoubleToString(InpDdCloseAtPct, 1),
          " dd_block_new_at_pct=", DoubleToString(InpDdBlockNewAtPct, 1),
+         " dd_recovery_lot=", DoubleToString(InpDdRecoveryLot, 2),
          " halt_flag_file=", (StringLen(InpHaltFlagFile) > 0 ? InpHaltFlagFile : "<off>"),
          " kill_switch=", (g_haltFlag ? "ON" : "off"),
          " dd_sizing=", InpDdSizingEnabled,

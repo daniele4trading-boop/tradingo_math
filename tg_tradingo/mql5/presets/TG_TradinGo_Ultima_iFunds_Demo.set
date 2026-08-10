@@ -3,8 +3,8 @@
 ;   - InpMagicOffset=0  (con 500000 l'EA perderebbe di vista le posizioni gia' aperte)
 ;   - InpMaxFloatingLossUSD=0  (killswitch flottante spento su entrambi i demo)
 ; Regole simulate: equity di partenza 10.000 -> floor 9.400 (DD 6% statico)
-;   chiusura totale + halt a 9.520 | blocco nuove aperture a 9.640
-;   sizing dal serbatoio (util 50%, scatti 10%, cap 0.05 per posizione)
+;   chiusura totale + halt a 9.520 | sotto 9.640 recovery a 0.01 per posizione
+;   sizing dal serbatoio (util 15%, scatti 10%, cap 0.10 per posizione)
 ; Path segnali: junction MQL5\Files\tradingo -> cartella segnali del bridge
 ; Richiede EA v2.13+
 ; Carica da: Inputs EA -> Load -> questo file
@@ -50,11 +50,12 @@ InpDdMaxPct=6.0
 InpDdStartEquity=10000.0
 InpDdCloseAtPct=80.0
 InpDdBlockNewAtPct=60.0
+InpDdRecoveryLot=0.01
 InpHaltFlagFile=tradingo_halt.flag
 InpDdSizingEnabled=true
-InpDdUtilizationPct=50.0
+InpDdUtilizationPct=15.0
 InpDdStepPct=10.0
-InpDdMaxLot=0.05
+InpDdMaxLot=0.10
 InpDdFloatIvan=39.9
 InpDdFloatStark=10.4
 InpDdFloatGold=15.0

@@ -4,7 +4,7 @@ Questo documento descrive il sistema **Telegram → JSON → MT4/MT5** nella rep
 Leggilo prima di modificare parser, config o EA.
 
 **Branch canonico: `main`** (`git fetch origin main && git checkout main && git pull`).
-Versioni correnti — bridge **2.16**, EA MT5 **2.16**, EA MT4 **1.04** — e mappa preset → conto in
+Versioni correnti — bridge **2.17**, EA MT5 **2.18**, EA MT4 **1.05** — e mappa preset → conto in
 [`docs/VERSIONS_AND_PRESETS.md`](docs/VERSIONS_AND_PRESETS.md).
 Setup MT4 T4Trade / path iFunds: [`docs/MT4_T4TRADE_SETUP.md`](docs/MT4_T4TRADE_SETUP.md).
 

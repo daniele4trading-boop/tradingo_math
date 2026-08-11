@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.16"
+#property version   "2.18"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.16"
+#define EA_VERSION "2.18"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -52,6 +52,11 @@ input int    InpStopBufferPoints   = 20;     // extra pts beyond stops/freeze le
 // Off-market guard: skip an open whose entry/SL/TP are farther than this % from
 // the current price (channel posting stale or wrong-scale levels). 0 = off.
 input double InpMaxLevelDeviationPct = 2.0;
+// Re-entry drift guard: an inherited re-entry keeps the SL of the original
+// setup, so if the market already moved toward that SL the risk/reward is no
+// longer the published one. Skip the re-entry when the drift from the signal
+// entry exceeds this % of the entry->SL distance. 0 = off.
+input double InpReentryMaxDriftPctOfSl = 40.0;
 // Seconds within which positions opened together count as one batch
 // (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
 input int    InpBatchWindowSec      = 120;
@@ -77,6 +82,9 @@ input double InpDdMaxPct             = 0.0;   // e.g. 6.0 -> floor = start*(1-6%
 input double InpDdStartEquity        = 0.0;   // 0 = capture equity at first init (persisted)
 input double InpDdCloseAtPct         = 80.0;  // % of allowance consumed -> close all + halt
 input double InpDdBlockNewAtPct      = 60.0;  // % of allowance consumed -> block new opens
+// Recovery mode: below the block level, instead of refusing every signal, keep
+// trading at this lot so the account can climb back above it. 0 = off (block).
+input double InpDdRecoveryLot        = 0.0;   // e.g. 0.01 -> minimum-size recovery trades
 // Manual kill switch: presence of this file blocks new opens (no restart needed).
 // Existing positions stay under normal management. "" = disabled.
 input string InpHaltFlagFile         = "tradingo_halt.flag";
@@ -949,6 +957,44 @@ bool TryExecuteWithEntryRange(const string channelFile, const string json,
   }
 
 //+------------------------------------------------------------------+
+// A re-entry inherits the SL of the original setup: if the market already ate
+// part of that stop distance, the trade opens with a fraction of the published
+// risk budget (in production a re-entry filled 3.75 away from the signal entry
+// with the SL only 4.75 away, and it was stopped two minutes later).
+bool ReentryDriftAllows(const string channelFile, const string json,
+                        const string symbol, const string direction,
+                        const double entry, const double sl)
+  {
+   if(InpReentryMaxDriftPctOfSl <= 0.0)
+      return true;
+   if(!JsonGetBool(json, "allow_stack"))
+      return true;
+   if(entry <= 0.0 || sl <= 0.0)
+      return true;
+   double slDistance = MathAbs(entry - sl);
+   if(slDistance <= 0.0)
+      return true;
+   g_sym.Name(symbol);
+   g_sym.RefreshRates();
+   double price = (direction == "BUY") ? g_sym.Ask() : g_sym.Bid();
+   if(price <= 0.0)
+      return true;
+   double driftPct = MathAbs(price - entry) / slDistance * 100.0;
+   if(driftPct <= InpReentryMaxDriftPctOfSl)
+      return true;
+   Print("[TradinGo] REENTRY_CANCELLED ", JsonGetString(json, "channel_id"), " ",
+         symbol, " ", direction,
+         " entry=", DoubleToString(entry, (int)g_sym.Digits()),
+         " price=", DoubleToString(price, (int)g_sym.Digits()),
+         " sl=", DoubleToString(sl, (int)g_sym.Digits()),
+         " drift=", DoubleToString(driftPct, 1), "% of SL distance",
+         " max=", DoubleToString(InpReentryMaxDriftPctOfSl, 1), "%");
+   AppendSignalStat(channelFile, json, symbol, direction, "CANCELLED_REENTRY_DRIFT",
+                    0, 0, entry, price, 0.0, 0, 0);
+   return false;
+  }
+
+//+------------------------------------------------------------------+
 bool OpenSplitTrades(const string symbol, const string direction,
                      const double lot, const double sl, const double &tps[],
                      const int magicBase,
@@ -1099,6 +1145,10 @@ bool HandleOpen(const string channelFile, const string json)
       Print("[TradinGo] OPEN stack — ", openCnt,
             " position(s) already open, opening additional trade(s)");
      }
+
+   if(!ReentryDriftAllows(channelFile, json, symbol, direction,
+                          JsonGetNumber(json, "entry"), sl))
+      return true;
 
    return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
                           channelFile, json, entryStatus, rangeLo, rangeHi, distPoints);
@@ -1657,6 +1707,7 @@ bool     g_bridgeStale = false;
 double   g_ddStart      = 0.0;  // static reference equity (never recomputed)
 double   g_ddPeakClosed = 0.0;  // peak of closed equity (balance), never decreases
 bool     g_ddHalted     = false;
+bool     g_ddRecoveryOn = false;
 bool     g_haltFlag     = false;
 datetime g_lastHaltCheck = 0;
 string   g_ddLotKey[];
@@ -1942,6 +1993,37 @@ double DdReservoir()
   }
 
 //+------------------------------------------------------------------+
+//| Between the block level and the close-all level the account is    |
+//| not dead: opens continue at InpDdRecoveryLot instead of stopping. |
+//+------------------------------------------------------------------+
+bool DdRecoveryActive()
+  {
+   if(InpDdRecoveryLot <= 0.0 || !DdGuardEnabled() || g_ddHalted)
+      return false;
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   return (equity <= DdLevelForConsumedPct(InpDdBlockNewAtPct));
+  }
+
+//+------------------------------------------------------------------+
+void DdLogRecoveryState(const bool active, const double equity)
+  {
+   if(active == g_ddRecoveryOn)
+      return;
+   g_ddRecoveryOn = active;
+   if(active)
+      Print("[TradinGo] DD_RECOVERY ON — equity=", DoubleToString(equity, 2),
+            " <= block_level=", DoubleToString(DdLevelForConsumedPct(InpDdBlockNewAtPct), 2),
+            ": opens continue at lot=", DoubleToString(InpDdRecoveryLot, 2),
+            " until equity recovers (close_all still at ",
+            DoubleToString(DdLevelForConsumedPct(InpDdCloseAtPct), 2), ")");
+   else
+      Print("[TradinGo] DD_RECOVERY OFF — equity=", DoubleToString(equity, 2),
+            " back above block_level=",
+            DoubleToString(DdLevelForConsumedPct(InpDdBlockNewAtPct), 2),
+            ": normal sizing restored");
+  }
+
+//+------------------------------------------------------------------+
 void DdSetHalted(const bool halted)
   {
    g_ddHalted = halted;
@@ -2161,6 +2243,8 @@ void DdLotCacheSet(const string key, const double lot)
 //+------------------------------------------------------------------+
 double DdSizedLot(const string symbol, const string channelKey, const double fallbackLot)
   {
+   if(DdRecoveryActive())
+      return MathMax(InpDdRecoveryLot, SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN));
    if(!InpDdSizingEnabled || !DdGuardEnabled())
       return fallbackLot;
    double per001 = DdFloatPer001(channelKey);
@@ -2224,7 +2308,8 @@ bool IsOpenBlocked(const string symbol)
      {
       double equity = AccountInfoDouble(ACCOUNT_EQUITY);
       double blockLevel = DdLevelForConsumedPct(InpDdBlockNewAtPct);
-      if(equity <= blockLevel)
+      DdLogRecoveryState(DdRecoveryActive(), equity);
+      if(equity <= blockLevel && !DdRecoveryActive())
         {
          Print("[TradinGo] OPEN blocked — equity=", DoubleToString(equity, 2),
                " <= block_level=", DoubleToString(blockLevel, 2),
@@ -3014,6 +3099,7 @@ int OnInit()
          " ignore_existing_on_init=", InpIgnoreExistingOnInit,
          " stack_opens=", InpStackOpensIfFlatBusy,
          " (requires JSON allow_stack)",
+         " reentry_max_drift_pct_of_sl=", DoubleToString(InpReentryMaxDriftPctOfSl, 1),
          " stop_buffer_pts=", InpStopBufferPoints);
    Print("[TradinGo] v", EA_VERSION, " lots/tags | ivan=", DoubleToString(InpLotIvan, 2),
          "/", InpTagIvan,
@@ -3033,6 +3119,7 @@ int OnInit()
    Print("[TradinGo] v", EA_VERSION, " prop guards | dd_max_pct=", DoubleToString(InpDdMaxPct, 2),
          " dd_close_at_pct=", DoubleToString(InpDdCloseAtPct, 1),
          " dd_block_new_at_pct=", DoubleToString(InpDdBlockNewAtPct, 1),
+         " dd_recovery_lot=", DoubleToString(InpDdRecoveryLot, 2),
          " halt_flag_file=", (StringLen(InpHaltFlagFile) > 0 ? InpHaltFlagFile : "<off>"),
          " kill_switch=", (g_haltFlag ? "ON" : "off"),
          " dd_sizing=", InpDdSizingEnabled,

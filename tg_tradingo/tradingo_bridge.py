@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.16 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.17 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -63,7 +63,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.16"
+BRIDGE_VERSION = "2.17"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -1253,6 +1253,17 @@ _REENTRY_NOT_YET = (
     r"\bENTRER(?:EMO|EMMO|O|EI|ANNO)\b"
 )
 
+# Desiderativi: il canale esprime un'intenzione, non un ordine ("Vorrei
+# rientrare sell ehhh" aveva aperto quattro posizioni a mercato). Valgono in
+# qualunque posizione della frase e battono i marcatori operativi.
+_REENTRY_WISH = (
+    r"\bVORREI\b|\bVORREMMO\b|\bVORREBBE\b|\bVOLEVO\b|\bVOLEVAMO\b|"
+    r"\bMI\s+PIACEREBBE\b|\bCI\s+PIACEREBBE\b|\bPIACEREBBE\b|"
+    r"\bSAREBBE\s+(?:BELLO|MEGLIO|IDEALE|DA)\b|\bMI\s+SA\s+CHE\b|"
+    r"\bPENSAVO\s+DI\b|\bPENSO\s+DI\b|\bSPEREREI\b|\bIDEA\s+(?:DI|E)\b|"
+    r"\bWOULD\s+LIKE\b|\bI\s+WANT\s+TO\b|\bTHINKING\s+OF\b"
+)
+
 
 def _is_deferred_reentry(upper: str) -> bool:
     """True per le frasi di attesa: preannunciano un rientro, non lo ordinano.
@@ -1263,6 +1274,8 @@ def _is_deferred_reentry(upper: str) -> bool:
     """
     folded = fold_accents(upper)
     if re.search(_REENTRY_NOT_YET, folded):
+        return True
+    if re.search(_REENTRY_WISH, folded):
         return True
     if re.search(_REENTRY_CONDITIONAL_ALWAYS, folded):
         return True

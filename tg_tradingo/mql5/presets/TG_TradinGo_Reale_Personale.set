@@ -49,6 +49,7 @@ InpClearSignalAfterProcess=true
 InpIgnoreExistingOnInit=true
 InpStackOpensIfFlatBusy=true
 InpStopBufferPoints=20
+InpReentryMaxDriftPctOfSl=40.0
 InpAutoBreakEvenOnTp1=true
 InpMagicOffset=0
 InpMaxFloatingLossUSD=0.0

@@ -16,13 +16,22 @@ I branch `cursor/*` e `devin/*` sono di lavoro: allinearli a `main` prima di rip
 
 | Componente | Versione | Dove è dichiarata |
 |---|---|---|
-| Bridge Python | **2.16** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
-| EA MT5 | **2.17** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
-| EA MT4 | **1.04** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.16) |
+| Bridge Python | **2.17** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
+| EA MT5 | **2.18** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
+| EA MT4 | **1.05** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.17) |
 
 Bridge ed EA MT5 si muovono insieme sul contratto JSON ([`EA_SPEC.md`](EA_SPEC.md)).
 L’EA MT4 è un consumer aggiuntivo dello stesso JSON (nessun secondo parser).
 Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT4_T4TRADE_SETUP.md).
+
+**2.17 / MT5 2.18 / MT4 1.05:** parser IVAN — i desiderativi ("vorrei rientrare",
+"volevo rientrare", "mi piacerebbe rientrare") non aprono più il rientro, e i consuntivi
+con verbo di chiusura ("E anche oggi chiudiamo in Profitto", "chiudiamo la settimana")
+non emettono più `CLOSE_ALL_SYMBOL` — i comandi espliciti (`CHIUDIAMO ORA`, `USCIAMO`,
+`chiudiamo tutto`) restano validi. Lato EA nuovo `InpReentryMaxDriftPctOfSl` (default 40):
+un rientro eredita lo SL del setup originale, quindi se il mercato si è già mangiato più
+di quella quota della distanza entry→SL il rientro viene scartato
+(`REENTRY_CANCELLED`, stat `CANCELLED_REENTRY_DRIFT`). 0 = guard disattivato.
 
 **MT5 2.17:** `InpDdRecoveryLot` — sotto la soglia `InpDdBlockNewAtPct` l'EA non blocca
 più tutte le aperture: se l'input è > 0 continua a eseguire i segnali a quel lotto

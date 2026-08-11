@@ -1259,6 +1259,47 @@ class TestIvanReentry:
         parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
         assert parser_ivan_vip(msg, CH_IVAN, bridge_state) is None, msg
 
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            # Caso reale CH_IVAN 11/08 13:20Z: aveva aperto 4 posizioni a
+            # mercato con lo SL ereditato a 4.75 di distanza, SL preso in 2'.
+            "Vorrei rientrare sell ehhh",
+            "Vorrei rientrare ora",
+            "Volevo rientrare da qui",
+            "Mi piacerebbe rientrare adesso",
+            "Pensavo di rientrare qui",
+            "Sarebbe bello rientrare da questi livelli",
+        ],
+    )
+    def test_desiderativi_non_aprono(self, bridge_state, msg):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        assert parser_ivan_vip(msg, CH_IVAN, bridge_state) is None, msg
+
+    @pytest.mark.parametrize(
+        "msg",
+        [
+            # Caso reale CH_IVAN 11/08 15:51Z: aveva chiuso il TP4 running.
+            "E anche oggi chiudiamo in Profitto 🏌🏼‍♂️🏌🏼‍♂️",
+            "Chiudiamo in profitto",
+            "Chiudiamo la settimana in bellezza",
+            "Anche oggi chiudo in verde",
+        ],
+    )
+    def test_consuntivi_non_chiudono(self, bridge_state, msg):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        assert parser_ivan_vip(msg, CH_IVAN, bridge_state) is None, msg
+
+    @pytest.mark.parametrize(
+        "msg",
+        ["CHIUDIAMO ORA!", "USCIAMO ORA", "Chiudiamo tutto", "Chiudiamo ora in profitto"],
+    )
+    def test_comandi_di_chiusura_restano_validi(self, bridge_state, msg):
+        parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)
+        sig = parser_ivan_vip(msg, CH_IVAN, bridge_state)
+        assert sig is not None, msg
+        assert sig["action"] == "CLOSE_ALL_SYMBOL", msg
+
     def test_chiudo_la_rientry_non_chiude_il_setup_base(self, bridge_state):
         """Caso reale CH_IVAN 06/08 15:50Z: aveva chiuso anche il segnale principale."""
         parser_ivan_vip(IVAN_SETUP, CH_IVAN, bridge_state)

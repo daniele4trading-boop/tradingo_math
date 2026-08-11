@@ -118,6 +118,35 @@ def make_signal_id(chat_id: int | str, message_id: int | str, event_type: str) -
 # ("Chiudiamo", "Esco") vale come comando e non come frase narrativa.
 CLOSE_STANDALONE_MAX_WORDS = 6
 
+# Consuntivi e riepiloghi: il verbo di chiusura racconta un risultato invece di
+# ordinare un'uscita ("E anche oggi chiudiamo in Profitto" aveva chiuso il TP4
+# ancora running). Registro additivo: nuove forme si AGGIUNGONO.
+_RECAP_OUTCOME = (
+    r"(?:PROFITT?\w*|PERDITA|GUADAGNO|BELLEZZA|POSITIVO|NEGATIVO|VERDE|ROSSO|"
+    r"GAIN|LOSS|GREEN|PROFIT)"
+)
+_RECAP_PERIOD = r"(?:SETTIMANA|GIORNATA|GIORNO|MESE|SESSIONE|ANNO|WEEK|DAY|MONTH)"
+CLOSE_RECAP_PATTERNS: tuple[str, ...] = (
+    # "E anche oggi chiudiamo in Profitto", "Ieri abbiamo chiuso in verde"
+    r"\b(?:ANCHE\s+)?(?:OGGI|IERI|STAMANE|STAMATTINA)\b.*\bCHIUD\w*",
+    r"\bCHIUD\w*\b.*\b(?:ANCHE\s+)?(?:OGGI|IERI)\b",
+    # "Chiudiamo in profitto" senza complemento operativo: è il consuntivo.
+    rf"\bCHIUD\w*\s+(?:COSI\s+)?IN\s+{_RECAP_OUTCOME}\b",
+    # "Chiudiamo la settimana", "chiudiamo il mese"
+    rf"\bCHIUD\w*\s+(?:(?:LA|IL|QUEST[AO])\s+)?{_RECAP_PERIOD}\b",
+    r"\bRECAP\b",
+    r"\bRIEPILOGO\b",
+)
+
+
+def matched_close_recap_pattern(upper: str) -> str | None:
+    """Prima forma di consuntivo trovata nel messaggio, altrimenti ``None``."""
+    folded = _fold_accents_upper(upper)
+    for pat in CLOSE_RECAP_PATTERNS:
+        if re.search(pat, folded):
+            return pat
+    return None
+
 
 def _fold_accents_upper(text: str) -> str:
     """PIÙ → PIU, METÀ → META: confronti insensibili agli accenti."""
@@ -283,6 +312,11 @@ def match_close_all_intent(upper: str) -> tuple[bool, float | None]:
     if not close_re.search(upper):
         words = re.findall(r"[A-Za-zÀ-ÿ]+", upper)
         if len(words) > CLOSE_STANDALONE_MAX_WORDS or not standalone_re.search(upper):
+            return False, None
+        # Il verbo da solo dentro un consuntivo non è un ordine: "E anche oggi
+        # chiudiamo in Profitto" racconta la giornata. Il comando esplicito
+        # (verbo + complemento, es. "CHIUDIAMO ORA") passa dal ramo sopra.
+        if matched_close_recap_pattern(upper):
             return False, None
 
     # Optional reference price: "a 5054", "@4060.5", "a 4060.5 -40 PIPS"

@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.17"
+#property version   "2.18"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.17"
+#define EA_VERSION "2.18"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -52,6 +52,11 @@ input int    InpStopBufferPoints   = 20;     // extra pts beyond stops/freeze le
 // Off-market guard: skip an open whose entry/SL/TP are farther than this % from
 // the current price (channel posting stale or wrong-scale levels). 0 = off.
 input double InpMaxLevelDeviationPct = 2.0;
+// Re-entry drift guard: an inherited re-entry keeps the SL of the original
+// setup, so if the market already moved toward that SL the risk/reward is no
+// longer the published one. Skip the re-entry when the drift from the signal
+// entry exceeds this % of the entry->SL distance. 0 = off.
+input double InpReentryMaxDriftPctOfSl = 40.0;
 // Seconds within which positions opened together count as one batch
 // (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
 input int    InpBatchWindowSec      = 120;
@@ -952,6 +957,44 @@ bool TryExecuteWithEntryRange(const string channelFile, const string json,
   }
 
 //+------------------------------------------------------------------+
+// A re-entry inherits the SL of the original setup: if the market already ate
+// part of that stop distance, the trade opens with a fraction of the published
+// risk budget (in production a re-entry filled 3.75 away from the signal entry
+// with the SL only 4.75 away, and it was stopped two minutes later).
+bool ReentryDriftAllows(const string channelFile, const string json,
+                        const string symbol, const string direction,
+                        const double entry, const double sl)
+  {
+   if(InpReentryMaxDriftPctOfSl <= 0.0)
+      return true;
+   if(!JsonGetBool(json, "allow_stack"))
+      return true;
+   if(entry <= 0.0 || sl <= 0.0)
+      return true;
+   double slDistance = MathAbs(entry - sl);
+   if(slDistance <= 0.0)
+      return true;
+   g_sym.Name(symbol);
+   g_sym.RefreshRates();
+   double price = (direction == "BUY") ? g_sym.Ask() : g_sym.Bid();
+   if(price <= 0.0)
+      return true;
+   double driftPct = MathAbs(price - entry) / slDistance * 100.0;
+   if(driftPct <= InpReentryMaxDriftPctOfSl)
+      return true;
+   Print("[TradinGo] REENTRY_CANCELLED ", JsonGetString(json, "channel_id"), " ",
+         symbol, " ", direction,
+         " entry=", DoubleToString(entry, (int)g_sym.Digits()),
+         " price=", DoubleToString(price, (int)g_sym.Digits()),
+         " sl=", DoubleToString(sl, (int)g_sym.Digits()),
+         " drift=", DoubleToString(driftPct, 1), "% of SL distance",
+         " max=", DoubleToString(InpReentryMaxDriftPctOfSl, 1), "%");
+   AppendSignalStat(channelFile, json, symbol, direction, "CANCELLED_REENTRY_DRIFT",
+                    0, 0, entry, price, 0.0, 0, 0);
+   return false;
+  }
+
+//+------------------------------------------------------------------+
 bool OpenSplitTrades(const string symbol, const string direction,
                      const double lot, const double sl, const double &tps[],
                      const int magicBase,
@@ -1102,6 +1145,10 @@ bool HandleOpen(const string channelFile, const string json)
       Print("[TradinGo] OPEN stack — ", openCnt,
             " position(s) already open, opening additional trade(s)");
      }
+
+   if(!ReentryDriftAllows(channelFile, json, symbol, direction,
+                          JsonGetNumber(json, "entry"), sl))
+      return true;
 
    return OpenSplitTrades(symbol, direction, lot, sl, tps, magicBase,
                           channelFile, json, entryStatus, rangeLo, rangeHi, distPoints);
@@ -3052,6 +3099,7 @@ int OnInit()
          " ignore_existing_on_init=", InpIgnoreExistingOnInit,
          " stack_opens=", InpStackOpensIfFlatBusy,
          " (requires JSON allow_stack)",
+         " reentry_max_drift_pct_of_sl=", DoubleToString(InpReentryMaxDriftPctOfSl, 1),
          " stop_buffer_pts=", InpStopBufferPoints);
    Print("[TradinGo] v", EA_VERSION, " lots/tags | ivan=", DoubleToString(InpLotIvan, 2),
          "/", InpTagIvan,

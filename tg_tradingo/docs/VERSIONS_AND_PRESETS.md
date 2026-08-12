@@ -16,13 +16,27 @@ I branch `cursor/*` e `devin/*` sono di lavoro: allinearli a `main` prima di rip
 
 | Componente | Versione | Dove è dichiarata |
 |---|---|---|
-| Bridge Python | **2.17** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
-| EA MT5 | **2.18** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
-| EA MT4 | **1.05** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.17) |
+| Bridge Python | **2.18** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
+| EA MT5 | **2.19** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
+| EA MT4 | **1.06** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.18) |
 
 Bridge ed EA MT5 si muovono insieme sul contratto JSON ([`EA_SPEC.md`](EA_SPEC.md)).
 L’EA MT4 è un consumer aggiuntivo dello stesso JSON (nessun secondo parser).
 Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT4_T4TRADE_SETUP.md).
+
+**2.18 / MT5 2.19 / MT4 1.06:** parser GOLD — il canale a volte ripubblica lo stesso
+setup tradotto ("Gold on sale now", "Oro a la venta ahora", "Precio actual del oro",
+"COMPRAR/VENTA XAUUSD") o scrive `Typ:` per `Tp:`, e decora i livelli con emoji
+("ZONA ➡️ 4425 - 4422"): tutte queste forme ora emettono il setup, con `entry_range`
+popolato anche dietro le label `ZONE/ZONA/PRECIO ACTUAL`. Quando il testo tradotto perde
+la direzione, questa si ricava dalla posizione di SL e TP rispetto alla zona. Parser IVAN —
+un'entry incoerente ma con SL e TP coerenti fra loro (`XAUUSD SELL 4326` con SL 4436 e TP
+4420→4408, entry vera ~4427) non fa più scartare il segnale: si apre a mercato
+(`entry=null`, log `ENTRY_TYPO_MARKET`). Lato EA nuovo `InpProtectExistingLevels`
+(default true): quando un setup nuovo arriva con posizioni aperte e `allow_stack=false`,
+l'EA ne modifica SL/TP ma non applica più un TP dal lato in perdita rispetto al prezzo di
+apertura della posizione (`MODIFY_SKIPPED_ADVERSE_TP`) né uno SL già superato dal mercato
+(`MODIFY_SKIPPED_CROSSED_SL`), che il 12/08 avevano chiuso un BUY GOLD a -86,77.
 
 **2.17 / MT5 2.18 / MT4 1.05:** parser IVAN — i desiderativi ("vorrei rientrare",
 "volevo rientrare", "mi piacerebbe rientrare") non aprono più il rientro, e i consuntivi

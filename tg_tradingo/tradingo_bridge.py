@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.17 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.18 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -63,7 +63,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.17"
+BRIDGE_VERSION = "2.18"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -516,17 +516,48 @@ def parser_zanni_vip(text: str, ch: dict) -> dict | None:
 GOLD_SELL_WORDS = (
     r"VENDIAMO", r"VENDETE", r"VENDERE", r"VENDIMO", r"VENDI", r"VENDO",
     r"VENDITA", r"SHORTIAMO", r"SHORTA", r"SHORT",
+    # spagnolo: il canale traduce lo stesso setup anche in ES
+    r"VENDEMOS", r"VENDAN", r"VENDER", r"VENDE", r"VENTA",
 )
 GOLD_BUY_WORDS = (
     r"COMPRIAMO", r"COMPRATE", r"COMPRARE", r"COMPRA", r"COMPRO",
     r"ACQUISTIAMO", r"ACQUISTATE", r"ACQUISTARE", r"ACQUISTA", r"ACQUISTO",
     r"LONGHIAMO", r"LONG",
+    # spagnolo
+    r"COMPRAMOS", r"COMPREN", r"COMPRAR", r"COMPRE",
 )
 GOLD_ASSET_WORDS = (r"ORO", r"GOLD", r"XAUUSD", r"XAU\/USD", r"XAU")
 GOLD_NOW_WORDS = (
     r"ADESSO", r"ORA", r"SUBITO", r"IMMEDIATAMENTE", r"A\s+MERCATO",
     r"SUL\s+MERCATO", r"NOW", r"MARKET",
+    # spagnolo
+    r"AHORA", r"YA", r"AL\s+MERCADO",
 )
+
+# Locuzioni che danno la direzione senza verbo, tipiche della traduzione
+# automatica del canale: "Gold on sale now" (oro in vendita ora), "Oro a la
+# venta ahora". Vanno canonicalizzate prima dei singoli verbi, altrimenti
+# "VENTA"/"SALE" verrebbero riscritti lasciando la preposizione a metà frase.
+GOLD_SELL_PHRASES = (
+    r"ON\s+SALE", r"FOR\s+SALE", r"IN\s+VENDITA", r"A\s+LA\s+VENTA",
+    r"EN\s+VENTA",
+)
+GOLD_BUY_PHRASES = (
+    r"FOR\s+PURCHASE", r"ON\s+PURCHASE", r"IN\s+ACQUISTO", r"A\s+LA\s+COMPRA",
+    r"EN\s+COMPRA",
+)
+
+# Etichette che il canale mette tra direzione e prezzi: "BUY XAUUSD ZONE 4425 -
+# 4422", "Sell gold @ 4407", "Precio actual del oro: 4414,8 - 4422".
+_GOLD_ENTRY_LABEL = (
+    r"(?:ZONE|ZONA|AREA|ENTRY|ENTRATA|ENTRADA|PRICE|PREZZO|PRECIO|ACTUAL|DEL|"
+    r"LIVELLO|LEVEL|NIVEL|RANGE)"
+)
+# Separatore tra la direzione e il primo prezzo: spazi, ':', '@' ed etichette.
+_GOLD_ENTRY_SEP = rf"(?:\s|:|@|{_GOLD_ENTRY_LABEL})*"
+
+# "Typ" è il typo ricorrente del canale per "Tp" (compare anche come "T.P.").
+_GOLD_TP_KW = r"(?:TP|TYP|T\.P\.?|TAKE\s*PROFIT)"
 
 _GOLD_PENDING_ORDER_RE = re.compile(
     r"\b(?:BUY|SELL)\s+(?:STOP|LIMIT)\b|\b(?:STOP|LIMIT)\s+(?:BUY|SELL)\b"
@@ -538,7 +569,14 @@ def _gold_canonicalize(upper: str) -> str:
 
     "VENDI oro ora 4063 - 4070 | SL:4078" → "SELL GOLD NOW 4063 - 4070 | SL:4078"
     """
-    out = upper
+    # Emoji e frecce decorative ("ZONA ➡️ 4425 - 4422", "TP1 ➡️ 4429") spezzano
+    # l'estrazione dei livelli: via i caratteri non ASCII, gli accenti restano
+    # leggibili come lettere base.
+    out = re.sub(r"[^\x00-\x7F]+", " ", fold_accents(upper))
+    for phrase in GOLD_SELL_PHRASES:
+        out = re.sub(rf"\b{phrase}\b", "SELL", out)
+    for phrase in GOLD_BUY_PHRASES:
+        out = re.sub(rf"\b{phrase}\b", "BUY", out)
     for word in GOLD_SELL_WORDS:
         out = re.sub(rf"\b{word}\b", "SELL", out)
     for word in GOLD_BUY_WORDS:
@@ -565,7 +603,9 @@ def _gold_has_full_setup(upper: str) -> bool:
         return False
     if not re.search(r"\d{3,}", upper):
         return False
-    return bool(re.search(r"\bSL\b", upper) or re.search(r"\bTP\d*\b", upper))
+    return bool(
+        re.search(r"\bSL\b", upper) or re.search(rf"\b{_GOLD_TP_KW}\d*\b", upper)
+    )
 
 
 def _gold_has_levels_setup(upper: str) -> bool:
@@ -580,7 +620,38 @@ def _gold_has_levels_setup(upper: str) -> bool:
         return False
     if not re.search(r"\bSL\b\s*[:\s]\s*[\d.,]+", upper):
         return False
-    return bool(re.search(r"\bTP\d*\b\s*[:.\s]\s*[\d.,]+", upper))
+    return bool(re.search(rf"\b{_GOLD_TP_KW}\d*\b\s*[:.\s]\s*[\d.,]+", upper))
+
+
+def _gold_levels_setup_no_direction(upper: str) -> bool:
+    """Prezzi + SL + TP ma nessuna direzione: la traduzione l'ha persa.
+
+    "Precio actual del oro: 4414,8 - 4422 SL: 4429 Tp: 4405" è l'edit ES di un
+    sell: la direzione si ricava dai livelli (SL da un lato, TP dall'altro).
+    """
+    if re.search(r"\b(?:BUY|SELL)\b", upper):
+        return False
+    if not re.search(r"\bSL\b\s*[:\s]\s*[\d.,]+", upper):
+        return False
+    return bool(re.search(rf"\b{_GOLD_TP_KW}\d*\b\s*[:.\s]\s*[\d.,]+", upper))
+
+
+def _gold_infer_direction(entry: float | None, entry_range: list[float] | None,
+                          sl: float | None, tps: list[float]) -> str | None:
+    """Direzione dai livelli: SL da un lato dell'entry, tutti i TP dall'altro."""
+    if sl is None or not tps or any(tp is None for tp in tps):
+        return None
+    if entry_range and len(entry_range) == 2:
+        lo, hi = min(entry_range), max(entry_range)
+    elif entry is not None:
+        lo = hi = entry
+    else:
+        return None
+    if sl < lo and all(tp > hi for tp in tps):
+        return "BUY"
+    if sl > hi and all(tp < lo for tp in tps):
+        return "SELL"
+    return None
 
 
 GOLD_REPOST_TTL_SEC = 1800.0
@@ -766,15 +837,20 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     # così una frase di commento non apre nulla.
     if not m_dir and _gold_has_levels_setup(upper):
         m_dir = re.search(r"\b(BUY|SELL)\b(?:\s+NOW)?", upper)
-    if not m_dir:
+    # Setup completo con la direzione persa dalla traduzione ("Precio actual del
+    # oro: … SL … Tp …"): si prosegue e la si ricava dai livelli più sotto.
+    infer_direction = m_dir is None and _gold_levels_setup_no_direction(upper)
+    if not m_dir and not infer_direction:
         return None
 
-    direction = m_dir.group(1) or (
-        m_dir.group(2) if m_dir.lastindex and m_dir.lastindex >= 2 else None
-    )
+    direction = None
+    if m_dir:
+        direction = m_dir.group(1) or (
+            m_dir.group(2) if m_dir.lastindex and m_dir.lastindex >= 2 else None
+        )
 
     # ── NAKED: messaggio senza numeri → OPEN_NOW a mercato ───────────────────
-    if not has_numbers:
+    if not has_numbers and direction:
         state.set_ch2_pending(direction)
         log.info(f"[CH2] OPEN_NOW (naked) {direction} XAUUSD — in attesa completamento")
         return {
@@ -791,18 +867,28 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
 
     # ── Segnale completo con numeri ───────────────────────────────────────────
     # Entry (possibile range)
+    # Il separatore tra direzione e prezzi ammette ":", "@" ed etichette di zona
+    # ("Buy gold now: 4319 - 4310", "BUY XAUUSD ZONE 4425 - 4422").
     entry_raw_m = re.search(
-        r"(?:BUY|SELL)\s+(?:GOLD|XAUUSD)(?:\s+NOW)?\s+([\d.,\s\-]+)|"
-        r"(?:GOLD|XAUUSD)\s+(?:BUY|SELL)(?:\s+NOW)?\s+([\d.,\s\-]+)",
+        rf"(?:BUY|SELL)\s+(?:GOLD|XAUUSD)(?:\s+NOW)?{_GOLD_ENTRY_SEP}([\d.,\s\-]+)|"
+        rf"(?:GOLD|XAUUSD)\s+(?:BUY|SELL)(?:\s+NOW)?{_GOLD_ENTRY_SEP}([\d.,\s\-]+)",
         upper
     )
     if not entry_raw_m:
         # forma senza asset: "BUY NOW 4063 - 4070" (canale mono-asset)
-        entry_raw_m = re.search(r"(?:BUY|SELL)(?:\s+NOW)?\s+([\d.,\s\-]+)", upper)
+        entry_raw_m = re.search(
+            rf"(?:BUY|SELL)(?:\s+NOW)?{_GOLD_ENTRY_SEP}([\d.,\s\-]+)", upper
+        )
     entry_range = None
     entry       = None
+    raw_entry = ""
     if entry_raw_m:
         raw_entry = next((g for g in entry_raw_m.groups() if g), "").strip()
+    elif infer_direction:
+        # Senza direzione i prezzi d'ingresso sono quelli che precedono SL/TP.
+        head = re.split(rf"\bSL\b|\b{_GOLD_TP_KW}\d*\b", upper)[0]
+        raw_entry = " ".join(re.findall(r"\d{3,}(?:[.,]\d+)?", head))
+    if raw_entry:
         parts     = re.findall(r"[\d.,]+", raw_entry)
         if len(parts) >= 2:
             v1 = pf(parts[0])
@@ -825,12 +911,19 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     if m_sl:
         sl = pf(m_sl.group(1))
 
-    # TP — gestisce "Tp: 4768*", "Tp. 4824", "TP1: 5195"
-    tp_matches = re.findall(r"TP\d*\s*[:.]\s*([\d.,]+)\*?", upper)
+    # TP — gestisce "Tp: 4768*", "Tp. 4824", "TP1: 5195" e il typo "Typ: 4370"
+    tp_matches = re.findall(rf"{_GOLD_TP_KW}\d*\s*[:.]\s*([\d.,]+)\*?", upper)
     if not tp_matches:
         # forma senza separatore: "TP 4080", "TP1 4069"
-        tp_matches = re.findall(r"\bTP\d*\s+([\d.,]+)\*?", upper)
+        tp_matches = re.findall(rf"\b{_GOLD_TP_KW}\d*\s+([\d.,]+)\*?", upper)
     tps        = [pf(v) for v in tp_matches]
+
+    if direction is None:
+        direction = _gold_infer_direction(entry, entry_range, sl, tps)
+        if direction is None:
+            log.debug(f"[CH2] Setup senza direzione ricavabile, ignorato: {raw[:60]}")
+            return None
+        log.info(f"[CH2] Direzione ricavata dai livelli: {direction}")
 
     signal = {
         "action":       "OPEN",
@@ -1322,6 +1415,42 @@ def _ivan_reentry_is_repeat(last: dict | None, entry: float | None) -> bool:
     if entry is None or prev is None:
         return True
     return abs(float(entry) - float(prev)) <= IVAN_REENTRY_DEDUP_MAX_GAP
+
+
+# Ampiezza massima della forchetta SL→TP più lontano di un setup IVAN leggibile.
+IVAN_TYPO_MAX_SPAN = 300.0
+
+
+def _ivan_entry_is_typo(direction: str, entry: float | None,
+                        sl: float | None, tps: list[float]) -> bool:
+    """Entry sbagliata di battitura ma SL e TP coerenti fra loro.
+
+    "XAUUSD SELL 4326 / TP 4420 4417 4412 4408 / SL @ 4436": l'entry non regge
+    (i TP sono sopra), mentre SL e TP delimitano una forchetta operativa
+    plausibile intorno a 4427. In quel caso l'entry va ignorata, non il segnale.
+    """
+    if entry is None or sl is None or not tps:
+        return False
+    if direction not in ("BUY", "SELL"):
+        return False
+    if any(tp is None or tp <= 0 for tp in tps):
+        return False
+    # Entry coerente: nessun typo da correggere.
+    if direction == "BUY" and sl < entry and all(tp > entry for tp in tps):
+        return False
+    if direction == "SELL" and sl > entry and all(tp < entry for tp in tps):
+        return False
+    # SL e TP devono stare su lati opposti, nel verso della direzione.
+    if direction == "BUY" and not all(tp > sl for tp in tps):
+        return False
+    if direction == "SELL" and not all(tp < sl for tp in tps):
+        return False
+    lo = min([sl] + list(tps))
+    hi = max([sl] + list(tps))
+    if hi - lo > IVAN_TYPO_MAX_SPAN:
+        return False
+    # Il typo è tale se l'entry cade fuori dalla forchetta SL→TP.
+    return not (lo <= entry <= hi)
 
 
 def _entry_interval(trade: dict) -> tuple[float, float] | None:
@@ -1910,6 +2039,16 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     if not tps or sl is None:
         log.debug(f"[IVAN] Segnale incompleto: {raw[:60]}")
         return None
+
+    # Entry con typo di battitura ("XAUUSD SELL 4326" invece di 4427): se SL e
+    # TP sono coerenti fra loro il setup è leggibile, si apre a mercato invece
+    # di scartare il segnale. La distanza dal prezzo la valuta poi l'EA.
+    if _ivan_entry_is_typo(direction, entry, sl, tps):
+        log.warning(
+            f"[IVAN] Entry {entry} incoerente con SL {sl} e TP {tps}: "
+            f"apertura a mercato (ENTRY_TYPO_MARKET)"
+        )
+        entry = None
 
     # Accent-insensitive: METÀ SIZE, Meta size, MEZZA SIZE, typo META SAZIE
     folded = fold_accents(upper)

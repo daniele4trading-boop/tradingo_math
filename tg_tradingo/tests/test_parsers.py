@@ -1835,3 +1835,151 @@ class TestForexWidening:
             CH3,
             bridge_state,
         ) is None
+
+
+class TestGoldTranslatedFormsFrom0812:
+    """Setup GOLD del 12/08 finiti UNPARSED: traduzioni EN/ES, "Typ", zone."""
+
+    def test_gold_on_sale_now_is_a_sell_setup(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Gold on sale now: 4407 - 4417 SL: 4422 Typ: 4399 Typ: 4370",
+            CH2,
+            bridge_state,
+        )
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry_range"] == [4407.0, 4417.0]
+        assert sig["tp_levels"] == [4399.0, 4370.0]
+        assert sig["sl"] == 4422.0
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_spanish_a_la_venta_ahora(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Oro a la venta ahora: 4408 - 4417 SL: 4422 Tp: 4399.8 Tp: 4370",
+            CH2,
+            bridge_state,
+        )
+        assert sig["direction"] == "SELL"
+        assert sig["entry_range"] == [4408.0, 4417.0]
+        assert sig["tp_levels"] == [4399.8, 4370.0]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_direction_inferred_when_translation_drops_it(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Precio actual del oro: 4414,8 - 4422 SL: 4429 Tp: 4405 Tp: 4380",
+            CH2,
+            bridge_state,
+        )
+        assert sig["direction"] == "SELL"
+        assert sig["entry_range"] == [4414.8, 4422.0]
+        assert sig["sl"] == 4429.0
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_zone_label_does_not_hide_the_entry_range(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "BUY XAUUSD ZONE 4425 - 4422 SL: 4418 TP1 4429 TP2 4439",
+            CH2,
+            bridge_state,
+        )
+        assert sig["direction"] == "BUY"
+        assert sig["entry_range"] == [4422.0, 4425.0]
+        assert sig["tp_levels"] == [4429.0, 4439.0]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_colon_after_now_does_not_hide_the_entry_range(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Buy gold now: 4419 - 4410 SL: 4401 Typ: 4428 Tp: 4450",
+            CH2,
+            bridge_state,
+        )
+        assert sig["direction"] == "BUY"
+        assert sig["entry_range"] == [4410.0, 4419.0]
+        assert sig["tp_levels"] == [4428.0, 4450.0]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_typ_does_not_break_existing_english_form(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Gold sell now: 4407 - 4417 SL: 4422 Typ: 4399 Tp: 4370",
+            CH2,
+            bridge_state,
+        )
+        assert sig["tp_levels"] == [4399.0, 4370.0]
+        assert sig["entry_range"] == [4407.0, 4417.0]
+
+    def test_comment_without_levels_still_ignored(self, bridge_state: BridgeState):
+        assert parser_sala_gold(
+            "Il prezzo attuale dell'oro è interessante, restiamo a guardare",
+            CH2,
+            bridge_state,
+        ) is None
+
+    def test_naked_open_still_works(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("Gold sell now", CH2, bridge_state)
+        assert sig["action"] == "OPEN_NOW"
+        assert sig["direction"] == "SELL"
+
+    def test_decorative_arrows_do_not_hide_levels(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "\U0001f48e COMPRAR XAUUSD \U0001f947\n\nZONA \u27a1\ufe0f 4425 - 4422\n\n"
+            "SL: 4418\nTP1 \u27a1\ufe0f 4429\nTP2 \u27a1\ufe0f 4439",
+            CH2,
+            bridge_state,
+        )
+        assert sig["direction"] == "BUY"
+        assert sig["entry_range"] == [4422.0, 4425.0]
+        assert sig["tp_levels"] == [4429.0, 4439.0]
+        assert sig["sl"] == 4418.0
+
+    def test_translated_edit_of_an_emitted_setup_is_not_reemitted(self, bridge_state: BridgeState):
+        first = parser_sala_gold(
+            "BUY XAUUSD \U0001f947\n\nZONE 4425 - 4422\n\nSL: 4418\nTP1 4429\nTP2 4439",
+            CH2,
+            bridge_state,
+        )
+        assert first["action"] == "OPEN"
+        # Stesso setup ripubblicato tradotto e con le frecce: nessun secondo OPEN.
+        assert parser_sala_gold(
+            "\U0001f48e COMPRAR XAUUSD \U0001f947\n\nZONA \u27a1\ufe0f 4425 - 4422\n\n"
+            "SL: 4418\nTP1 \u27a1\ufe0f 4429\nTP2 \u27a1\ufe0f 4439",
+            CH2,
+            bridge_state,
+        ) is None
+
+
+class TestIvanEntryTypoFrom0812:
+    """L'entry sbagliata di battitura non deve costare il segnale."""
+
+    TEXT_TYPO = "XAUUSD SELL 4326\n\nTP 1 4420\nTP 2 4417\nTP 3 4412\nTP 4 4408\n\nSL @ 4436"
+    TEXT_OK = "XAUUSD SELL 4427\n\nTP 1 4420\nTP 2 4417\nTP 3 4412\nTP 4 4408\n\nSL @ 4436"
+
+    def test_typo_entry_becomes_market_open(self, bridge_state: BridgeState):
+        sig = parser_ivan_vip(self.TEXT_TYPO, CH_IVAN, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry"] is None
+        assert sig["tp_levels"] == [4420.0, 4417.0, 4412.0, 4408.0]
+        assert sig["sl"] == 4436.0
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_coherent_entry_is_preserved(self, bridge_state: BridgeState):
+        sig = parser_ivan_vip(self.TEXT_OK, CH_IVAN, bridge_state)
+        assert sig["entry"] == 4427.0
+
+    def test_out_of_scale_setup_is_not_rescued(self, bridge_state: BridgeState):
+        # SL e TP su lati opposti ma forchetta assurda: resta scartato dal
+        # validatore, non si apre a mercato su livelli inservibili.
+        sig = parser_ivan_vip(
+            "XAUUSD BUY 4400\n\nTP 1 5000\n\nSL @ 4000",
+            CH_IVAN,
+            bridge_state,
+        )
+        assert sig is not None
+        assert sig["entry"] == 4400.0

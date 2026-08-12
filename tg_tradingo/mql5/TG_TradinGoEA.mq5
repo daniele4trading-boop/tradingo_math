@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.18"
+#property version   "2.19"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.18"
+#define EA_VERSION "2.19"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -57,6 +57,10 @@ input double InpMaxLevelDeviationPct = 2.0;
 // longer the published one. Skip the re-entry when the drift from the signal
 // entry exceeds this % of the entry->SL distance. 0 = off.
 input double InpReentryMaxDriftPctOfSl = 40.0;
+// A new setup arriving while positions are open (allow_stack=false) modifies
+// their SL/TP: never apply a TP that is on the losing side of the position's
+// open price, nor an SL already crossed by the market (would liquidate at once).
+input bool   InpProtectExistingLevels = true;
 // Seconds within which positions opened together count as one batch
 // (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
 input int    InpBatchWindowSec      = 120;
@@ -1022,6 +1026,49 @@ bool OpenSplitTrades(const string symbol, const string direction,
   }
 
 //+------------------------------------------------------------------+
+// Drop levels that would hurt an already open position: a TP behind its open
+// price (the position would be "taken profit" at a loss, as happened when a new
+// GOLD setup with lower TPs reached a BUY opened higher) and an SL the market
+// has already crossed (instant liquidation). 0 = leave the current level.
+void FilterAdverseLevels(const ulong ticket, double &sl, double &tp)
+  {
+   if(!g_pos.SelectByTicket(ticket))
+      return;
+   string symbol = g_pos.Symbol();
+   bool isBuy = (g_pos.PositionType() == POSITION_TYPE_BUY);
+   double openPrice = g_pos.PriceOpen();
+   double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+
+   if(tp > 0.0)
+     {
+      bool tpProfitable = isBuy ? (tp > openPrice) : (tp < openPrice);
+      if(!tpProfitable)
+        {
+         Print("[TradinGo] MODIFY_SKIPPED_ADVERSE_TP ticket=", ticket,
+               " tp=", DoubleToString(tp, (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)),
+               " open=", DoubleToString(openPrice, (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)),
+               " side=", (isBuy ? "BUY" : "SELL"), " — TP kept unchanged");
+         tp = 0.0;
+        }
+     }
+
+   if(sl > 0.0)
+     {
+      bool slCrossed = isBuy ? (sl >= bid) : (sl <= ask);
+      if(slCrossed)
+        {
+         Print("[TradinGo] MODIFY_SKIPPED_CROSSED_SL ticket=", ticket,
+               " sl=", DoubleToString(sl, (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)),
+               " bid=", DoubleToString(bid, (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)),
+               " ask=", DoubleToString(ask, (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)),
+               " side=", (isBuy ? "BUY" : "SELL"), " — SL kept unchanged");
+         sl = 0.0;
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
 bool ModifyExistingTrades(const string symbol, const int magicBase,
                           const double sl, const double &tps[])
   {
@@ -1036,7 +1083,11 @@ bool ModifyExistingTrades(const string symbol, const int magicBase,
       if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
          continue;
       double tp = (idx < ArraySize(tps)) ? tps[idx] : 0.0;
-      if(ModifyPositionSLTP(g_pos.Ticket(), sl, tp))
+      double useSl = sl;
+      double useTp = tp;
+      if(InpProtectExistingLevels)
+         FilterAdverseLevels(g_pos.Ticket(), useSl, useTp);
+      if(ModifyPositionSLTP(g_pos.Ticket(), useSl, useTp))
          any = true;
       idx++;
      }
@@ -3100,6 +3151,7 @@ int OnInit()
          " stack_opens=", InpStackOpensIfFlatBusy,
          " (requires JSON allow_stack)",
          " reentry_max_drift_pct_of_sl=", DoubleToString(InpReentryMaxDriftPctOfSl, 1),
+         " protect_existing_levels=", InpProtectExistingLevels,
          " stop_buffer_pts=", InpStopBufferPoints);
    Print("[TradinGo] v", EA_VERSION, " lots/tags | ivan=", DoubleToString(InpLotIvan, 2),
          "/", InpTagIvan,

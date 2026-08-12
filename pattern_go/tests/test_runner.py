@@ -212,6 +212,40 @@ def test_only_closed_bars_reach_the_engine(tmp_path):
     assert bars == [closed]
 
 
+def test_startup_retries_while_the_broker_is_unavailable(tmp_path):
+    """Un 503 del gateway non deve far uscire il processo."""
+    client = FakeClient()
+    failures = {"left": 2}
+
+    def flaky_login():
+        if failures["left"]:
+            failures["left"] -= 1
+            raise RuntimeError("503 no healthy upstream")
+        client.logins += 1
+        return "tok"
+
+    client.login = flaky_login
+    runner = Runner(make_config(tmp_path, poll_seconds=0.0), client)
+    runner.startup_with_retry()
+    assert client.logins == 1
+    retries = [r for r in _journal(tmp_path) if r["event"] == "STARTUP_RETRY"]
+    assert len(retries) == 2
+    assert "503" in retries[0]["error"]
+
+
+def test_startup_retry_stops_on_shutdown_signal(tmp_path):
+    client = FakeClient()
+    runner = Runner(make_config(tmp_path, poll_seconds=0.0), client)
+
+    def failing_login():
+        runner._stop = True
+        raise RuntimeError("503 no healthy upstream")
+
+    client.login = failing_login
+    runner.startup_with_retry()  # non deve restare in loop
+    assert [r for r in _journal(tmp_path) if r["event"] == "STARTUP_RETRY"]
+
+
 def _fill_and_open(runner, client, price=3974.5):
     """Porta il runner ad avere un trade aperto sorvegliato, come in produzione."""
     engine = runner.engines["M5"]

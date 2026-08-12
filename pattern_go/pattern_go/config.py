@@ -46,6 +46,7 @@ class RuntimeConfig:
     warmup_bars: int = 400
     kill_switch_file: str = "KILL_SWITCH"
     kill_switch_closes_positions: bool = True
+    startup_retry_max_seconds: float = 300.0
     resume_open_trades: bool = True
     close_unknown_positions: bool = True
     log_dir: str = "logs"

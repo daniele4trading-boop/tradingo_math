@@ -55,6 +55,10 @@ Kill switch: crea il file indicato in `runtime.kill_switch_file` (default `KILL_
 Con `kill_switch_closes_positions: true` chiude tutto e blocca il ciclo; per riprendere,
 cancella il file.
 
+Broker non raggiungibile all'avvio (tipico il `503 no healthy upstream` del gateway a
+mercato chiuso): il servizio non esce, riprova lo startup con backoff fino a
+`runtime.startup_retry_max_seconds` e scrive `STARTUP_RETRY` nel journal.
+
 Riavvii: SL e TP vivono nel processo, non sul broker, quindi allo startup il runner
 ricarica dallo stato l'eventuale trade aperto e ne riprende la sorveglianza
 (`TRADE_RESUMED`). Una posizione sul simbolo che nessun engine riconosce viene segnalata

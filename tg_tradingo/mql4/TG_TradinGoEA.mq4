@@ -6,11 +6,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.05"
+#property version   "1.06"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.05"
+#define EA_VERSION "1.06"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -50,6 +50,10 @@ input double InpMaxLevelDeviationPct     = 2.0;
 // longer the published one. Skip the re-entry when the drift from the signal
 // entry exceeds this % of the entry->SL distance. 0 = off.
 input double InpReentryMaxDriftPctOfSl   = 40.0;
+// A new setup arriving while positions are open (allow_stack=false) modifies
+// their SL/TP: never apply a TP on the losing side of the position's open price,
+// nor an SL already crossed by the market (would liquidate at once).
+input bool   InpProtectExistingLevels    = true;
 // Seconds within which orders opened together count as one batch
 // (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
 input int    InpBatchWindowSec           = 120;
@@ -942,6 +946,50 @@ bool OpenSplitTrades(const string symbol, const string direction,
   }
 
 //+------------------------------------------------------------------+
+// Drop levels that would hurt an already open order: a TP behind its open price
+// (the order would be "taken profit" at a loss) and an SL the market has already
+// crossed (instant liquidation). 0 = leave the current level. Requires the order
+// to be selected by the caller.
+void FilterAdverseLevels(const int ticket, double &sl, double &tp)
+  {
+   if(!OrderSelect(ticket, SELECT_BY_TICKET))
+      return;
+   string symbol = OrderSymbol();
+   bool isBuy = (OrderType() == OP_BUY);
+   double openPrice = OrderOpenPrice();
+   double bid = MarketInfo(symbol, MODE_BID);
+   double ask = MarketInfo(symbol, MODE_ASK);
+   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+
+   if(tp > 0.0)
+     {
+      bool tpProfitable = isBuy ? (tp > openPrice) : (tp < openPrice);
+      if(!tpProfitable)
+        {
+         Print("[TradinGo] MODIFY_SKIPPED_ADVERSE_TP ticket=", ticket,
+               " tp=", DoubleToString(tp, digits),
+               " open=", DoubleToString(openPrice, digits),
+               " side=", (isBuy ? "BUY" : "SELL"), " - TP kept unchanged");
+         tp = 0.0;
+        }
+     }
+
+   if(sl > 0.0)
+     {
+      bool slCrossed = isBuy ? (sl >= bid) : (sl <= ask);
+      if(slCrossed)
+        {
+         Print("[TradinGo] MODIFY_SKIPPED_CROSSED_SL ticket=", ticket,
+               " sl=", DoubleToString(sl, digits),
+               " bid=", DoubleToString(bid, digits),
+               " ask=", DoubleToString(ask, digits),
+               " side=", (isBuy ? "BUY" : "SELL"), " - SL kept unchanged");
+         sl = 0.0;
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
 bool ModifyExistingTrades(const string symbol, const int magicBase,
                           const double sl, const double &tps[])
   {
@@ -958,7 +1006,12 @@ bool ModifyExistingTrades(const string symbol, const int magicBase,
       if(!IsOurOrderMagic(OrderMagicNumber(), magicBase, MAX_TRADES_PER_SIGNAL))
          continue;
       double tp = (idx < ArraySize(tps)) ? tps[idx] : 0.0;
-      if(ModifyOrderSLTP(OrderTicket(), sl, tp))
+      int ticket = OrderTicket();
+      double useSl = sl;
+      double useTp = tp;
+      if(InpProtectExistingLevels)
+         FilterAdverseLevels(ticket, useSl, useTp);
+      if(ModifyOrderSLTP(ticket, useSl, useTp))
          any = true;
       idx++;
      }

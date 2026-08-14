@@ -180,9 +180,23 @@ class Runner:
             engine.pending = None
             self.journal.write("WARMUP", strategy=name, bars=len(bars))
 
+    def _symbol_positions(self) -> list[dict[str, Any]]:
+        """Solo le posizioni sul simbolo gestito.
+
+        Sul conto possono esserci posizioni manuali su altri strumenti: confonderle con
+        le proprie fa registrare prezzi d'ingresso e PnL di un altro mercato, e rischia
+        di farle chiudere in uscita.
+        """
+        symbol = self.cfg.broker.symbol
+        return [
+            p
+            for p in self.client.positions()
+            if str(p.get("symbol") or p.get("instrument")) == symbol
+        ]
+
     def reconcile(self) -> None:
         """Riallinea lo stato interno con posizioni e ordini realmente sul broker."""
-        positions = self.client.positions()
+        positions = self._symbol_positions()
         orders = self.client.orders()
         self._known_position_ids = {str(p.get("positionCode") or p.get("id")) for p in positions}
         self.journal.write(
@@ -203,9 +217,7 @@ class Runner:
         if not self.cfg.runtime.resume_open_trades:
             return
         positions = {
-            str(p.get("positionCode") or p.get("id")): p
-            for p in self.client.positions()
-            if str(p.get("symbol") or p.get("instrument")) == self.cfg.broker.symbol
+            str(p.get("positionCode") or p.get("id")): p for p in self._symbol_positions()
         }
         for name, engine in self.engines.items():
             saved = self._saved_trades.get(name)
@@ -491,11 +503,21 @@ class Runner:
         order = engine.pending
         if order is None:
             return
-        for position in self.client.positions():
+        for position in self._symbol_positions():
             pid = str(position.get("positionCode") or position.get("id"))
             if pid in self._known_position_ids:
                 continue
             fill_price = float(position.get("openPrice") or position.get("price") or 0.0)
+            if fill_price and abs(fill_price - order.trigger_price) > 0.05 * order.trigger_price:
+                # un prezzo lontanissimo dal trigger non e' un fill di questo ordine
+                self.journal.write(
+                    "FILL_PRICE_REJECTED",
+                    strategy=order.strategy,
+                    position_id=pid,
+                    fill_price=fill_price,
+                    trigger_price=order.trigger_price,
+                )
+                fill_price = 0.0
             self._known_position_ids.add(pid)
             trade = engine.on_fill(fill_price or order.trigger_price, position_id=pid)
             self.journal.trade_opened(trade, order, position_id=pid)
@@ -504,11 +526,10 @@ class Runner:
 
     def _lookup_position_code(self, trade) -> str | None:
         """Recupera il codice posizione dal broker quando non e' noto (es. riavvio)."""
-        for position in self.client.positions():
-            if str(position.get("symbol") or position.get("instrument")) == self.cfg.broker.symbol:
-                code = position.get("positionCode") or position.get("id")
-                if code is not None:
-                    return str(code)
+        for position in self._symbol_positions():
+            code = position.get("positionCode") or position.get("id")
+            if code is not None:
+                return str(code)
         return None
 
     def _close_attempts(self, trade) -> int:

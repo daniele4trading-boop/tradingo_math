@@ -64,7 +64,7 @@ class FakeClient:
         return {"orderId": 99}
 
     def fill(self, price):
-        self._positions = [{"positionCode": "P1", "openPrice": price}]
+        self._positions = [{"positionCode": "P1", "symbol": "XAU", "openPrice": price}]
 
 
 def make_config(tmp_path, bars_timeframe="M5", **runtime):
@@ -117,7 +117,7 @@ def test_disabled_strategies_are_not_instantiated(tmp_path):
 
 def test_startup_reconciles_and_logs_the_floor(tmp_path):
     client = FakeClient()
-    client._positions = [{"positionCode": "EXISTING", "openPrice": 4000.0}]
+    client._positions = [{"positionCode": "EXISTING", "symbol": "XAU", "openPrice": 4000.0}]
     runner = Runner(make_config(tmp_path), client)
     runner.startup()
     assert client.logins == 1
@@ -131,8 +131,8 @@ def test_startup_reconciles_and_logs_the_floor(tmp_path):
 
 def test_reconcile_does_not_duplicate_a_position_after_restart(tmp_path):
     client = FakeClient()
-    client._positions = [{"positionCode": "P1", "openPrice": 4000.0}]
-    cfg = make_config(tmp_path)
+    client._positions = [{"positionCode": "P1", "symbol": "XAU", "openPrice": 4000.0}]
+    cfg = make_config(tmp_path, close_unknown_positions=False)
     Runner(cfg, client).startup()
     state_path = tmp_path / "state.json"
     state = json.loads(state_path.read_text()) if state_path.exists() else None
@@ -210,6 +210,41 @@ def test_only_closed_bars_reach_the_engine(tmp_path):
     runner = Runner(make_config(tmp_path), client)
     bars = runner._closed_bars("M5", datetime.now(UTC) - timedelta(hours=2))
     assert bars == [closed]
+
+
+def test_a_position_on_another_symbol_is_not_taken_as_a_fill(tmp_path):
+    """Una posizione manuale su un altro strumento non e' un fill di Pattern GO."""
+    client = FakeClient()
+    runner = Runner(make_config(tmp_path), client)
+    runner.startup()
+    engine = runner.engines["M5"]
+    quote = client.quote("XAU")
+    for bar in short_setup_bars():
+        runner._execute(engine, engine.on_bar(bar, 0.1, lambda _sl: (1.0, "ok")), quote)
+    assert engine.pending is not None
+    client._positions = [
+        {"positionCode": "BTC1", "symbol": "BTCUSD", "openPrice": 62859.6, "side": "SELL"}
+    ]
+    runner._detect_fill(engine)
+    assert engine.trade is None
+    assert engine.pending is not None
+
+
+def test_absurd_fill_price_falls_back_to_the_trigger(tmp_path):
+    client = FakeClient()
+    runner = Runner(make_config(tmp_path), client)
+    runner.startup()
+    engine = runner.engines["M5"]
+    quote = client.quote("XAU")
+    for bar in short_setup_bars():
+        runner._execute(engine, engine.on_bar(bar, 0.1, lambda _sl: (1.0, "ok")), quote)
+    trigger = engine.pending.trigger_price
+    client._positions = [
+        {"positionCode": "P9", "symbol": "XAU", "openPrice": 62859.6, "side": "SELL"}
+    ]
+    runner._detect_fill(engine)
+    assert engine.trade.entry_price == trigger
+    assert [r for r in _journal(tmp_path) if r["event"] == "FILL_PRICE_REJECTED"]
 
 
 def test_startup_retries_while_the_broker_is_unavailable(tmp_path):

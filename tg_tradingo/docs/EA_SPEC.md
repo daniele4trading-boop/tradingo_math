@@ -69,6 +69,7 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 | `is_be` | bool | UPDATE_SL verso break-even |
 | `be_price` | number | BREAK_EVEN_PRICE |
 | `tp_index` | int | CHECK_AND_CLOSE_TP |
+| `levels_only` | bool | UPDATE_OPEN con zona inutilizzabile: applica SL/TP alle posizioni aperte, non aprire |
 
 ### Regole lotti (bridge `apply_lot_rules`)
 
@@ -144,6 +145,8 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 | `InpIgnoreExistingOnInit` | true | All'attach salta+azzera JSON già presenti (anti-replay) |
 | `InpStackOpensIfFlatBusy` | true | Se true, onora `allow_stack` nel JSON; senza flag → modifica SL/TP |
 | `InpStopBufferPoints` | 20 | Buffer extra oltre stops/freeze level (anti 10016 su BE) |
+| `InpNakedFallbackSlPoints` | 1200 | SL provvisorio sull'`OPEN_NOW` naked (12 $ sull'oro); `0`=apri senza SL |
+| `InpBeNeverWorseThanEntry` | true | Salta il BE se SL=entry non è applicabile, invece di clampare oltre l'entry |
 | `InpMaxFloatingLossUSD` | 150 | Kill-switch floating (valuta **conto**); `0`=off |
 | `InpKillSwitchCooldownMin` | 60 | Cooldown OPEN dopo kill-switch |
 | `InpMaxHoldingMinutes` | 0 | Max holding; `0`=off (suggerito 90) |
@@ -161,6 +164,8 @@ Se `InpAutoBreakEvenOnTp1=true`, quando una posizione con magic `magic_base+1` c
 **v2.09:** stack solo se JSON `allow_stack:true`; `InpStopBufferPoints` + retry BE su 10016.  
 **v2.10:** kill-switch floating/time, single-instance lock, heartbeat gate, trade journal + MAE/MFE, equity, market context, `signal_id` in commento.  
 **v2.11:** lotti/tag per canale (`InpLotIvan`/`InpLotStark`, `InpTagIvan=IT`, `InpTagStark=AS`); preset Moneta `mql5/presets/TG_TradinGo_Moneta_10k.set` — vedi [`MONETA_FUNDED_SETUP.md`](MONETA_FUNDED_SETUP.md).
+
+**v2.20 / MT4 1.07:** `InpNakedFallbackSlPoints` protegge subito il naked open (`NAKED_FALLBACK_SL`), `InpBeNeverWorseThanEntry` evita che un break-even non applicabile diventi uno stop avverso (`BE_SKIPPED_WORSE_THAN_ENTRY`), `levels_only` fa modificare senza aprire.
 
 `close_reason`: `TP` · `SL` · `BE_SL` · `CLOSE_ALL_SIGNAL` · `CLOSE_HALF` · `KILLSWITCH_FLOATING` · `KILLSWITCH_TIME` · `MANUAL` · `UNKNOWN` — vedi [`JOURNAL_SPEC.md`](JOURNAL_SPEC.md).
 

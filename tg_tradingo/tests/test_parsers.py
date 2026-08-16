@@ -18,6 +18,7 @@ from bridge_core import (
     validate_signal,
     apply_lot_rules,
     match_close_all_intent,
+    salvage_incoherent_entry_range,
     make_signal_id,
 )
 from tradingo_bridge import (
@@ -1983,3 +1984,108 @@ class TestIvanEntryTypoFrom0812:
         )
         assert sig is not None
         assert sig["entry"] == 4400.0
+
+
+class TestGoldNakedAndSalvageFrom0814:
+    """Sequenza reale CH_GOLD del 14/08: naked, update col typo nella zona, edit."""
+
+    def test_go_sell_now_gold_is_a_naked_open(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("Go sell now gold !", CH2, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "OPEN_NOW"
+        assert sig["direction"] == "SELL"
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_go_buy_now_gold_is_a_naked_open(self, bridge_state: BridgeState):
+        sig = parser_sala_gold("Go buy now gold", CH2, bridge_state)
+        assert sig["action"] == "OPEN_NOW"
+        assert sig["direction"] == "BUY"
+
+    def test_naked_edit_with_price_only_keeps_waiting(self, bridge_state: BridgeState):
+        assert parser_sala_gold("Go sell now gold !", CH2, bridge_state)["action"] == "OPEN_NOW"
+        # L'edit aggiunge solo il prezzo: nessun livello da applicare.
+        assert parser_sala_gold("Go sell now gold ! 4357", CH2, bridge_state) is None
+        assert bridge_state.ch2_pending_open
+        # Il setup completo che arriva dopo resta un UPDATE_OPEN.
+        sig = parser_sala_gold(
+            "Gold sell now 4342 - 4350 | SL: 4357 | Tp. 4332 | Tp: 4300",
+            CH2,
+            bridge_state,
+        )
+        assert sig["action"] == "UPDATE_OPEN"
+        assert sig["sl"] == 4357.0
+
+    def test_go_sell_now_gold_with_levels_is_a_setup(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Go sell now gold 4342 - 4350 SL: 4357 Tp: 4332", CH2, bridge_state
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry_range"] == [4342.0, 4350.0]
+        assert sig["sl"] == 4357.0
+
+    def test_french_setup_is_parsed(self, bridge_state: BridgeState):
+        sig = parser_sala_gold(
+            "Or en vente 4342 - 4350 SL: 4357 Tp: 4332 Tp: 4300", CH2, bridge_state
+        )
+        assert sig["direction"] == "SELL"
+        assert sig["entry_range"] == [4342.0, 4350.0]
+        assert sig["tp_levels"] == [4332.0, 4300.0]
+
+    def test_french_status_message_opens_nothing(self, bridge_state: BridgeState):
+        assert parser_sala_gold("Tjrs en vente ici", CH2, bridge_state) is None
+        assert parser_sala_gold("Still on sale here", CH2, bridge_state) is None
+
+    def test_typo_zone_is_salvaged_as_levels_only(self, bridge_state: BridgeState):
+        parser_sala_gold("Gold sell now", CH2, bridge_state)
+        # Zona con 4450 invece di 4350: SL 4357 cadrebbe dentro la zona.
+        sig = parser_sala_gold(
+            "Gold sell now 4342  - 4450 | SL: 4357 | Tp. 4332 | Tp: 4300",
+            CH2,
+            bridge_state,
+        )
+        assert sig["action"] == "UPDATE_OPEN"
+        assert sig["entry_range"] == [4342.0, 4450.0]
+        ok, reason = validate_signal(sig)
+        assert not ok
+        salvaged = salvage_incoherent_entry_range(sig, reason)
+        assert salvaged
+        assert sig["entry_range"] is None
+        assert sig["levels_only"] is True
+        assert sig["sl"] == 4357.0
+        assert sig["tp_levels"] == [4332.0, 4300.0]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_salvage_refuses_incoherent_levels(self):
+        # SL e TP dallo stesso lato: i livelli non sono usabili, resta scartato.
+        sig = {
+            "action": "UPDATE_OPEN",
+            "direction": "SELL",
+            "symbol": "XAUUSD",
+            "entry_range": [4342.0, 4450.0],
+            "sl": 4357.0,
+            "tp_levels": [4360.0],
+            "magic_base": 12000,
+        }
+        ok, reason = validate_signal(sig)
+        assert not ok
+        assert salvage_incoherent_entry_range(sig, reason) is None
+        assert sig["entry_range"] == [4342.0, 4450.0]
+        assert "levels_only" not in sig
+
+    def test_salvage_only_for_update_open(self):
+        sig = {
+            "action": "OPEN",
+            "direction": "SELL",
+            "symbol": "XAUUSD",
+            "entry_range": [4342.0, 4450.0],
+            "sl": 4357.0,
+            "tp_levels": [4332.0, 4300.0],
+            "magic_base": 12000,
+        }
+        ok, reason = validate_signal(sig)
+        assert not ok
+        # Un OPEN senza zona utilizzabile non deve aprire a mercato.
+        assert salvage_incoherent_entry_range(sig, reason) is None

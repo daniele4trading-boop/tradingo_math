@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.19 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.20 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -36,6 +36,7 @@ from bridge_core import (
     match_close_all_intent,
     match_close_price_followup,
     match_move_sl_price,
+    match_move_tp_price,
     match_partial_close_intent,
     match_selective_close_intent,
     salvage_incoherent_entry_range,
@@ -64,7 +65,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.19"
+BRIDGE_VERSION = "2.20"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -1472,6 +1473,54 @@ def _ivan_entry_is_typo(direction: str, entry: float | None,
     return not (lo <= entry <= hi)
 
 
+def _ivan_update_tp_signal(tp_move: tuple[float, int | None], ch: dict, raw: str,
+                           state: BridgeState) -> dict | None:
+    """``UPDATE_TP`` da "Spostiamo TP 4 a 4376", ``None`` se il prezzo non regge.
+
+    Il TP nominato vale solo per la posizione di quello split (``tp_index``);
+    senza indice il livello vale per tutte le posizioni del segnale. Un prezzo
+    dal lato sbagliato rispetto all'entry chiuderebbe la posizione a mercato,
+    quindi non viene emesso.
+    """
+    new_tp, tp_index = tp_move
+    last = state.ivan_last_trade or {}
+    direction = last.get("direction")
+    entry = last.get("entry")
+    new_tp = _expand_short_price(new_tp, entry)
+    if new_tp < 100:
+        return None
+    if direction in ("BUY", "SELL") and entry is not None:
+        profitable = new_tp > entry if direction == "BUY" else new_tp < entry
+        if not profitable:
+            log.warning(
+                f"[IVAN] TP {new_tp} dal lato sbagliato per {direction} "
+                f"entry {entry}, ignorato: {raw[:60]}"
+            )
+            return None
+    tps = list(last.get("tp_levels") or [])
+    if tp_index is not None and 1 <= tp_index <= len(tps):
+        tps[tp_index - 1] = new_tp
+    elif tp_index is None:
+        tps = [new_tp]
+    if last:
+        state.set_ivan_last_trade({**last, "tp_levels": tps})
+    log.info(
+        f"[IVAN] UPDATE_TP XAUUSD {direction} TP={new_tp} "
+        f"tp_index={tp_index if tp_index is not None else 'all'}"
+    )
+    signal = {
+        "action":      "UPDATE_TP",
+        "direction":   direction,
+        "symbol":      "XAUUSD",
+        "new_tp":      new_tp,
+        "magic_base":  ch["magic_base"],
+        "raw_message": raw,
+    }
+    if tp_index is not None:
+        signal["tp_index"] = tp_index
+    return signal
+
+
 def _entry_interval(trade: dict) -> tuple[float, float] | None:
     er = trade.get("entry_range")
     if er and len(er) >= 2:
@@ -1923,8 +1972,11 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         re.search(r"(?:XAUUSD|GOLD)\s+(?:BUY|SELL)\s+\d", upper)
         and re.search(r"\bSL\b", upper)
     )
+    # "Spostiamo il take profit 4 a 4376" è un ordine, non il commento che
+    # l'ignore "TAKE PROFIT" intercetta: la forma con verbo esplicito passa.
+    has_move_tp_cmd = match_move_tp_price(upper, require_verb=True) is not None
     pat = matched_ignore_pattern("ivan_vip", upper)
-    if pat and not has_setup:
+    if pat and not has_setup and not has_move_tp_cmd:
         log.debug(f"[IVAN] Ignorato ({pat}): {raw[:60]}")
         return None
 
@@ -2023,6 +2075,16 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
                 "magic_base":  ch["magic_base"],
                 "raw_message": raw,
             }
+
+    # "Spostiamo TP 4 a 4376": il canale allunga o accorcia un singolo target.
+    # Senza questo ramo il messaggio era UNPARSED (17/08) e la posizione restava
+    # sul TP pubblicato nel setup.
+    if not has_setup:
+        tp_move = match_move_tp_price(upper)
+        if tp_move is not None:
+            signal = _ivan_update_tp_signal(tp_move, ch, raw, state)
+            if signal is not None:
+                return signal
 
     close_sig = _maybe_close_from_text(upper, ch, raw, state)
     if close_sig:

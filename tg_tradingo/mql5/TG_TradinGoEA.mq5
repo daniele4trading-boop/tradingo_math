@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.20"
+#property version   "2.21"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.20"
+#define EA_VERSION "2.21"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -1375,6 +1375,9 @@ bool HandleUpdateTp(const string json)
       if(ArraySize(tps) > 0)
          newTp = tps[0];
      }
+   // "Spostiamo TP 4 a 4376": il livello vale solo per lo split di quel TP.
+   // Senza tp_index il TP vale per tutte le posizioni del canale (ORO, FOREX).
+   int tpIndex = JsonGetInt(json, "tp_index");
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       if(!g_pos.SelectByIndex(i))
@@ -1383,7 +1386,19 @@ bool HandleUpdateTp(const string json)
          continue;
       if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
          continue;
-      ModifyPositionSLTP(g_pos.Ticket(), 0, newTp);
+      if(tpIndex > 0 && (ulong)g_pos.Magic() != TradeMagic(magicBase, tpIndex))
+         continue;
+      double useSl = 0.0;
+      double useTp = newTp;
+      if(InpProtectExistingLevels)
+         FilterAdverseLevels(g_pos.Ticket(), useSl, useTp);
+      if(useTp <= 0.0)
+         continue;
+      ulong ticket = g_pos.Ticket();
+      if(ModifyPositionSLTP(ticket, 0, useTp))
+         Print("[TradinGo] UPDATE_TP ticket=", ticket,
+               " tp=", DoubleToString(useTp, (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS)),
+               " tp_index=", (tpIndex > 0 ? IntegerToString(tpIndex) : "all"));
      }
    return true;
   }

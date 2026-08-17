@@ -431,6 +431,74 @@ def match_move_sl_price(upper: str) -> float | None:
     return val if val >= 100 else None
 
 
+# Spostamento di un take profit a un prezzo esplicito: "spostiamo TP 4 a 4376",
+# "portiamo il tp2 a 4390", "move tp 3 to 4400". Registro additivo.
+_MOVE_TP_VERB = (
+    r"(?:SPOST(?:IAMO|O|ATE|A|ARE)|MUOV(?:IAMO|O|ETE|I|ERE)|"
+    r"PORT(?:IAMO|O|ATE|A|ARE)|ALZ(?:IAMO|O|ATE|A|ARE)|"
+    r"ABBASS(?:IAMO|O|ATE|A|ARE)|METT(?:IAMO|O|ETE|I|ERE)|SETT(?:IAMO|O|ATE|A)|"
+    r"MODIFIC(?:HIAMO|O|ATE|A|ARE)|CAMBI(?:AMO|O|ATE|A|ARE)|"
+    r"AGGIORN(?:IAMO|O|ATE|A|ARE)|ALLUNGH(?:IAMO|ERE)|ALLARGH(?:IAMO|IAMOLO)|"
+    r"AVVICIN(?:IAMO|O|ATE|A|ARE)|ANTICIP(?:IAMO|O|ATE|A|ARE)|"
+    r"MOVE|MOVING|SET|CHANGE|UPDATE|EXTEND)"
+)
+# "TYP" è il typo ricorrente del canale GOLD per "TP" ed è già trattato altrove.
+_MOVE_TP_NOUN = r"(?:TAKE\s*PROFIT|TAKEPROFIT|TPS|TP|TYP|TARGET|OBIETTIVO)"
+MOVE_TP_STANDALONE_MAX_WORDS = 8
+MAX_TP_INDEX = 5
+
+
+def match_move_tp_price(upper: str, *,
+                        require_verb: bool = False) -> tuple[float, int | None] | None:
+    """``(prezzo, indice_tp)`` di un ordine "sposta il TP n a X", altrimenti ``None``.
+
+    ``indice_tp`` è ``None`` quando il messaggio non nomina un TP specifico
+    ("portiamo i TP a 4390"): in quel caso il livello vale per tutte le
+    posizioni del segnale. Il 17/08 ``Spostiamo TP 4 a 4376`` finiva UNPARSED e
+    il TP4 restava sul livello originale.
+
+    Il prezzo è restituito come scritto: l'espansione delle abbreviazioni
+    ("TP 4 a 76") e la coerenza con la direzione spettano al parser del canale,
+    che conosce l'ultimo setup.
+
+    Con ``require_verb`` il comando vale solo nella forma esplicita ("spostiamo
+    il TP 4 a 4376"): serve a distinguerlo da un commento nei canali che
+    ignorano le frasi con "take profit".
+    """
+    if not upper or not upper.strip():
+        return None
+    text = _fold_accents_upper(upper)
+    m = re.search(
+        rf"{_MOVE_TP_VERB}\s+(?:LO\s+|IL\s+|LA\s+|GLI\s+|I\s+|THE\s+)?"
+        rf"{_MOVE_TP_NOUN}\s*(?:(\d)\b\s*)?(?:A|AL|SU|SUI|IN|TO|@)?\s*"
+        r"(\d{2,5}(?:[.,]\d+)?)\b",
+        text,
+    )
+    if not m:
+        if require_verb:
+            return None
+        # "TP 4 a 4376" senza verbo: solo in messaggi corti, così un commento
+        # con numeri ("TP 3 HIT +100 PIPS") non muove i livelli.
+        words = re.findall(r"[A-Za-z\u00c0-\u00ff]+", text)
+        if len(words) > MOVE_TP_STANDALONE_MAX_WORDS:
+            return None
+        m = re.search(
+            rf"(?:^|[^\w]){_MOVE_TP_NOUN}\s*(?:(\d)\b\s*)?(?:A|AL|SU|IN|TO|@)\s*"
+            r"(\d{2,5}(?:[.,]\d+)?)\b",
+            text,
+        )
+        if not m:
+            return None
+    try:
+        val = float(m.group(2).replace(",", "."))
+    except ValueError:
+        return None
+    index = int(m.group(1)) if m.group(1) else None
+    if index is not None and not 1 <= index <= MAX_TP_INDEX:
+        return None
+    return val, index
+
+
 def match_close_price_followup(upper: str) -> float | None:
     """Price-only follow-up after a close signal without price ('A 4060.5')."""
     m = re.match(r"^(?:A|@)?\s*(\d{3,5}(?:[.,]\d+)?)\s*$", upper.strip())

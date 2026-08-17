@@ -16,13 +16,24 @@ I branch `cursor/*` e `devin/*` sono di lavoro: allinearli a `main` prima di rip
 
 | Componente | Versione | Dove è dichiarata |
 |---|---|---|
-| Bridge Python | **2.19** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
-| EA MT5 | **2.20** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
-| EA MT4 | **1.07** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.19) |
+| Bridge Python | **2.20** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
+| EA MT5 | **2.21** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
+| EA MT4 | **1.08** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.20) |
 
 Bridge ed EA MT5 si muovono insieme sul contratto JSON ([`EA_SPEC.md`](EA_SPEC.md)).
 L’EA MT4 è un consumer aggiuntivo dello stesso JSON (nessun secondo parser).
 Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT4_T4TRADE_SETUP.md).
+
+**2.20 / MT5 2.21 / MT4 1.08:** spostamento di un singolo take profit su IVAN, dal
+messaggio del 17/08 `Spostiamo TP 4 a 4376` (era `UNPARSED`, il TP4 restava a 4375).
+Bridge: il parser IVAN emette `UPDATE_TP` con `tp_index` per le forme con verbo
+("spostiamo / portiamo / modifichiamo il TP n a X", `Sposto TP4 a 4376`, `Move TP 3 to
+4383`) e senza indice quando il messaggio parla dei TP al plurale; il prezzo abbreviato
+("TP 4 a 76") viene espanso sull'ultimo entry e un prezzo dal lato sbagliato rispetto
+all'entry non viene emesso. EA MT5/MT4: `UPDATE_TP` con `tp_index` modifica **solo** la
+posizione di quello split (`magic_base + tp_index`) invece di riscrivere il TP su tutte,
+e passa dal filtro `InpProtectExistingLevels` (un TP avverso non chiude più la posizione
+a mercato). Senza `tp_index` il comportamento resta quello di prima (ORO, FOREX).
 
 **2.19 / MT5 2.20 / MT4 1.07:** flusso naked GOLD e break-even, dalla sequenza del 14/08
 (naked alle 07:42, zona col typo `4342 - 4450` alle 07:45 rifiutata, edit corretto alle 10:06:

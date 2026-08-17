@@ -6,11 +6,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.07"
+#property version   "1.08"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.07"
+#define EA_VERSION "1.08"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -1293,6 +1293,9 @@ bool HandleUpdateTp(const string json)
       if(ArraySize(tps) > 0)
          newTp = tps[0];
      }
+   // "Spostiamo TP 4 a 4376": il livello vale solo per lo split di quel TP.
+   // Senza tp_index il TP vale per tutte le posizioni del canale (ORO, FOREX).
+   int tpIndex = JsonGetInt(json, "tp_index");
    for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
@@ -1303,7 +1306,19 @@ bool HandleUpdateTp(const string json)
          continue;
       if(!IsOurOrderMagic(OrderMagicNumber(), magicBase, MAX_TRADES_PER_SIGNAL))
          continue;
-      ModifyOrderSLTP(OrderTicket(), 0, newTp);
+      if(tpIndex > 0 && OrderMagicNumber() != TradeMagic(magicBase, tpIndex))
+         continue;
+      int ticket = OrderTicket();
+      double useSl = 0.0;
+      double useTp = newTp;
+      if(InpProtectExistingLevels)
+         FilterAdverseLevels(ticket, useSl, useTp);
+      if(useTp <= 0.0)
+         continue;
+      if(ModifyOrderSLTP(ticket, 0, useTp))
+         Print("[TradinGo] UPDATE_TP ticket=", ticket,
+               " tp=", DoubleToString(useTp, (int)MarketInfo(symbol, MODE_DIGITS)),
+               " tp_index=", (tpIndex > 0 ? IntegerToString(tpIndex) : "all"));
      }
    return true;
   }

@@ -68,7 +68,7 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 | `new_tp` / `new_sl` | number | UPDATE_TP / UPDATE_SL |
 | `is_be` | bool | UPDATE_SL verso break-even |
 | `be_price` | number | BREAK_EVEN_PRICE |
-| `tp_index` | int | CHECK_AND_CLOSE_TP |
+| `tp_index` | int | CHECK_AND_CLOSE_TP; UPDATE_TP (solo lo split `magic_base + tp_index`) |
 | `levels_only` | bool | UPDATE_OPEN con zona inutilizzabile: applica SL/TP alle posizioni aperte, non aprire |
 
 ### Regole lotti (bridge `apply_lot_rules`)
@@ -91,7 +91,7 @@ Il bridge sovrascrive l'intero file ad ogni evento (scrittura atomica tmp + repl
 | `OPEN` | Apri `trades` posizioni (magic_base+1..N), SL/TP da JSON |
 | `OPEN_NOW` | Apri `trades` ordini a mercato **senza** SL/TP. Da bridge 2.15: per canali con `tp_levels_expected>=2` (GOLD) `trades`/`fixed_lot` sono già quelli multi-TP (`N × fixed_lot_per_tp`), così all’UPDATE_OPEN successivo non serve chiudere/riaprire |
 | `UPDATE_OPEN` | Per ogni slot magic `base+1..N`: se la posizione esiste → modifica SL/TP; se manca → apre solo quella (`EXECUTED_UPDATE_FILL`). Posizioni extra oltre N (rientri) ricevono solo il nuovo SL, TP invariato. **Non** chiude e riapre più il set |
-| `UPDATE_TP` | Modifica TP posizioni del canale/simbolo |
+| `UPDATE_TP` | Modifica TP posizioni del canale/simbolo; con `tp_index` solo la posizione di quello split (IVAN: "spostiamo TP 4 a 4376"). Un TP dal lato sbagliato rispetto all'entry viene ignorato se `InpProtectExistingLevels` |
 | `UPDATE_SL` | Modifica SL (FOREX, ORO, GOLD, IVAN: "spostiamo lo stop a 4255") |
 | `CHECK_AND_CLOSE` | Chiudi se esiste posizione symbol+direction |
 | `CLOSE_ALL_SYMBOL` | Chiudi tutte le posizioni del simbolo (magic del canale) |

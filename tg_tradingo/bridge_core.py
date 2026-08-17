@@ -1057,6 +1057,45 @@ def validate_signal(signal: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def salvage_incoherent_entry_range(signal: dict, reason: str) -> str | None:
+    """Rescue the SL/TP of an UPDATE_OPEN whose entry zone has a typo.
+
+    On 2026-08-14 CH_GOLD posted ``Gold sell now 4342 - 4450`` (4350 mistyped)
+    three minutes after the naked open: the payload was rejected as a whole and
+    the tickets stayed without SL for 24 minutes, until the channel edited the
+    message. The zone is only needed to decide whether to open; when SL and TP
+    are coherent with each other they can still protect positions already open,
+    so drop the zone and mark the payload ``levels_only`` (the EA then modifies
+    but never opens). Returns a log line when salvaged, None otherwise.
+    """
+    if signal.get("action") != "UPDATE_OPEN":
+        return None
+    if "range" not in reason:
+        return None
+    entry_range = signal.get("entry_range")
+    if entry_range is None:
+        return None
+    direction = signal.get("direction")
+    if direction not in ("BUY", "SELL"):
+        return None
+    sl = signal.get("sl")
+    tps = signal.get("tp_levels") or []
+    if not sl or sl <= 0 or not tps or any((tp or 0) <= 0 for tp in tps):
+        return None
+    # SL on one side, every TP on the other: the levels alone are usable.
+    if direction == "BUY" and min(tps) <= sl:
+        return None
+    if direction == "SELL" and max(tps) >= sl:
+        return None
+
+    signal["entry_range"] = None
+    signal["levels_only"] = True
+    return (
+        f"entry_range {entry_range} scartato ({reason}): applico solo "
+        f"SL {sl} e TP {tps} alle posizioni aperte (levels_only)"
+    )
+
+
 def apply_lot_rules(signal: dict, ch: dict) -> dict:
     """Fixed lots: 0.20 with one TP, 0.10 per TP when multiple levels are set.
 

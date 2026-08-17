@@ -16,13 +16,29 @@ I branch `cursor/*` e `devin/*` sono di lavoro: allinearli a `main` prima di rip
 
 | Componente | Versione | Dove è dichiarata |
 |---|---|---|
-| Bridge Python | **2.18** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
-| EA MT5 | **2.19** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
-| EA MT4 | **1.06** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.18) |
+| Bridge Python | **2.19** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
+| EA MT5 | **2.20** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
+| EA MT4 | **1.07** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.19) |
 
 Bridge ed EA MT5 si muovono insieme sul contratto JSON ([`EA_SPEC.md`](EA_SPEC.md)).
 L’EA MT4 è un consumer aggiuntivo dello stesso JSON (nessun secondo parser).
 Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT4_T4TRADE_SETUP.md).
+
+**2.19 / MT5 2.20 / MT4 1.07:** flusso naked GOLD e break-even, dalla sequenza del 14/08
+(naked alle 07:42, zona col typo `4342 - 4450` alle 07:45 rifiutata, edit corretto alle 10:06:
+2 posizioni senza SL per 24 minuti, poi chiuse a -234 da un comando di break-even).
+EA: `InpNakedFallbackSlPoints` (default 1200 pt = 12 $ sull'oro) mette subito uno SL
+provvisorio sull'apertura `OPEN_NOW`, sostituito dai livelli veri all'`UPDATE_OPEN`
+(log `NAKED_FALLBACK_SL`); `InpBeNeverWorseThanEntry` (default true) fa saltare il
+break-even quando SL=entry non è applicabile, invece di "clampare" lo stop oltre l'entry
+e liquidare la posizione (log `BE_SKIPPED_WORSE_THAN_ENTRY`). Bridge: un `UPDATE_OPEN`
+con zona inutilizzabile ma SL/TP coerenti fra loro non viene più scartato in blocco —
+la zona viene rimossa e il payload marcato `levels_only: true`, così l'EA applica SL/TP
+alle posizioni aperte e non apre nulla se non ce ne sono. Parser GOLD: riconosciute le
+forme con `NOW` prima dell'asset ("Go sell now gold !") e le locuzioni francesi
+(`en vente`, `a vendre`, `en achat`); l'edit che aggiunge al naked solo il prezzo
+("Go sell now gold ! 4357", "4259 sell gold now") non emette più un `UPDATE_OPEN` senza
+livelli — il naked resta in attesa del setup completo.
 
 **2.18 / MT5 2.19 / MT4 1.06:** parser GOLD — il canale a volte ripubblica lo stesso
 setup tradotto ("Gold on sale now", "Oro a la venta ahora", "Precio actual del oro",

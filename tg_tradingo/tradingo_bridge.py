@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.18 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.19 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -38,6 +38,7 @@ from bridge_core import (
     match_move_sl_price,
     match_partial_close_intent,
     match_selective_close_intent,
+    salvage_incoherent_entry_range,
     validate_signal,
 )
 from bridge_journal import append_bridge_event, write_heartbeat
@@ -63,7 +64,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.18"
+BRIDGE_VERSION = "2.19"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -136,6 +137,11 @@ def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
     apply_lot_rules(signal, channel_cfg)
 
     ok, reason = validate_signal(signal)
+    if not ok:
+        salvaged = salvage_incoherent_entry_range(signal, reason)
+        if salvaged:
+            log.warning(f"[{channel_cfg['id']}] {salvaged}")
+            ok, reason = validate_signal(signal)
     if not ok:
         log.error(f"[{channel_cfg['id']}] Segnale non valido: {reason} | action={signal.get('action')}")
         return False
@@ -541,10 +547,13 @@ GOLD_NOW_WORDS = (
 GOLD_SELL_PHRASES = (
     r"ON\s+SALE", r"FOR\s+SALE", r"IN\s+VENDITA", r"A\s+LA\s+VENTA",
     r"EN\s+VENTA",
+    # FR: il canale scrive anche "Tjrs en vente ici", "Or a vendre 4342-4350".
+    r"EN\s+VENTE", r"A\s+VENDRE",
 )
 GOLD_BUY_PHRASES = (
     r"FOR\s+PURCHASE", r"ON\s+PURCHASE", r"IN\s+ACQUISTO", r"A\s+LA\s+COMPRA",
     r"EN\s+COMPRA",
+    r"A\s+L\s*ACHAT", r"EN\s+ACHAT",
 )
 
 # Etichette che il canale mette tra direzione e prezzi: "BUY XAUUSD ZONE 4425 -
@@ -558,6 +567,9 @@ _GOLD_ENTRY_SEP = rf"(?:\s|:|@|{_GOLD_ENTRY_LABEL})*"
 
 # "Typ" è il typo ricorrente del canale per "Tp" (compare anche come "T.P.").
 _GOLD_TP_KW = r"(?:TP|TYP|T\.P\.?|TAKE\s*PROFIT)"
+
+# "Go sell now gold !": il canale mette NOW anche prima dell'asset.
+_GOLD_NOW_OPT = r"(?:\s+NOW)?"
 
 _GOLD_PENDING_ORDER_RE = re.compile(
     r"\b(?:BUY|SELL)\s+(?:STOP|LIMIT)\b|\b(?:STOP|LIMIT)\s+(?:BUY|SELL)\b"
@@ -598,7 +610,8 @@ def _gold_canonicalize(upper: str) -> str:
 def _gold_has_full_setup(upper: str) -> bool:
     """Direzione + prezzo + almeno un livello: il messaggio è un setup, non rumore."""
     if not re.search(
-        r"(?:BUY|SELL)\s+(?:GOLD|XAUUSD)|(?:GOLD|XAUUSD)\s+(?:BUY|SELL)", upper
+        rf"(?:BUY|SELL){_GOLD_NOW_OPT}\s+(?:GOLD|XAUUSD)|(?:GOLD|XAUUSD)\s+(?:BUY|SELL)",
+        upper,
     ):
         return False
     if not re.search(r"\d{3,}", upper):
@@ -828,7 +841,7 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
 
     # ── Determina direzione ───────────────────────────────────────────────────
     m_dir = re.search(
-        r"(BUY|SELL)\s+(?:GOLD|XAUUSD)(?:\s+NOW)?|"
+        rf"(BUY|SELL){_GOLD_NOW_OPT}\s+(?:GOLD|XAUUSD)(?:\s+NOW)?|"
         r"(?:GOLD|XAUUSD)\s+(BUY|SELL)(?:\s+NOW)?",
         upper
     )
@@ -870,7 +883,7 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     # Il separatore tra direzione e prezzi ammette ":", "@" ed etichette di zona
     # ("Buy gold now: 4319 - 4310", "BUY XAUUSD ZONE 4425 - 4422").
     entry_raw_m = re.search(
-        rf"(?:BUY|SELL)\s+(?:GOLD|XAUUSD)(?:\s+NOW)?{_GOLD_ENTRY_SEP}([\d.,\s\-]+)|"
+        rf"(?:BUY|SELL){_GOLD_NOW_OPT}\s+(?:GOLD|XAUUSD)(?:\s+NOW)?{_GOLD_ENTRY_SEP}([\d.,\s\-]+)|"
         rf"(?:GOLD|XAUUSD)\s+(?:BUY|SELL)(?:\s+NOW)?{_GOLD_ENTRY_SEP}([\d.,\s\-]+)",
         upper
     )
@@ -939,6 +952,12 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
 
     # Determina se e' completamento di un OPEN_NOW o nuovo segnale standalone
     if state.ch2_pending_open and state.ch2_pending_dir == direction:
+        # L'edit del naked che aggiunge solo il prezzo ("Go sell now gold ! 4357")
+        # non porta livelli: un UPDATE_OPEN senza SL/TP non protegge nulla e su un
+        # terminale senza posizioni aprirebbe allo scoperto. Resta in attesa.
+        if sl is None and not tps:
+            log.info(f"[CH2] Completamento senza SL/TP, resto in attesa: {raw[:60]}")
+            return None
         signal["action"] = "UPDATE_OPEN"
         state.clear_ch2_pending()
         log.info(f"[CH2] UPDATE_OPEN {direction} range={entry_range} TP={tps} SL={sl}")

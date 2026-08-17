@@ -6,11 +6,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.06"
+#property version   "1.07"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.06"
+#define EA_VERSION "1.07"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -54,6 +54,14 @@ input double InpReentryMaxDriftPctOfSl   = 40.0;
 // their SL/TP: never apply a TP on the losing side of the position's open price,
 // nor an SL already crossed by the market (would liquidate at once).
 input bool   InpProtectExistingLevels    = true;
+// Naked open ("Gold sell now"): the levels arrive in a later message, so the
+// orders would stay unprotected until then. Open with a provisional SL this
+// many points away, replaced by the real one on UPDATE_OPEN. 0 = no SL.
+input int    InpNakedFallbackSlPoints    = 1200;
+// Break-even commands must never make an order worse: when SL=entry is not
+// legal (order in loss, or entry closer than the broker stops level) keep the
+// current SL instead of clamping past the entry.
+input bool   InpBeNeverWorseThanEntry    = true;
 // Seconds within which orders opened together count as one batch
 // (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
 input int    InpBatchWindowSec           = 120;
@@ -467,6 +475,16 @@ bool ApplyBreakEvenSL(const int ticket)
       double nsl = be;
       double ntp = OrderTakeProfit();
       AdjustStopsToMinDistance(symbol, direction, nsl, ntp, buffers[attempt]);
+      double tol = MarketInfo(symbol, MODE_POINT);
+      bool worseThanEntry = (direction == "BUY") ? (nsl < be - tol) : (nsl > be + tol);
+      if(InpBeNeverWorseThanEntry && worseThanEntry)
+        {
+         Print("[TradinGo] BE_SKIPPED_WORSE_THAN_ENTRY ticket=", ticket,
+               " entry=", DoubleToString(be, (int)MarketInfo(symbol, MODE_DIGITS)),
+               " would_be_sl=", DoubleToString(nsl, (int)MarketInfo(symbol, MODE_DIGITS)),
+               " (", direction, ") — SL kept unchanged");
+         return false;
+        }
       if(ModifyOrderSLTP(ticket, nsl, 0, buffers[attempt]))
          return true;
      }
@@ -1019,6 +1037,30 @@ bool ModifyExistingTrades(const string symbol, const int magicBase,
   }
 
 //+------------------------------------------------------------------+
+// Provisional SL for a naked open, so no order ever sits unprotected while
+// waiting for the message with the real levels. 0 when the guard is off.
+double NakedFallbackSl(const string symbol, const string direction)
+  {
+   if(InpNakedFallbackSlPoints <= 0)
+      return 0.0;
+   double point = MarketInfo(symbol, MODE_POINT);
+   if(point <= 0.0)
+      point = Point;
+   double price = (direction == "BUY") ? MarketInfo(symbol, MODE_ASK)
+                  : MarketInfo(symbol, MODE_BID);
+   if(price <= 0.0)
+      return 0.0;
+   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+   double dist = InpNakedFallbackSlPoints * point;
+   double sl = NormalizeDouble((direction == "BUY") ? price - dist : price + dist, digits);
+   Print("[TradinGo] NAKED_FALLBACK_SL ", symbol, " ", direction,
+         " price=", DoubleToString(price, digits),
+         " sl=", DoubleToString(sl, digits),
+         " pts=", InpNakedFallbackSlPoints);
+   return sl;
+  }
+
+//+------------------------------------------------------------------+
 bool HandleOpen(const string channelFile, const string json)
   {
    string action = JsonGetString(json, "action");
@@ -1094,7 +1136,8 @@ bool HandleOpen(const string channelFile, const string json)
       ArrayResize(emptyTps, n);
       for(int i = 0; i < n; i++)
          emptyTps[i] = 0.0;
-      return OpenSplitTrades(symbol, direction, lot, 0, emptyTps, magicBase,
+      double nakedSl = NakedFallbackSl(symbol, direction);
+      return OpenSplitTrades(symbol, direction, lot, nakedSl, emptyTps, magicBase,
                              channelFile, json, "EXECUTED_OPEN_NOW", rangeLo, rangeHi,
                              distPoints);
      }
@@ -1156,6 +1199,13 @@ bool HandleUpdateOpen(const string channelFile, const string json)
    int openCnt = CountOurOrders(symbol, magicBase, MAX_TRADES_PER_SIGNAL);
    if(openCnt == 0)
      {
+      // levels_only: the bridge salvaged SL/TP from a message whose entry zone
+      // was unusable (channel typo), so they may only modify open orders.
+      if(JsonGetBool(json, "levels_only"))
+        {
+         Print("[TradinGo] UPDATE_OPEN levels_only and no positions — nothing to do");
+         return true;
+        }
       double rangeLo = 0, rangeHi = 0;
       double entryRange[];
       string entryStatus = "EXECUTED_DIRECT";

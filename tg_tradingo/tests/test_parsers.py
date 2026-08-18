@@ -1986,6 +1986,115 @@ class TestIvanEntryTypoFrom0812:
         assert sig["entry"] == 4400.0
 
 
+class TestIvanUpdateTpFrom0817:
+    """17/08: "Spostiamo TP 4 a 4376" era UNPARSED e il TP4 restava a 4375."""
+
+    SETUP = (
+        "XAUUSD SELL 4394\n\n"
+        "TP 1 4391\nTP 2 4388\nTP 3 4385\nTP 4 4375\n\nSL @ 4408"
+    )
+
+    def _open(self, state: BridgeState) -> dict:
+        sig = parser_ivan_vip(self.SETUP, CH_IVAN, state)
+        assert sig["action"] == "OPEN"
+        return sig
+
+    def test_move_tp4_real_message(self, bridge_state: BridgeState):
+        self._open(bridge_state)
+        sig = parser_ivan_vip("Spostiamo TP 4 a 4376", CH_IVAN, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "UPDATE_TP"
+        assert sig["direction"] == "SELL"
+        assert sig["symbol"] == "XAUUSD"
+        assert sig["new_tp"] == 4376.0
+        assert sig["tp_index"] == 4
+        assert sig["magic_base"] == 17000
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_only_the_named_tp_changes_in_state(self, bridge_state: BridgeState):
+        self._open(bridge_state)
+        parser_ivan_vip("Spostiamo TP 4 a 4376", CH_IVAN, bridge_state)
+        last = bridge_state.ivan_last_trade
+        assert last["tp_levels"] == [4391.0, 4388.0, 4385.0, 4376.0]
+        assert last["entry"] == 4394.0
+        assert last["sl"] == 4408.0
+
+    @pytest.mark.parametrize("text,expected_tp,expected_idx", [
+        ("Spostiamo TP 4 a 4376", 4376.0, 4),
+        ("Spostiamo il TP 4 a 4376", 4376.0, 4),
+        ("Sposto TP4 a 4376", 4376.0, 4),
+        ("Modifichiamo TP 2 a 4386.5", 4386.5, 2),
+        ("Portiamo il tp3 a 4384,5", 4384.5, 3),
+        ("Cambiamo TP 1 4390", 4390.0, 1),
+        ("Move TP 3 to 4383", 4383.0, 3),
+        ("TP 4 a 4376", 4376.0, 4),
+        # "take profit" da solo resta un commento ignorato: serve il verbo
+        ("Spostiamo il take profit 4 a 4376", 4376.0, 4),
+        # senza indice: il livello vale per tutte le posizioni del segnale
+        ("Spostiamo i TP a 4390", 4390.0, None),
+        # abbreviazione del canale: "76" con entry 4394 → 4376
+        ("Spostiamo TP 4 a 76", 4376.0, 4),
+    ])
+    def test_variants(self, bridge_state: BridgeState, text: str,
+                      expected_tp: float, expected_idx: int | None):
+        self._open(bridge_state)
+        sig = parser_ivan_vip(text, CH_IVAN, bridge_state)
+        assert sig is not None, text
+        assert sig["action"] == "UPDATE_TP"
+        assert sig["new_tp"] == expected_tp
+        assert sig.get("tp_index") == expected_idx
+
+    def test_no_index_replaces_the_level_for_all(self, bridge_state: BridgeState):
+        self._open(bridge_state)
+        sig = parser_ivan_vip("Spostiamo i TP a 4390", CH_IVAN, bridge_state)
+        assert "tp_index" not in sig
+        assert bridge_state.ivan_last_trade["tp_levels"] == [4390.0]
+
+    def test_tp_on_the_wrong_side_is_ignored(self, bridge_state: BridgeState):
+        # Typo tipo "4488" su un SELL entrato a 4394: applicarlo chiuderebbe
+        # la posizione a mercato in perdita.
+        self._open(bridge_state)
+        assert parser_ivan_vip("Spostiamo TP 4 a 4488", CH_IVAN, bridge_state) is None
+        assert bridge_state.ivan_last_trade["tp_levels"] == [
+            4391.0, 4388.0, 4385.0, 4375.0,
+        ]
+
+    @pytest.mark.parametrize("text", [
+        "TP 3 HIT ✅ +100 PIPS",
+        "Siamo vicini al TP 4, restiamo dentro",
+        "Il TP 4 di ieri era a 4376 e lo abbiamo preso in pieno senza problemi",
+    ])
+    def test_informative_messages_do_not_move_tp(self, bridge_state: BridgeState,
+                                                 text: str):
+        self._open(bridge_state)
+        sig = parser_ivan_vip(text, CH_IVAN, bridge_state)
+        assert sig is None or sig["action"] != "UPDATE_TP"
+
+    def test_update_tp_never_opens(self, bridge_state: BridgeState):
+        # Senza setup precedente il comando non apre nulla.
+        sig = parser_ivan_vip("Spostiamo TP 4 a 4376", CH_IVAN, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "UPDATE_TP"
+        assert "entry" not in sig
+        assert bridge_state.ivan_last_trade is None
+
+    def test_setup_message_is_still_an_open(self, bridge_state: BridgeState):
+        # Un setup che contiene "TP 4 4375" resta un OPEN, non un UPDATE_TP.
+        sig = self._open(bridge_state)
+        assert sig["tp_levels"] == [4391.0, 4388.0, 4385.0, 4375.0]
+
+    def test_edit_repeats_the_same_command(self, bridge_state: BridgeState):
+        # NewMessage + MessageEdited identici: il secondo riemette lo stesso
+        # UPDATE_TP (idempotente sull'EA), mai un'apertura.
+        self._open(bridge_state)
+        first = parser_ivan_vip("Spostiamo TP 4 a 4376", CH_IVAN, bridge_state)
+        second = parser_ivan_vip("Spostiamo TP 4 a 4376", CH_IVAN, bridge_state)
+        assert second["action"] == "UPDATE_TP"
+        assert second["new_tp"] == first["new_tp"] == 4376.0
+        assert bridge_state.ivan_last_trade["tp_levels"][3] == 4376.0
+
+
 class TestGoldNakedAndSalvageFrom0814:
     """Sequenza reale CH_GOLD del 14/08: naked, update col typo nella zona, edit."""
 

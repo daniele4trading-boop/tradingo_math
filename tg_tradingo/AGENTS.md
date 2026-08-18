@@ -154,6 +154,20 @@ powershell -ExecutionPolicy Bypass -File C:\StatArb\scripts\deploy_tg_tradingo_t
 
 ---
 
+## Numeri di produzione: usa il report, non il codice
+
+I dati di una giornata (messaggi ricevuti, segnali emessi, trade eseguiti) **non**
+si deducono dal codice né dai `signals/signal_ch*.json`, che contengono solo
+l'ultimo segnale scritto. Sulla VPS del bridge:
+
+```powershell
+python C:\TG_TradinGo\tools\report_today.py --days 2 --out C:\agent_out\report.md
+```
+
+Legge i log del bridge e lo storico deal del terminale MT5 collegato, e mappa
+`magic → canale` da `tradingo_config.json` (`magic_base + indice split`). Ogni
+segnale compare una volta sola anche se scritto su più terminali.
+
 ## Relazione con StatArb
 
 Nella stessa repo GitHub convivono:

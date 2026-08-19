@@ -62,13 +62,14 @@ class _SafeStreamHandler(logging.StreamHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            super().emit(record)
-        except UnicodeEncodeError:
+            msg = self.format(record)
+            stream = self.stream
+            enc = getattr(stream, "encoding", None) or "utf-8"
             try:
-                msg = self.format(record)
-                enc = getattr(self.stream, "encoding", None) or "utf-8"
+                stream.write(msg + self.terminator)
+            except UnicodeEncodeError:
                 safe = msg.encode(enc, errors="replace").decode(enc)
-                self.stream.write(safe + self.terminator)
-                self.flush()
-            except Exception:
-                self.handleError(record)
+                stream.write(safe + self.terminator)
+            self.flush()
+        except Exception:
+            self.handleError(record)

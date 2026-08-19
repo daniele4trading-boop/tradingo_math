@@ -106,3 +106,11 @@ def test_safe_stream_handler_tolerates_emoji(tmp_path: Path) -> None:
     # Must not raise, and the line must be written (with replacements)
     logger.info(msg)
     logger.removeHandler(handler)
+
+    content = buf.getvalue()
+    assert content, "Nothing was written to the stream — line was dropped entirely"
+    assert "BUY XAUUSD" in content, (
+        f"Payload text missing from output. Buffer: {content!r}"
+    )
+    # Emoji should be replaced, not present verbatim
+    assert "🚀" not in content, f"Emoji survived cp1252 encoding — replacement did not happen. Buffer: {content!r}"

@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.20 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.21 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -65,7 +65,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.20"
+BRIDGE_VERSION = "2.21"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -1060,9 +1060,35 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
             return None
         m_entry   = re.search(rf"{_FX_ENTRY_LABEL}\s*[:\s]\s*([\d.,]+)", upper)
         entry     = pf(m_entry.group(1)) if m_entry else None
-        state.set_forex_pending(symbol, direction, entry)
-        log.info(f"[FOREX] Pending {direction} {symbol} @ {entry}")
-        return None
+        # "No SL"/"Nessuno TP" non portano numeri e non matchano: il livello
+        # entra nel segnale solo se il canale lo scrive davvero.
+        m_nsl     = re.search(rf"(?<!NO )(?<!NESSUNO ){_FX_SL}\s*:\s*([\d.,]+)", upper)
+        m_ntp     = re.search(rf"(?<!NO )(?<!NESSUNO ){_FX_TP}\s*:\s*([\d.,]+)", upper)
+        sl        = pf(m_nsl.group(1)) if m_nsl else None
+        tp        = pf(m_ntp.group(1)) if m_ntp else None
+        if sl is not None and sl <= 0:
+            sl = None
+        tps       = [tp] if tp is not None and tp > 0 else []
+        # L'ordine nuovo apre subito, anche senza SL/TP: è l'unico messaggio che
+        # dichiara un'apertura. Prima restava solo pending e l'apertura veniva
+        # emessa dal Modified successivo, cioè da una modifica di livello.
+        signal = {
+            "action":      "OPEN",
+            "direction":   direction,
+            "symbol":      symbol,
+            "entry":       entry,
+            "tp_levels":   tps,
+            "sl":          sl,
+            "magic_base":  ch["magic_base"],
+            "raw_message": raw,
+        }
+        log.info(
+            f"[FOREX] OPEN (nuovo ordine) {direction} {symbol} @{entry} "
+            f"TP={tps} SL={sl}"
+        )
+        state.set_forex_last_trade(signal)
+        state.clear_forex_pending()
+        return signal
 
     # ── Modifica TP/SL (IT / EN) ─────────────────────────────────────────────
     if m_mod:
@@ -1077,6 +1103,9 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         if m_tp:
             tp_val = pf(m_tp.group(1))
             sl_val = pf(m_sl.group(1)) if m_sl else None
+            # Solo per uno stato scritto dalle versioni precedenti, dove il
+            # nuovo ordine restava pending senza aprire: il pending non viene
+            # piu' creato, quindi una modifica non puo' piu' generare un OPEN.
             if (
                 state.forex_pending_symbol == symbol
                 and state.forex_pending_dir == direction
@@ -1145,8 +1174,9 @@ def parser_sala_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
 
         if m_sl:
             sl_val = pf(m_sl.group(1))
-            # Solo SL sul pending: il trade va aperto comunque, altrimenti resta
-            # in attesa per sempre e il segnale si perde.
+            # Come sopra: solo per un pending residuo di una versione
+            # precedente, altrimenti quel segnale resterebbe in attesa.
+            # Il pending non viene piu' creato dal nuovo ordine.
             if (
                 state.forex_pending_symbol == symbol
                 and state.forex_pending_dir == direction

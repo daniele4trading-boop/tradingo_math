@@ -16,13 +16,23 @@ I branch `cursor/*` e `devin/*` sono di lavoro: allinearli a `main` prima di rip
 
 | Componente | Versione | Dove è dichiarata |
 |---|---|---|
-| Bridge Python | **2.20** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
+| Bridge Python | **2.21** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
 | EA MT5 | **2.21** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
-| EA MT4 | **1.08** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.20) |
+| EA MT4 | **1.08** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.21) |
 
 Bridge ed EA MT5 si muovono insieme sul contratto JSON ([`EA_SPEC.md`](EA_SPEC.md)).
 L’EA MT4 è un consumer aggiuntivo dello stesso JSON (nessun secondo parser).
 Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT4_T4TRADE_SETUP.md).
+
+**2.21 / MT5 2.21 / MT4 1.08:** su FOREX (CH3) l'apertura la dichiara il messaggio
+`NUOVO ORDINE / NEW ORDER`, anche quando dice `No SL / No TP`: il parser emette subito
+`OPEN` naked (`sl=None`, `tp_levels=[]`, lotto singolo) e registra il trade in stato.
+Prima il nuovo ordine restava solo `pending` e l'apertura veniva emessa dal `Modified`
+successivo: il 20/08 AUDUSD, EURJPY e USDCAD sono nati da una modifica del TP e quindi
+strutturalmente senza stop. Ora un `Modified` su un trade già noto muove solo i livelli
+(`UPDATE_TP` / `UPDATE_SL` / `UPDATE_OPEN` per TP+SL insieme) e non può più aprire.
+Se il nuovo ordine porta già i livelli (`SL: 1.15400`, `TP: 1.14000`) l'`OPEN` li include;
+`SL: 0.00000` / `TP: 0.00000` valgono come assenti. Nessuna modifica a EA, JSON o architettura.
 
 **2.20 / MT5 2.21 / MT4 1.08:** spostamento di un singolo take profit su IVAN, dal
 messaggio del 17/08 `Spostiamo TP 4 a 4376` (era `UNPARSED`, il TP4 restava a 4375).

@@ -222,44 +222,47 @@ class TestCH3SalaVip:
             "Entrata: 4736.64 [Lotti: 0.01]\n"
             "Nessuno SL\nNessuno TP"
         )
-        assert parser_sala_vip(text, CH3, state) is None
-        assert state.forex_pending_symbol == "XAUUSD"
-        assert state.forex_pending_dir == "BUY"
-        assert state.forex_pending_entry == 4736.64
+        sig = parser_sala_vip(text, CH3, state)
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["symbol"] == "XAUUSD"
+        assert sig["entry"] == 4736.64
+        assert sig["tp_levels"] == []
+        assert sig["sl"] is None
+        sized = apply_lot_rules(sig, {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}})
+        assert sized["fixed_lot"] == 0.20
+        assert sized["trades"] == 1
 
         mod = (
             "XAUUSDpm Buy - Modificato\n"
             "Nuovo TP: 4747.00 [103.6 Pips]"
         )
-        sig = parser_sala_vip(mod, CH3, state)
-        assert sig["action"] == "OPEN"
-        assert sig["direction"] == "BUY"
-        assert sig["symbol"] == "XAUUSD"
-        assert sig["entry"] == 4736.64
-        assert sig["tp_levels"] == [4747.0]
-        sized = apply_lot_rules(sig, {"execution": {"fixed_lot_single": 0.20, "fixed_lot_per_tp": 0.10}})
-        assert sized["fixed_lot"] == 0.20
-        assert sized["trades"] == 1
+        upd = parser_sala_vip(mod, CH3, state)
+        assert upd["action"] == "UPDATE_TP"
+        assert upd["new_tp"] == 4747.0
 
     def test_new_order_then_modified_open(self, tmp_path: Path):
-        """Real flow — NEW ORDER senza TP, poi Modified con TP (NZDJPY 13:51)."""
+        """Real flow — NEW ORDER senza TP apre, il Modified sposta solo il TP."""
         state = BridgeState(tmp_path / "bridge_state.json")
         new_order = (
             "NUOVO ORDINE - NZDJPYpm Sell\n"
             "Entrata: 95.102 [Lotti: 0.02]\n"
             "Nessuno SL\nNessuno TP"
         )
-        assert parser_sala_vip(new_order, CH3, state) is None
-        modified = (
-            "NZDJPYpm Sell - Modificato\n"
-            "Nuovo TP: 94.801 [30.1 Pips]"
-        )
-        sig = parser_sala_vip(modified, CH3, state)
+        sig = parser_sala_vip(new_order, CH3, state)
         assert sig["action"] == "OPEN"
         assert sig["direction"] == "SELL"
         assert sig["symbol"] == "NZDJPY"
         assert sig["entry"] == 95.102
-        assert sig["tp_levels"] == [94.801]
+        assert sig["tp_levels"] == []
+        modified = (
+            "NZDJPYpm Sell - Modificato\n"
+            "Nuovo TP: 94.801 [30.1 Pips]"
+        )
+        upd = parser_sala_vip(modified, CH3, state)
+        assert upd["action"] == "UPDATE_TP"
+        assert upd["new_tp"] == 94.801
+        assert upd["symbol"] == "NZDJPY"
 
     def test_update_tp(self, tmp_path: Path):
         state = BridgeState(tmp_path / "bridge_state.json")
@@ -317,15 +320,19 @@ class TestCH3SalaVip:
             "Entry: 1.89235 [Lots: 0.02]\n"
             "No SL\nNo TP"
         )
-        assert parser_sala_vip(text, CH3, state) is None
-        sig = parser_sala_vip(
+        sig = parser_sala_vip(text, CH3, state)
+        assert sig["action"] == "OPEN"
+        assert sig["symbol"] == "GBPCAD"
+        assert sig["direction"] == "SELL"
+        assert sig["entry"] == 1.89235
+        assert sig["tp_levels"] == []
+        upd = parser_sala_vip(
             "GBPCADpm Sell - Modified\nNew TP: 1.88924 [31.1 Pips]",
             CH3,
             state,
         )
-        assert sig["action"] == "OPEN"
-        assert sig["symbol"] == "GBPCAD"
-        assert sig["direction"] == "SELL"
+        assert upd["action"] == "UPDATE_TP"
+        assert upd["new_tp"] == 1.88924
 
     def test_update_tp_english(self, tmp_path: Path):
         state = BridgeState(tmp_path / "bridge_state.json")
@@ -931,18 +938,18 @@ Questo messaggio non incita a investire, riporta i nostri trade"""
 
 
 class TestForexDisclaimerNotIgnored:
-    def test_new_order_with_disclaimer_sets_pending(self, bridge_state):
-        assert parser_sala_vip(FOREX_NEW_ORDER, CH3, bridge_state) is None
-        assert bridge_state.forex_pending_symbol == "GBPCAD"
-        assert bridge_state.forex_pending_entry == 1.84642
-
-    def test_pending_plus_modified_emits_open(self, bridge_state):
-        parser_sala_vip(FOREX_NEW_ORDER, CH3, bridge_state)
-        sig = parser_sala_vip(FOREX_MODIFIED, CH3, bridge_state)
+    def test_new_order_with_disclaimer_opens(self, bridge_state):
+        sig = parser_sala_vip(FOREX_NEW_ORDER, CH3, bridge_state)
         assert sig["action"] == "OPEN"
         assert sig["symbol"] == "GBPCAD"
         assert sig["entry"] == 1.84642
-        assert sig["tp_levels"] == [1.85]
+
+    def test_modified_after_open_updates_levels(self, bridge_state):
+        parser_sala_vip(FOREX_NEW_ORDER, CH3, bridge_state)
+        sig = parser_sala_vip(FOREX_MODIFIED, CH3, bridge_state)
+        assert sig["action"] == "UPDATE_TP"
+        assert sig["symbol"] == "GBPCAD"
+        assert sig["new_tp"] == 1.85
 
     def test_closed_with_disclaimer_emits_close(self, bridge_state):
         sig = parser_sala_vip(FOREX_CLOSED, CH3, bridge_state)
@@ -1713,66 +1720,96 @@ class TestCloseSynonymsWidening:
 # FOREX: varianti IT/EN aggiunte (canale bot Sala VIP)
 # ─────────────────────────────────────────────────────────────────────────────
 class TestForexWidening:
-    def test_english_flow_unchanged(self, bridge_state: BridgeState):
-        assert parser_sala_vip(
+    def test_english_flow_open_then_update(self, bridge_state: BridgeState):
+        opened = parser_sala_vip(
             "NEW ORDER - GBPUSDpm Sell 📉\n\nEntry: 1.33852 [Lots: 0.02]\nNo SL\nNo TP",
             CH3,
             bridge_state,
-        ) is None
+        )
+        assert opened["action"] == "OPEN"
+        assert opened["symbol"] == "GBPUSD"
+        assert opened["direction"] == "SELL"
+        assert opened["entry"] == 1.33852
+        assert opened["tp_levels"] == []
+        assert opened["sl"] is None
+        ok, err = validate_signal(opened)
+        assert ok, err
         sig = parser_sala_vip(
             "🛠️ GBPUSDpm Sell - Modified\n\n--------{ Set TP }---------\n"
             "🗑️ Old TP: 0.00000\n👉 New TP: 1.33700",
             CH3,
             bridge_state,
         )
-        assert sig["action"] == "OPEN"
+        assert sig["action"] == "UPDATE_TP"
         assert sig["symbol"] == "GBPUSD"
-        assert sig["direction"] == "SELL"
-        assert sig["entry"] == 1.33852
-        assert sig["tp_levels"] == [1.337]
+        assert sig["new_tp"] == 1.337
 
     def test_italian_flow(self, bridge_state: BridgeState):
-        assert parser_sala_vip(
+        opened = parser_sala_vip(
             "NUOVO ORDINE - EURUSDpm Compra\n\nEntrata: 1.10000", CH3, bridge_state
-        ) is None
+        )
+        assert opened["action"] == "OPEN"
+        assert opened["direction"] == "BUY"
+        assert opened["symbol"] == "EURUSD"
+        ok, err = validate_signal(opened)
+        assert ok, err
         sig = parser_sala_vip(
             "EURUSDpm Compra - Modificato\n\nNuovo TP: 1.11000", CH3, bridge_state
         )
-        assert sig["action"] == "OPEN"
-        assert sig["direction"] == "BUY"
-        assert sig["symbol"] == "EURUSD"
+        assert sig["action"] == "UPDATE_TP"
         assert sig["tp_levels"] == [1.11]
         ok, err = validate_signal(sig)
         assert ok, err
+
+    def test_new_order_with_levels_opens_complete(self, bridge_state: BridgeState):
+        sig = parser_sala_vip(
+            "NEW ORDER - EURUSDpm Sell\nEntry: 1.15000\nSL: 1.15400\nTP: 1.14000",
+            CH3,
+            bridge_state,
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["sl"] == 1.154
+        assert sig["tp_levels"] == [1.14]
+        ok, err = validate_signal(sig)
+        assert ok, err
+
+    def test_new_order_zero_levels_are_naked(self, bridge_state: BridgeState):
+        sig = parser_sala_vip(
+            "NEW ORDER - EURUSDpm Sell\nEntry: 1.15000\nSL: 0.00000\nTP: 0.00000",
+            CH3,
+            bridge_state,
+        )
+        assert sig["action"] == "OPEN"
+        assert sig["sl"] is None
+        assert sig["tp_levels"] == []
 
     def test_take_profit_label(self, bridge_state: BridgeState):
         parser_sala_vip("NEW ORDER - EURUSDpm Sell\nEntry: 1.15000", CH3, bridge_state)
         sig = parser_sala_vip(
             "EURUSDpm Sell - Updated\nNew Take Profit: 1.14000", CH3, bridge_state
         )
-        assert sig["action"] == "OPEN"
+        assert sig["action"] == "UPDATE_TP"
         assert sig["tp_levels"] == [1.14]
 
-    def test_pending_opened_with_sl_only(self, bridge_state: BridgeState):
+    def test_sl_only_modified_updates_open_trade(self, bridge_state: BridgeState):
         parser_sala_vip("NEW ORDER - EURUSDpm Sell\nEntry: 1.15000", CH3, bridge_state)
         sig = parser_sala_vip(
             "EURUSDpm Sell - Modified\nNew SL: 1.15400", CH3, bridge_state
         )
-        assert sig["action"] == "OPEN"
-        assert sig["sl"] == 1.154
-        assert sig["tp_levels"] == []
+        assert sig["action"] == "UPDATE_SL"
+        assert sig["new_sl"] == 1.154
         ok, err = validate_signal(sig)
         assert ok, err
 
     def test_tp_and_sl_together_on_open_trade(self, bridge_state: BridgeState):
         parser_sala_vip("NEW ORDER - XAUUSDpm Sell\nEntry: 4076.31", CH3, bridge_state)
-        opened = parser_sala_vip(
+        moved = parser_sala_vip(
             "XAUUSDpm Sell - Modified\n-----{ Moved SL & TP }-----\n"
             "👉 New SL: 4091.00\n👉 New TP: 4050.00",
             CH3,
             bridge_state,
         )
-        assert opened["action"] == "OPEN"
+        assert moved["action"] == "UPDATE_OPEN"
 
         sig = parser_sala_vip(
             "XAUUSDpm Sell - Modified\n👉 New SL: 4085.00\n👉 New TP: 4045.00",

@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.21"
+#property version   "2.22"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.21"
+#define EA_VERSION "2.22"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -427,6 +427,29 @@ int CountOurPositions(const string symbol, const int magicBase, const int maxTra
   }
 
 //+------------------------------------------------------------------+
+//| CTrade keeps the magic of the last order it sent, so an exit deal |
+//| inherits the magic of the last opened position and lands on the   |
+//| wrong channel in every per-magic report. Always close with the    |
+//| magic of the position itself.                                     |
+//+------------------------------------------------------------------+
+bool ClosePositionKeepMagic(const ulong ticket)
+  {
+   if(!g_pos.SelectByTicket(ticket))
+      return false;
+   g_trade.SetExpertMagicNumber((int)g_pos.Magic());
+   return g_trade.PositionClose(ticket);
+  }
+
+//+------------------------------------------------------------------+
+bool ClosePartialKeepMagic(const ulong ticket, const double volume)
+  {
+   if(!g_pos.SelectByTicket(ticket))
+      return false;
+   g_trade.SetExpertMagicNumber((int)g_pos.Magic());
+   return g_trade.PositionClosePartial(ticket, volume);
+  }
+
+//+------------------------------------------------------------------+
 void CloseOurPositions(const string symbol, const int magicBase, const int maxTrades)
   {
    for(int i = PositionsTotal() - 1; i >= 0; i--)
@@ -437,7 +460,7 @@ void CloseOurPositions(const string symbol, const int magicBase, const int maxTr
          continue;
       if(!IsOurPosition(g_pos.Ticket(), magicBase, maxTrades))
          continue;
-      g_trade.PositionClose(g_pos.Ticket());
+      ClosePositionKeepMagic(g_pos.Ticket());
      }
   }
 
@@ -1417,6 +1440,20 @@ bool HandleUpdateSl(const string json)
          continue;
       if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
          continue;
+      // Un comando di gestione dello stop puo' ridurre il rischio, non aumentarlo:
+      // "SL 4660" su un SELL con SL 4656 allontanava lo stop di 4 punti.
+      double curSl = g_pos.StopLoss();
+      bool isBuy = (g_pos.PositionType() == POSITION_TYPE_BUY);
+      if(InpProtectExistingLevels && curSl > 0.0 && newSl > 0.0 &&
+         (isBuy ? (newSl < curSl) : (newSl > curSl)))
+        {
+         int dg = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+         Print("[TradinGo] UPDATE_SL_SKIPPED_WIDER ticket=", g_pos.Ticket(),
+               " new_sl=", DoubleToString(newSl, dg),
+               " cur_sl=", DoubleToString(curSl, dg),
+               " side=", (isBuy ? "BUY" : "SELL"), " — SL kept unchanged");
+         continue;
+        }
       ModifyPositionSLTP(g_pos.Ticket(), newSl, 0);
      }
    return true;
@@ -1438,7 +1475,7 @@ bool HandleCheckAndClose(const string json)
          continue;
       string pdir = (g_pos.PositionType() == POSITION_TYPE_BUY) ? "BUY" : "SELL";
       if(pdir == direction)
-         g_trade.PositionClose(g_pos.Ticket());
+         ClosePositionKeepMagic(g_pos.Ticket());
      }
    return true;
   }
@@ -1456,7 +1493,7 @@ bool HandleCloseAllSymbol(const string json)
             continue;
          if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
             continue;
-         g_trade.PositionClose(g_pos.Ticket());
+         ClosePositionKeepMagic(g_pos.Ticket());
         }
       return true;
      }
@@ -1523,7 +1560,7 @@ bool CloseNewestBatch(const string json)
          continue;
       ulong ticket = g_pos.Ticket();
       SetTrackReason(ticket, "CLOSE_SELECTIVE_ALL_BUT_NEWEST");
-      if(g_trade.PositionClose(ticket))
+      if(ClosePositionKeepMagic(ticket))
          closed++;
       else
          Print("[TradinGo] CLOSE_SELECTIVE close failed ticket=", ticket,
@@ -1600,7 +1637,7 @@ bool HandleCloseSelective(const string json)
             continue;
          ulong ticket = g_pos.Ticket();
          SetTrackReason(ticket, "CLOSE_SELECTIVE_" + keep);
-         if(g_trade.PositionClose(ticket))
+         if(ClosePositionKeepMagic(ticket))
             closed++;
          else
             Print("[TradinGo] CLOSE_SELECTIVE close failed ticket=", ticket,
@@ -1653,7 +1690,7 @@ bool HandleCloseHalfBe(const string json)
       double half = NormalizeLot(symbol, vol / 2.0);
       if(half >= SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN))
         {
-         if(!g_trade.PositionClosePartial(ticket, half))
+         if(!ClosePartialKeepMagic(ticket, half))
             Print("[TradinGo] CLOSE_HALF partial failed ticket=", ticket,
                   " err=", g_trade.ResultRetcode());
          else
@@ -1695,7 +1732,7 @@ bool HandleCheckAndCloseTp(const string json)
          continue;
       if((ulong)g_pos.Magic() != targetMagic)
          continue;
-      g_trade.PositionClose(g_pos.Ticket());
+      ClosePositionKeepMagic(g_pos.Ticket());
      }
    return true;
   }
@@ -2209,7 +2246,7 @@ void CloseAllOurPositions(const string reason)
          continue;
       ulong tk = g_pos.Ticket();
       SetTrackReason(tk, reason);
-      if(!g_trade.PositionClose(tk))
+      if(!ClosePositionKeepMagic(tk))
          Print("[TradinGo] ERROR close failed ticket=", tk,
                " reason=", reason, " ret=", g_trade.ResultRetcode(),
                " (", g_trade.ResultRetcodeDescription(), ")");
@@ -2860,7 +2897,7 @@ void CloseBucketPositions(const string bucket, const string reason)
          continue;
       ulong tk = g_pos.Ticket();
       SetTrackReason(tk, reason);
-      g_trade.PositionClose(tk);
+      ClosePositionKeepMagic(tk);
      }
   }
 
@@ -2940,7 +2977,7 @@ void CheckMaxHolding()
       else
         {
          SetTrackReason(tk, "KILLSWITCH_TIME");
-         g_trade.PositionClose(tk);
+         ClosePositionKeepMagic(tk);
         }
      }
   }

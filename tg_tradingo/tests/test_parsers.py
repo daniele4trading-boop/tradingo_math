@@ -883,14 +883,83 @@ class TestGoldPartialBeAndSl:
             CH2,
             bridge_state,
         )
-        sig = parser_sala_gold("SL 4807", CH2, bridge_state)
+        # SL più vicino all'entry: riduce il rischio, si applica.
+        sig = parser_sala_gold("SL 4803", CH2, bridge_state)
         assert sig is not None
         assert sig["action"] == "UPDATE_SL"
         assert sig["direction"] == "SELL"
-        assert sig["new_sl"] == 4807.0
+        assert sig["new_sl"] == 4803.0
+
+    def test_standalone_sl_widening_risk_rejected(self, bridge_state):
+        """"SL 4660" su un SELL con SL 4656 allontanava lo stop: non si applica."""
+        parser_sala_gold(
+            "Sell gold now 4639 - 4645\nSL: 4656\nTp: 4630", CH2, bridge_state
+        )
+        assert parser_sala_gold("SL 4660", CH2, bridge_state) is None
+        # Il BUY è speculare: uno stop più basso allarga la perdita.
+        parser_sala_gold(
+            "Buy gold now 4700 - 4706\nSL: 4690\nTp: 4720", CH2, bridge_state
+        )
+        assert parser_sala_gold("SL 4680", CH2, bridge_state) is None
+        assert parser_sala_gold("SL 4695", CH2, bridge_state)["new_sl"] == 4695.0
 
     def test_standalone_sl_without_trade_ignored(self, bridge_state):
         assert parser_sala_gold("SL 4807", CH2, bridge_state) is None
+
+    def test_canceled_closes_the_signal_just_sent(self, bridge_state):
+        """Il 24/08 "Canceled" 21s dopo l'apertura restò UNPARSED: -350 EUR."""
+        opened = parser_sala_gold("Gold sell now", CH2, bridge_state)
+        assert opened["action"] == "OPEN_NOW"
+        sig = parser_sala_gold("Canceled", CH2, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "CLOSE_ALL_SYMBOL"
+        assert sig["symbol"] == "XAUUSD"
+
+    def test_cancel_forms_and_translations(self, bridge_state):
+        for text in ("Annullato", "Annulliamo", "Cancelled", "Anulado", "Annule"):
+            parser_sala_gold(
+                "Sell gold now 4639 - 4645\nSL: 4656\nTp: 4630", CH2, bridge_state
+            )
+            sig = parser_sala_gold(text, CH2, bridge_state)
+            assert sig is not None, text
+            assert sig["action"] == "CLOSE_ALL_SYMBOL", text
+
+    def test_cancel_without_recent_signal_does_nothing(self, bridge_state):
+        assert parser_sala_gold("Canceled", CH2, bridge_state) is None
+
+    def test_cancel_of_a_level_is_not_a_close(self, bridge_state):
+        parser_sala_gold(
+            "Sell gold now 4639 - 4645\nSL: 4656\nTp: 4630", CH2, bridge_state
+        )
+        sig = parser_sala_gold("Annulliamo il TP3", CH2, bridge_state)
+        assert sig is None or sig["action"] != "CLOSE_ALL_SYMBOL"
+
+    def test_cancel_of_a_lesson_is_not_a_close(self, bridge_state):
+        parser_sala_gold(
+            "Sell gold now 4639 - 4645\nSL: 4656\nTp: 4630", CH2, bridge_state
+        )
+        assert parser_sala_gold("Formazione annullata", CH2, bridge_state) is None
+
+    def test_composite_sl_hit_plus_new_order(self, bridge_state):
+        """"SL hit | | Sell gold now": l'ordine dentro il messaggio va eseguito."""
+        sig = parser_sala_gold("SL hit \n\nSell gold now", CH2, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "OPEN_NOW"
+        assert sig["direction"] == "SELL"
+
+    def test_sl_hit_alone_still_ignored(self, bridge_state):
+        assert parser_sala_gold("SL hit", CH2, bridge_state) is None
+
+    def test_close_half_be_emitted_once_per_signal(self, bridge_state):
+        """L'edit o la traduzione dello stesso comando non chiude due volte."""
+        first = parser_sala_gold(
+            "+70 pips close half break even close", CH2, bridge_state
+        )
+        assert first["action"] == "CLOSE_HALF_BE"
+        assert (
+            parser_sala_gold("+70 pips chiudi meta e break even", CH2, bridge_state)
+            is None
+        )
 
     def test_standalone_sl_same_level_ignored(self, bridge_state):
         parser_sala_gold(

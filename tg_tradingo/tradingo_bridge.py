@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.21 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.22 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -65,7 +65,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.21"
+BRIDGE_VERSION = "2.22"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -576,6 +576,22 @@ _GOLD_PENDING_ORDER_RE = re.compile(
     r"\b(?:BUY|SELL)\s+(?:STOP|LIMIT)\b|\b(?:STOP|LIMIT)\s+(?:BUY|SELL)\b"
 )
 
+# "Canceled" / "Annullato": il canale ritira il setup appena pubblicato (anche
+# nelle rese automatiche ES/FR del bot di traduzione).
+_GOLD_CANCEL_RE = re.compile(r"\b(?:CANCEL\w*|ANNULL\w*|ANULAD\w*|ANNULE\w*)\b")
+
+# "Annulliamo il TP3" non annulla il trade: se il messaggio nomina un livello
+# resta materia dei recognizer di gestione, non una chiusura.
+_GOLD_LEVEL_WORD_RE = re.compile(rf"\bSL\b|\b{_GOLD_TP_KW}\d*\b")
+
+# Comando naked di apertura: usato anche per non ignorare i messaggi compositi
+# ("SL hit | | Sell gold now": la prima parte è rumore, la seconda è un ordine).
+_GOLD_OPEN_NOW_RE = re.compile(
+    r"(?:BUY|SELL)(?:\s+NOW)?\s+(?:GOLD|XAUUSD)\s+NOW\b|"
+    r"(?:BUY|SELL)\s+NOW\s+(?:GOLD|XAUUSD)\b|"
+    r"(?:GOLD|XAUUSD)\s+(?:BUY|SELL)\s+NOW\b"
+)
+
 
 def _gold_canonicalize(upper: str) -> str:
     """Traduce i sinonimi italiani nella forma canonica 'BUY/SELL GOLD [NOW]'.
@@ -697,6 +713,47 @@ def _gold_is_repost(last: dict | None, signal: dict) -> bool:
     return _same_trade_setup(last, signal, max_gap=2.0)
 
 
+# Un "Canceled" vale solo per un setup recente: più tardi il canale sta
+# commentando qualcosa d'altro e non va chiusa una posizione ormai autonoma.
+GOLD_CANCEL_TTL_SEC = 1800.0
+
+
+def _gold_sl_widens_risk(direction: str | None, old_sl: float | None,
+                         new_sl: float | None) -> bool:
+    """True se il nuovo SL è più lontano dall'entry del precedente.
+
+    Il 24/08 il canale ha scritto "SL 4660" su un SELL che aveva SL 4656: lo
+    stop si è allontanato e la posizione è morta 4 punti più in là. Un comando
+    di gestione può ridurre il rischio, non aumentarlo.
+    """
+    if old_sl is None or new_sl is None or direction not in ("BUY", "SELL"):
+        return False
+    return new_sl > old_sl if direction == "SELL" else new_sl < old_sl
+
+
+def _gold_cancel_signal(state: BridgeState, ch: dict, raw: str) -> dict | None:
+    """"Canceled" sul setup appena pubblicato → chiusura di quel trade."""
+    last = state.gold_last_trade if isinstance(state.gold_last_trade, dict) else None
+    fresh = False
+    if last:
+        ts = last.get("ts")
+        fresh = isinstance(ts, (int, float)) and (time.time() - ts) <= GOLD_CANCEL_TTL_SEC
+    if not fresh and not state.ch2_pending_open:
+        log.info(f"[CH2] Annullamento senza segnale recente, nessuna azione: {raw[:60]}")
+        return None
+    # La chiave include il setup annullato: il canale ripete l'annullamento in
+    # inglese (dedup), ma un annullamento di un setup successivo deve passare.
+    cmd_key = f"CANCEL:{(last or {}).get('ts', 'pending')}"
+    if _gold_cmd_is_repeat(state, cmd_key):
+        log.info(f"[CH2] Annullamento già emesso di recente, ignorato: {raw[:60]}")
+        return None
+    state.set_gold_last_cmd(cmd_key)
+    state.clear_ch2_pending()
+    state.clear_gold_last_trade()
+    log.info(f"[CH2] CANCELED → CLOSE_ALL_SYMBOL XAUUSD: {raw[:60]}")
+    return _close_signal(ch, raw, symbol="XAUUSD")
+
+
 def _gold_cmd_is_repeat(state: BridgeState, key: str) -> bool:
     """True se lo stesso comando di gestione è già stato emesso entro il TTL."""
     last = state.gold_last_cmd
@@ -720,6 +777,19 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     if _GOLD_PENDING_ORDER_RE.search(upper):
         log.warning(f"[CH2] Ordine pendente non supportato, nessun segnale: {raw[:60]}")
         return None
+
+    # ── Annullamento del setup appena pubblicato ────────────────────────────
+    # "Canceled" 21 secondi dopo un OPEN_NOW: il trade va chiuso, non lasciato
+    # correre fino allo stop. Un messaggio che contiene anche un setup completo
+    # non è un annullamento (il canale sta ripubblicando).
+    if _GOLD_CANCEL_RE.search(upper) and not (
+        _gold_has_full_setup(upper)
+        or _gold_has_levels_setup(upper)
+        or _GOLD_LEVEL_WORD_RE.search(upper)
+        # "Formazione annullata", "sala di stasera annullata": non è un trade.
+        or contains_any(upper, "FORMAZION", "SALA", "ZOOM", "LEZION", "WEBINAR")
+    ):
+        return _gold_cancel_signal(state, ch, raw)
 
     # ── Partial / half + break even → CLOSE_HALF_BE ─────────────────────────
     # Deve stare PRIMA del recognizer di chiusura totale: "+70 pips close half
@@ -818,6 +888,12 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         if last.get("sl") == new_sl:
             log.debug(f"[CH2] SL standalone uguale al corrente ({new_sl}), ignorato")
             return None
+        if _gold_sl_widens_risk(last.get("direction"), last.get("sl"), new_sl):
+            log.warning(
+                f"[CH2] UPDATE_SL rifiutato: {new_sl} allontana lo stop "
+                f"({last.get('direction')} SL corrente {last.get('sl')}): {raw[:60]}"
+            )
+            return None
         state.set_gold_last_trade({**last, "sl": new_sl})
         log.info(f"[CH2] UPDATE_SL {last.get('direction')} XAUUSD SL={new_sl}")
         return {
@@ -832,8 +908,14 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
     # ── Messaggi da ignorare completamente ───────────────────────────────────
     # Solo se il messaggio non contiene un setup completo: i canali mescolano
     # spesso il segnale con testo promozionale ("+70 pips", "formazione", …).
+    # Un comando di apertura dentro un messaggio composito ("SL hit | | Sell
+    # gold now") vale come segnale: l'ignore copre solo la parte di cronaca.
     pat = matched_ignore_pattern("sala_gold", upper)
-    if pat and not (_gold_has_full_setup(upper) or _gold_has_levels_setup(upper)):
+    if pat and not (
+        _gold_has_full_setup(upper)
+        or _gold_has_levels_setup(upper)
+        or _GOLD_OPEN_NOW_RE.search(upper)
+    ):
         log.debug(f"[CH2] Ignorato ({pat}): {raw[:60]}")
         return None
 

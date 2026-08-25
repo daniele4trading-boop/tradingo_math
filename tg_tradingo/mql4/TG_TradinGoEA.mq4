@@ -6,11 +6,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.08"
+#property version   "1.09"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.08"
+#define EA_VERSION "1.09"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -1339,6 +1339,19 @@ bool HandleUpdateSl(const string json)
          continue;
       if(!IsOurOrderMagic(OrderMagicNumber(), magicBase, MAX_TRADES_PER_SIGNAL))
          continue;
+      // Un comando di gestione dello stop puo' ridurre il rischio, non aumentarlo.
+      double curSl = OrderStopLoss();
+      bool isBuy = (OrderType() == OP_BUY);
+      if(InpProtectExistingLevels && curSl > 0.0 && newSl > 0.0 &&
+         (isBuy ? (newSl < curSl) : (newSl > curSl)))
+        {
+         int dg = (int)MarketInfo(symbol, MODE_DIGITS);
+         Print("[TradinGo] UPDATE_SL_SKIPPED_WIDER ticket=", OrderTicket(),
+               " new_sl=", DoubleToString(newSl, dg),
+               " cur_sl=", DoubleToString(curSl, dg),
+               " side=", (isBuy ? "BUY" : "SELL"), " - SL kept unchanged");
+         continue;
+        }
       ModifyOrderSLTP(OrderTicket(), newSl, 0);
      }
    return true;

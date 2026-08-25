@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.22"
+#property version   "2.23"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.22"
+#define EA_VERSION "2.23"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -70,6 +70,11 @@ input int    InpNakedFallbackSlPoints = 1200;
 // legal (position in loss, or entry closer than the broker stops level) keep
 // the current SL instead of clamping past the entry.
 input bool   InpBeNeverWorseThanEntry = true;
+// UPDATE_SL moving the stop further away is a legitimate channel decision (give
+// the price room), but the lot size was computed on the previous risk: cap the
+// new stop at this multiple of the open->current SL distance instead of
+// following it without limit. 0 = no cap (follow the channel exactly).
+input double InpMaxSlWidenFactor = 2.0;
 // Seconds within which positions opened together count as one batch
 // (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
 input int    InpBatchWindowSec      = 120;
@@ -1427,6 +1432,36 @@ bool HandleUpdateTp(const string json)
   }
 
 //+------------------------------------------------------------------+
+// Caps an SL that widens the risk at InpMaxSlWidenFactor times the current
+// open->SL distance of the selected position. Returns the SL to apply.
+double CapWidenedSl(const string symbol, const double newSl)
+  {
+   double curSl = g_pos.StopLoss();
+   if(!InpProtectExistingLevels || InpMaxSlWidenFactor <= 0.0 ||
+      curSl <= 0.0 || newSl <= 0.0)
+      return newSl;
+   double open = g_pos.PriceOpen();
+   bool isBuy = (g_pos.PositionType() == POSITION_TYPE_BUY);
+   if(isBuy ? (newSl >= curSl) : (newSl <= curSl))
+      return newSl;
+   double risk = MathAbs(open - curSl);
+   if(risk <= 0.0)
+      return newSl;
+   double maxRisk = risk * InpMaxSlWidenFactor;
+   if(MathAbs(open - newSl) <= maxRisk)
+      return newSl;
+   int dg = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double capped = NormalizeDouble(isBuy ? (open - maxRisk) : (open + maxRisk), dg);
+   Print("[TradinGo] UPDATE_SL_WIDEN_CAPPED ticket=", g_pos.Ticket(),
+         " new_sl=", DoubleToString(newSl, dg),
+         " cur_sl=", DoubleToString(curSl, dg),
+         " applied=", DoubleToString(capped, dg),
+         " factor=", DoubleToString(InpMaxSlWidenFactor, 2),
+         " side=", (isBuy ? "BUY" : "SELL"));
+   return capped;
+  }
+
+//+------------------------------------------------------------------+
 bool HandleUpdateSl(const string json)
   {
    string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
@@ -1440,21 +1475,11 @@ bool HandleUpdateSl(const string json)
          continue;
       if(!IsOurPosition(g_pos.Ticket(), magicBase, 5))
          continue;
-      // Un comando di gestione dello stop puo' ridurre il rischio, non aumentarlo:
-      // "SL 4660" su un SELL con SL 4656 allontanava lo stop di 4 punti.
-      double curSl = g_pos.StopLoss();
-      bool isBuy = (g_pos.PositionType() == POSITION_TYPE_BUY);
-      if(InpProtectExistingLevels && curSl > 0.0 && newSl > 0.0 &&
-         (isBuy ? (newSl < curSl) : (newSl > curSl)))
-        {
-         int dg = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
-         Print("[TradinGo] UPDATE_SL_SKIPPED_WIDER ticket=", g_pos.Ticket(),
-               " new_sl=", DoubleToString(newSl, dg),
-               " cur_sl=", DoubleToString(curSl, dg),
-               " side=", (isBuy ? "BUY" : "SELL"), " — SL kept unchanged");
-         continue;
-        }
-      ModifyPositionSLTP(g_pos.Ticket(), newSl, 0);
+      // Lo stop che si allontana viene seguito, ma non oltre il tetto: la size
+      // e' stata calcolata sul rischio precedente ("SL 4660" su un SELL con SL
+      // 4656 e' gestione, un salto a 4800 moltiplicherebbe la perdita massima).
+      double useSl = CapWidenedSl(symbol, newSl);
+      ModifyPositionSLTP(g_pos.Ticket(), useSl, 0);
      }
    return true;
   }

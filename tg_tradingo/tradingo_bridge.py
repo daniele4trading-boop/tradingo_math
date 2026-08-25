@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.22 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.23 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -65,7 +65,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.22"
+BRIDGE_VERSION = "2.23"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -718,17 +718,48 @@ def _gold_is_repost(last: dict | None, signal: dict) -> bool:
 GOLD_CANCEL_TTL_SEC = 1800.0
 
 
-def _gold_sl_widens_risk(direction: str | None, old_sl: float | None,
-                         new_sl: float | None) -> bool:
-    """True se il nuovo SL è più lontano dall'entry del precedente.
+# Allargare lo stop è una scelta legittima del canale (dare respiro al prezzo),
+# ma la size è stata calcolata sul rischio precedente: oltre questo multiplo il
+# nuovo SL viene fissato al limite invece di essere seguito senza tetto.
+GOLD_MAX_SL_WIDEN_FACTOR = 2.0
 
-    Il 24/08 il canale ha scritto "SL 4660" su un SELL che aveva SL 4656: lo
-    stop si è allontanato e la posizione è morta 4 punti più in là. Un comando
-    di gestione può ridurre il rischio, non aumentarlo.
+
+def _gold_entry_ref(trade: dict | None) -> float | None:
+    """Prezzo di riferimento del setup: entry, o centro della zona."""
+    if not trade:
+        return None
+    entry = trade.get("entry")
+    if isinstance(entry, (int, float)):
+        return float(entry)
+    er = trade.get("entry_range")
+    if isinstance(er, (list, tuple)) and len(er) == 2 and all(
+            isinstance(v, (int, float)) for v in er):
+        return (float(er[0]) + float(er[1])) / 2.0
+    return None
+
+
+def _gold_cap_widened_sl(direction: str | None, entry: float | None,
+                         old_sl: float | None, new_sl: float) -> float:
+    """Limita un SL che allontana lo stop al doppio del rischio precedente.
+
+    Il 24/08 il canale ha scritto "SL 4660" su un SELL a 4639.55 che aveva SL
+    4656: lo spostamento si esegue (il canale sta dando respiro al prezzo), ma
+    un allargamento fuori scala — o il typo di un numero — moltiplicherebbe la
+    perdita massima su una size già calcolata. Oltre il tetto lo SL è fissato lì.
     """
-    if old_sl is None or new_sl is None or direction not in ("BUY", "SELL"):
-        return False
-    return new_sl > old_sl if direction == "SELL" else new_sl < old_sl
+    if old_sl is None or entry is None or direction not in ("BUY", "SELL"):
+        return new_sl
+    widens = new_sl > old_sl if direction == "SELL" else new_sl < old_sl
+    if not widens:
+        return new_sl
+    risk = abs(entry - old_sl)
+    if risk <= 0:
+        return new_sl
+    max_risk = risk * GOLD_MAX_SL_WIDEN_FACTOR
+    if abs(entry - new_sl) <= max_risk:
+        return new_sl
+    capped = entry + max_risk if direction == "SELL" else entry - max_risk
+    return round(capped, 2)
 
 
 def _gold_cancel_signal(state: BridgeState, ch: dict, raw: str) -> dict | None:
@@ -888,11 +919,17 @@ def parser_sala_gold(text: str, ch: dict, state: BridgeState | None = None) -> d
         if last.get("sl") == new_sl:
             log.debug(f"[CH2] SL standalone uguale al corrente ({new_sl}), ignorato")
             return None
-        if _gold_sl_widens_risk(last.get("direction"), last.get("sl"), new_sl):
+        capped = _gold_cap_widened_sl(
+            last.get("direction"), _gold_entry_ref(last), last.get("sl"), new_sl)
+        if capped != new_sl:
             log.warning(
-                f"[CH2] UPDATE_SL rifiutato: {new_sl} allontana lo stop "
-                f"({last.get('direction')} SL corrente {last.get('sl')}): {raw[:60]}"
+                f"[CH2] UPDATE_SL limitato: {new_sl} allarga il rischio oltre "
+                f"{GOLD_MAX_SL_WIDEN_FACTOR}x (SL corrente {last.get('sl')}), "
+                f"applicato {capped}: {raw[:60]}"
             )
+            new_sl = capped
+        if last.get("sl") == new_sl:
+            log.debug(f"[CH2] SL standalone uguale al corrente ({new_sl}), ignorato")
             return None
         state.set_gold_last_trade({**last, "sl": new_sl})
         log.info(f"[CH2] UPDATE_SL {last.get('direction')} XAUUSD SL={new_sl}")

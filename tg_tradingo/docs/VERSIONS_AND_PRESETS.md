@@ -16,13 +16,23 @@ I branch `cursor/*` e `devin/*` sono di lavoro: allinearli a `main` prima di rip
 
 | Componente | Versione | Dove è dichiarata |
 |---|---|---|
-| Bridge Python | **2.22** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
-| EA MT5 | **2.22** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
-| EA MT4 | **1.09** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.22) |
+| Bridge Python | **2.23** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
+| EA MT5 | **2.23** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
+| EA MT4 | **1.10** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.23) |
 
 Bridge ed EA MT5 si muovono insieme sul contratto JSON ([`EA_SPEC.md`](EA_SPEC.md)).
 L’EA MT4 è un consumer aggiuntivo dello stesso JSON (nessun secondo parser).
 Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT4_T4TRADE_SETUP.md).
+
+**2.23 / MT5 2.23 / MT4 1.10:** lo SL che allontana lo stop si esegue, con un tetto.
+Allargare lo stop è una scelta legittima del canale (dare respiro al prezzo), ma la size
+è stata calcolata sul rischio precedente: il nuovo livello viene applicato fino a
+`GOLD_MAX_SL_WIDEN_FACTOR` / `InpMaxSlWidenFactor` volte quel rischio (default **2.0**),
+oltre viene **fissato** al tetto invece di essere scartato. Parser GOLD: riferimento
+l'entry o il centro della zona (`SL 4700` su un SELL con zona 4639-4645 e SL 4656 →
+`UPDATE_SL 4670`). EA MT5/MT4: riferimento il prezzo di apertura reale della posizione e
+lo SL corrente, quindi vale per tutti i canali (log `UPDATE_SL_WIDEN_CAPPED`).
+`InpMaxSlWidenFactor = 0` segue il canale senza limite.
 
 **2.22 / MT5 2.22 / MT4 1.09:** quattro difetti visti sulla giornata del 24/08.
 
@@ -31,9 +41,9 @@ Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT
   messaggio è rimasto `UNPARSED` e il trade è morto sullo stop (-350 EUR). Se il testo
   nomina un livello (`Annulliamo il TP3`) non è un annullamento del trade; senza setup
   recente non fa nulla.
-- GOLD: un `SL` standalone che **allontana** lo stop viene rifiutato (`SL 4660` su un
-  SELL con SL 4656). Stesso guard nell'EA su `UPDATE_SL` (`UPDATE_SL_SKIPPED_WIDER`,
-  soggetto a `InpProtectExistingLevels`), così vale per tutti i canali.
+- GOLD: un `SL` standalone che **allontana** lo stop veniva rifiutato (`SL 4660` su un
+  SELL con SL 4656), nel parser e nell'EA su `UPDATE_SL`. Sostituito nella 2.23 dal
+  tetto: lo spostamento si esegue, limitato al doppio del rischio precedente.
 - GOLD: i messaggi compositi non vengono più ignorati per intero — `SL hit | | Sell gold
   now` esegue l'ordine che contiene.
 - EA MT5: le chiusure usano il magic della posizione (`ClosePositionKeepMagic` /

@@ -890,18 +890,34 @@ class TestGoldPartialBeAndSl:
         assert sig["direction"] == "SELL"
         assert sig["new_sl"] == 4803.0
 
-    def test_standalone_sl_widening_risk_rejected(self, bridge_state):
-        """"SL 4660" su un SELL con SL 4656 allontanava lo stop: non si applica."""
+    def test_standalone_sl_widening_within_cap_applied(self, bridge_state):
+        """"SL 4660" su un SELL con SL 4656 allarga di poco: si esegue."""
         parser_sala_gold(
             "Sell gold now 4639 - 4645\nSL: 4656\nTp: 4630", CH2, bridge_state
         )
-        assert parser_sala_gold("SL 4660", CH2, bridge_state) is None
-        # Il BUY è speculare: uno stop più basso allarga la perdita.
+        sig = parser_sala_gold("SL 4660", CH2, bridge_state)
+        assert sig is not None
+        assert sig["new_sl"] == 4660.0
+
+    def test_standalone_sl_widening_beyond_cap_is_capped(self, bridge_state):
+        """Oltre il doppio del rischio lo SL viene fissato al tetto, non scartato."""
+        # SELL, riferimento 4642 (zona 4639-4645), SL 4656 → rischio 14, tetto 28.
+        parser_sala_gold(
+            "Sell gold now 4639 - 4645\nSL: 4656\nTp: 4630", CH2, bridge_state
+        )
+        sig = parser_sala_gold("SL 4700", CH2, bridge_state)
+        assert sig is not None
+        assert sig["action"] == "UPDATE_SL"
+        assert sig["new_sl"] == 4670.0
+        # BUY speculare: riferimento 4703, SL 4690 → rischio 13, tetto 26.
         parser_sala_gold(
             "Buy gold now 4700 - 4706\nSL: 4690\nTp: 4720", CH2, bridge_state
         )
-        assert parser_sala_gold("SL 4680", CH2, bridge_state) is None
-        assert parser_sala_gold("SL 4695", CH2, bridge_state)["new_sl"] == 4695.0
+        assert parser_sala_gold("SL 4680", CH2, bridge_state)["new_sl"] == 4680.0
+        parser_sala_gold(
+            "Buy gold now 4700 - 4706\nSL: 4690\nTp: 4720", CH2, bridge_state
+        )
+        assert parser_sala_gold("SL 4600", CH2, bridge_state)["new_sl"] == 4677.0
 
     def test_standalone_sl_without_trade_ignored(self, bridge_state):
         assert parser_sala_gold("SL 4807", CH2, bridge_state) is None

@@ -1572,6 +1572,27 @@ def _reduced_size_factor(upper: str) -> float | None:
 IVAN_REENTRY_DEDUP_TTL_SEC = 180.0
 IVAN_REENTRY_DEDUP_MAX_GAP = 3.0
 
+# Apertura del canale: "XAUUSD SELL 4011", "XAUUSD BUY: 4591-4587" (dal 26/08 il
+# canale scrive i due punti dopo la direzione e talvolta una zona d'ingresso).
+_IVAN_OPEN_RE = (
+    r"(XAUUSD|GOLD)\s+(BUY|SELL)\s*[:@]?\s*(\d+(?:[.,]\d+)?)"
+    r"(?:\s*-\s*(\d+(?:[.,]\d+)?))?"
+)
+
+
+def _ivan_entry_ref(trade: dict | None) -> float | None:
+    """Prezzo di riferimento del setup: entry, o centro della zona d'ingresso."""
+    if not trade:
+        return None
+    entry = trade.get("entry")
+    if isinstance(entry, (int, float)):
+        return float(entry)
+    er = trade.get("entry_range")
+    if (isinstance(er, (list, tuple)) and len(er) == 2
+            and all(isinstance(v, (int, float)) for v in er)):
+        return (float(er[0]) + float(er[1])) / 2.0
+    return None
+
 
 def _ivan_reentry_is_repeat(last: dict | None, entry: float | None) -> bool:
     """True se lo stesso rientro è già stato emesso da poco (MSG poi EDIT)."""
@@ -1634,7 +1655,9 @@ def _ivan_update_tp_signal(tp_move: tuple[float, int | None], ch: dict, raw: str
     new_tp, tp_index = tp_move
     last = state.ivan_last_trade or {}
     direction = last.get("direction")
-    entry = last.get("entry")
+    # Un setup pubblicato come zona ("BUY: 4591-4587") non ha entry singolo:
+    # il riferimento è il centro della zona.
+    entry = _ivan_entry_ref(last)
     new_tp = _expand_short_price(new_tp, entry)
     if new_tp < 100:
         return None
@@ -2118,7 +2141,7 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     # ma non devono coprire un setup completo: "TAKE PROFIT"/"TP n" compaiono sia
     # nei commenti sia nei segnali veri.
     has_setup = bool(
-        re.search(r"(?:XAUUSD|GOLD)\s+(?:BUY|SELL)\s+\d", upper)
+        re.search(_IVAN_OPEN_RE, upper)
         and re.search(r"\bSL\b", upper)
     )
     # "Spostiamo il take profit 4 a 4376" è un ordine, non il commento che
@@ -2151,9 +2174,10 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         # "Rientri piccola da qui a 58": il canale abbrevia le ultime due cifre.
         m_px = re.search(r"\b(\d{2,}(?:[.,]\d+)?)\b", upper)
         raw_px = pf(m_px.group(1)) if m_px else None
+        last_ref = _ivan_entry_ref(last)
         if raw_px is not None:
-            raw_px = _expand_short_price(raw_px, last.get("entry"))
-        entry = raw_px or last.get("entry")
+            raw_px = _expand_short_price(raw_px, last_ref)
+        entry = raw_px or last_ref
         tps = list(last.get("tp_levels") or [])
         sl = last.get("sl")
         if entry is not None:
@@ -2239,10 +2263,7 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     if close_sig:
         return close_sig
 
-    m_open = re.search(
-        r"(XAUUSD|GOLD)\s+(BUY|SELL)\s+(\d+(?:[.,]\d+)?)",
-        upper,
-    )
+    m_open = re.search(_IVAN_OPEN_RE, upper)
     if not m_open:
         return None
 
@@ -2252,17 +2273,27 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     if entry is None:
         return None
 
+    # "XAUUSD BUY: 4591-4587": il canale pubblica una zona d'ingresso invece del
+    # prezzo singolo. Stessa convenzione degli altri canali oro: entry_range.
+    entry_range = None
+    entry2 = pf(m_open.group(4)) if m_open.group(4) else None
+    if entry2 is not None:
+        entry_range = [min(entry, entry2), max(entry, entry2)]
+        entry = None
+
     tps: list[float] = []
     sl = None
-    for line in raw.splitlines():
+    # I setup arrivano sia multiriga ("TP 1 4006") sia su una riga sola con
+    # separatori ("| TP1: 4596 | ... | SL: 4570"): i segmenti valgono uguale.
+    for line in re.split(r"[\n|]", raw):
         lu = strip_md(line).upper().strip()
-        m_tp = re.match(r"TP\s*\d+\s+([\d.,]+)", lu)
+        m_tp = re.match(r"TP\s*\d*\s*[:.@]?\s*([\d.,]+)", lu)
         if m_tp:
             v = pf(m_tp.group(1))
             if v is not None:
                 tps.append(v)
             continue
-        m_sl = re.match(r"SL\s*@?\s*([\d.,]+)", lu)
+        m_sl = re.match(r"SL\s*[:@]?\s*([\d.,]+)", lu)
         if m_sl:
             sl = pf(m_sl.group(1))
 
@@ -2273,7 +2304,7 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
     # Entry con typo di battitura ("XAUUSD SELL 4326" invece di 4427): se SL e
     # TP sono coerenti fra loro il setup è leggibile, si apre a mercato invece
     # di scartare il segnale. La distanza dal prezzo la valuta poi l'EA.
-    if _ivan_entry_is_typo(direction, entry, sl, tps):
+    if entry is not None and _ivan_entry_is_typo(direction, entry, sl, tps):
         log.warning(
             f"[IVAN] Entry {entry} incoerente con SL {sl} e TP {tps}: "
             f"apertura a mercato (ENTRY_TYPO_MARKET)"
@@ -2287,14 +2318,16 @@ def parser_ivan_vip(text: str, ch: dict, state: BridgeState | None = None) -> di
         folded,
     ) else 1.0
     log.info(
-        f"[IVAN] OPEN {direction} {symbol} @ {entry} TP={tps} SL={sl} "
-        f"lot_factor={lot_factor}"
+        f"[IVAN] OPEN {direction} {symbol} "
+        f"{'range=' + str(entry_range) if entry_range else '@ ' + str(entry)} "
+        f"TP={tps} SL={sl} lot_factor={lot_factor}"
     )
     signal = {
         "action":      "OPEN",
         "direction":   direction,
         "symbol":      symbol,
         "entry":       entry,
+        "entry_range": entry_range,
         "tp_levels":   tps,
         "sl":          sl,
         "magic_base":  ch["magic_base"],

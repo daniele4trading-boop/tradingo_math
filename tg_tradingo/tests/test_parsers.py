@@ -594,6 +594,20 @@ class TestCHIvan:
         assert sig["sl"] == 4570.0
         assert validate_signal(sig)[0]
 
+    def test_zone_setup_keeps_reference_for_next_commands(self, tmp_path: Path):
+        """Su un setup a zona il TP dal lato sbagliato resta rifiutato."""
+        state = BridgeState(tmp_path / "st.json")
+        parser_ivan_vip(
+            "XAUUSD BUY: 4591-4587 | TP1: 4596 | TP2: 4600 | TP3: 4607 | SL: 4570",
+            CH_IVAN, state,
+        )
+        assert state.ivan_last_trade["entry_range"] == [4587.0, 4591.0]
+        # 4580 è sotto la zona: per un BUY chiuderebbe a mercato.
+        assert parser_ivan_vip("TP 3 spostiamo a 4580", CH_IVAN, state) is None
+        sig = parser_ivan_vip("TP 3 spostiamo a 4620", CH_IVAN, state)
+        assert sig["action"] == "UPDATE_TP"
+        assert sig["new_tp"] == 4620.0
+
     def test_move_tp_noun_before_verb(self, tmp_path: Path):
         """"TP 3 spostiamo a 4580": ordine invertito, il 27/08 era UNPARSED."""
         state = BridgeState(tmp_path / "st.json")

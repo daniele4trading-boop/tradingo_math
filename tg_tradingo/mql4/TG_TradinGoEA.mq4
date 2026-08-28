@@ -6,11 +6,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.08"
+#property version   "1.10"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.08"
+#define EA_VERSION "1.10"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -62,6 +62,11 @@ input int    InpNakedFallbackSlPoints    = 1200;
 // legal (order in loss, or entry closer than the broker stops level) keep the
 // current SL instead of clamping past the entry.
 input bool   InpBeNeverWorseThanEntry    = true;
+// UPDATE_SL moving the stop further away is a legitimate channel decision (give
+// the price room), but the lot size was computed on the previous risk: cap the
+// new stop at this multiple of the open->current SL distance instead of
+// following it without limit. 0 = no cap (follow the channel exactly).
+input double InpMaxSlWidenFactor         = 2.0;
 // Seconds within which orders opened together count as one batch
 // (CLOSE_SELECTIVE keep=ALL_BUT_NEWEST closes only the newest batch).
 input int    InpBatchWindowSec           = 120;
@@ -1324,6 +1329,36 @@ bool HandleUpdateTp(const string json)
   }
 
 //+------------------------------------------------------------------+
+// Caps an SL that widens the risk at InpMaxSlWidenFactor times the current
+// open->SL distance of the selected order. Returns the SL to apply.
+double CapWidenedSl(const string symbol, const double newSl)
+  {
+   double curSl = OrderStopLoss();
+   if(!InpProtectExistingLevels || InpMaxSlWidenFactor <= 0.0 ||
+      curSl <= 0.0 || newSl <= 0.0)
+      return newSl;
+   double open = OrderOpenPrice();
+   bool isBuy = (OrderType() == OP_BUY);
+   if(isBuy ? (newSl >= curSl) : (newSl <= curSl))
+      return newSl;
+   double risk = MathAbs(open - curSl);
+   if(risk <= 0.0)
+      return newSl;
+   double maxRisk = risk * InpMaxSlWidenFactor;
+   if(MathAbs(open - newSl) <= maxRisk)
+      return newSl;
+   int dg = (int)MarketInfo(symbol, MODE_DIGITS);
+   double capped = NormalizeDouble(isBuy ? (open - maxRisk) : (open + maxRisk), dg);
+   Print("[TradinGo] UPDATE_SL_WIDEN_CAPPED ticket=", OrderTicket(),
+         " new_sl=", DoubleToString(newSl, dg),
+         " cur_sl=", DoubleToString(curSl, dg),
+         " applied=", DoubleToString(capped, dg),
+         " factor=", DoubleToString(InpMaxSlWidenFactor, 2),
+         " side=", (isBuy ? "BUY" : "SELL"));
+   return capped;
+  }
+
+//+------------------------------------------------------------------+
 bool HandleUpdateSl(const string json)
   {
    string symbol = ResolveSymbol(JsonGetString(json, "symbol"));
@@ -1339,7 +1374,10 @@ bool HandleUpdateSl(const string json)
          continue;
       if(!IsOurOrderMagic(OrderMagicNumber(), magicBase, MAX_TRADES_PER_SIGNAL))
          continue;
-      ModifyOrderSLTP(OrderTicket(), newSl, 0);
+      // Lo stop che si allontana viene seguito, ma non oltre il tetto: la size
+      // e' stata calcolata sul rischio precedente.
+      double useSl = CapWidenedSl(symbol, newSl);
+      ModifyOrderSLTP(OrderTicket(), useSl, 0);
      }
    return true;
   }

@@ -564,6 +564,57 @@ class TestCHIvan:
         assert sized["trades"] == 4
         assert sized["fixed_lot"] == 0.10
 
+    def test_open_one_line_with_colons(self, tmp_path: Path):
+        """Formato del canale dal 26/08: due punti e separatori '|' su una riga."""
+        state = BridgeState(tmp_path / "st.json")
+        text = ("XAUUSD SELL: 4596 |  | TP1: 4590 | TP2: 4587 | TP3: 4582 "
+                "| TP4: 4510 |  | SL: 4608")
+        sig = parser_ivan_vip(text, CH_IVAN, state)
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "SELL"
+        assert sig["entry"] == 4596.0
+        assert sig["tp_levels"] == [4590.0, 4587.0, 4582.0, 4510.0]
+        assert sig["sl"] == 4608.0
+        assert validate_signal(sig)[0]
+        assert apply_lot_rules(sig, CH_IVAN)["trades"] == 4
+
+    def test_open_entry_zone(self, tmp_path: Path):
+        """"XAUUSD BUY: 4591-4587": zona d'ingresso, non prezzo singolo."""
+        state = BridgeState(tmp_path / "st.json")
+        text = ("XAUUSD BUY: 4591-4587 |  | TP1: 4596 | TP2: 4600 | TP3: 4607 "
+                "| TP4: 4630 |  | SL: 4570")
+        sig = parser_ivan_vip(text, CH_IVAN, state)
+        assert sig is not None
+        assert sig["action"] == "OPEN"
+        assert sig["direction"] == "BUY"
+        assert sig["entry"] is None
+        assert sig["entry_range"] == [4587.0, 4591.0]
+        assert sig["tp_levels"] == [4596.0, 4600.0, 4607.0, 4630.0]
+        assert sig["sl"] == 4570.0
+        assert validate_signal(sig)[0]
+
+    def test_move_tp_noun_before_verb(self, tmp_path: Path):
+        """"TP 3 spostiamo a 4580": ordine invertito, il 27/08 era UNPARSED."""
+        state = BridgeState(tmp_path / "st.json")
+        parser_ivan_vip(
+            "XAUUSD SELL: 4596 | TP1: 4590 | TP2: 4587 | TP3: 4582 | SL: 4608",
+            CH_IVAN, state,
+        )
+        sig = parser_ivan_vip("TP 3 spostiamo a 4580", CH_IVAN, state)
+        assert sig is not None
+        assert sig["action"] == "UPDATE_TP"
+        assert sig["new_tp"] == 4580.0
+        assert sig["tp_index"] == 3
+
+    def test_tp_hit_comment_does_not_move_tp(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "st.json")
+        parser_ivan_vip(
+            "XAUUSD SELL: 4596 | TP1: 4590 | TP2: 4587 | SL: 4608",
+            CH_IVAN, state,
+        )
+        assert parser_ivan_vip("TP 1 HIT SQUAD ✔️ | +100 PIPS", CH_IVAN, state) is None
+
     def test_check_and_be(self):
         sig = parser_ivan_vip("Spostiamo SL a BE", CH_IVAN)
         assert sig["action"] == "CHECK_AND_BE"

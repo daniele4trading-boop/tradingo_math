@@ -475,6 +475,13 @@ def match_move_tp_price(upper: str, *,
         text,
     )
     if not m:
+        # Ordine invertito: "TP 3 spostiamo a 4580" (28/08 finiva UNPARSED).
+        m = re.search(
+            rf"(?:^|[^\w]){_MOVE_TP_NOUN}\s*(?:(\d)\b\s*)?{_MOVE_TP_VERB}"
+            r"\s*(?:A|AL|SU|SUI|IN|TO|@)?\s*(\d{2,5}(?:[.,]\d+)?)\b",
+            text,
+        )
+    if not m:
         if require_verb:
             return None
         # "TP 4 a 4376" senza verbo: solo in messaggi corti, così un commento

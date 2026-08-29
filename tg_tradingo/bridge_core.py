@@ -822,6 +822,12 @@ class BridgeState:
             "symbol": trade.get("symbol"),
             "direction": trade.get("direction"),
             "entry": trade.get("entry"),
+            # Un setup pubblicato come zona ha entry=None: senza la zona i
+            # comandi successivi (UPDATE_TP, rientri) perdono il riferimento e
+            # il controllo di coerenza sui livelli non scatta.
+            "entry_range": (
+                list(trade["entry_range"]) if trade.get("entry_range") else None
+            ),
             "sl": trade.get("sl"),
             "tp_levels": list(trade.get("tp_levels") or []),
             "lot_factor": trade.get("lot_factor"),

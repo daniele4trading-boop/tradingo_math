@@ -16,13 +16,22 @@ I branch `cursor/*` e `devin/*` sono di lavoro: allinearli a `main` prima di rip
 
 | Componente | Versione | Dove è dichiarata |
 |---|---|---|
-| Bridge Python | **2.23** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
-| EA MT5 | **2.23** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
-| EA MT4 | **1.10** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.23) |
+| Bridge Python | **2.24** | `BRIDGE_VERSION` in `tg_tradingo/tradingo_bridge.py` (banner di avvio e `start_tradingo.bat`) |
+| EA MT5 | **2.24** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql5/TG_TradinGoEA.mq5` |
+| EA MT4 | **1.11** | `#property version` + `#define EA_VERSION` in `tg_tradingo/mql4/TG_TradinGoEA.mq4` (stesso contratto JSON del bridge 2.24) |
 
 Bridge ed EA MT5 si muovono insieme sul contratto JSON ([`EA_SPEC.md`](EA_SPEC.md)).
 L’EA MT4 è un consumer aggiuntivo dello stesso JSON (nessun secondo parser).
 Setup Contabo T4Trade + predisposizione path iFunds: [`MT4_T4TRADE_SETUP.md`](MT4_T4TRADE_SETUP.md).
+
+**2.24 / MT5 2.24 / MT4 1.11:** un campo nullo nel payload non viene più letto come
+l'array successivo. Il lettore JSON dell'EA cercava la chiave e poi il primo `[` del file:
+con `"entry_range": null` prendeva `tp_levels`, quindi su ogni setup a prezzo singolo
+(IVAN) TP1/TP2 diventavano la zona d'ingresso e il segnale veniva annullato per distanza
+(31/08: `SIGNAL_CANCELLED CH_IVAN ... range=[4422.00,4425.00]` su entry 4429). Corretto su
+due fronti: il bridge non scrive più i campi nulli (`payload_for_ea`, effetto immediato
+senza ricompilare) e `JsonGetNumberArray` (MT5/MT4) pretende che il valore della chiave sia
+esso stesso un array.
 
 **2.23 / MT5 2.23 / MT4 1.10:** lo SL che allontana lo stop si esegue, con un tetto.
 Allargare lo stop è una scelta legittima del canale (dare respiro al prezzo), ma la size

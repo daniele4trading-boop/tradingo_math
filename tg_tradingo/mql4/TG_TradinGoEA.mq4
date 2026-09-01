@@ -6,11 +6,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "1.10"
+#property version   "1.11"
 #property strict
 #property description "JSON signal executor for TG TradinGo bridge (MT4)"
 
-#define EA_VERSION "1.10"
+#define EA_VERSION "1.11"
 #define MAX_CHANNELS 16
 #define MAX_TRADES_PER_SIGNAL 5
 
@@ -153,9 +153,27 @@ bool JsonGetNumberArray(const string json, const string key, double &out[])
    int p = StringFind(json, pat);
    if(p < 0)
       return false;
-   p = StringFind(json, "[", p);
-   if(p < 0)
+   // The value of this key must itself be an array: on "entry_range": null the
+   // next '[' belongs to another key (tp_levels), and reading it would turn TP1/TP2
+   // into an entry zone and cancel the signal.
+   int colon = StringFind(json, ":", p + StringLen(pat));
+   if(colon < 0)
       return false;
+   int v = colon + 1;
+   int len = StringLen(json);
+   while(v < len)
+     {
+      int c = StringGetCharacter(json, v);
+      if(c == ' ' || c == '\t' || c == '\r' || c == '\n')
+        {
+         v++;
+         continue;
+        }
+      break;
+     }
+   if(v >= len || StringGetCharacter(json, v) != '[')
+      return false;
+   p = v;
    int q = StringFind(json, "]", p);
    if(q < 0)
       return false;

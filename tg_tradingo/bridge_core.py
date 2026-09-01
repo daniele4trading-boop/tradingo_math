@@ -1138,6 +1138,17 @@ def validate_signal(signal: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def payload_for_ea(signal: dict) -> dict:
+    """Drop the null fields before writing the signal file.
+
+    The EA reads arrays by looking for the key and then for the next ``[`` in the
+    file: on ``"entry_range": null`` it picked up ``tp_levels`` instead, so TP1/TP2
+    became the entry zone and every IVAN setup (single entry price) was cancelled
+    for distance. Omitting the key keeps the reader on the right array.
+    """
+    return {k: v for k, v in signal.items() if v is not None}
+
+
 def salvage_incoherent_entry_range(signal: dict, reason: str) -> str | None:
     """Rescue the SL/TP of an UPDATE_OPEN whose entry zone has a typo.
 

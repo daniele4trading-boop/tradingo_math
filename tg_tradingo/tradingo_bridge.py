@@ -1,5 +1,5 @@
 """
-TG TradinGo Bridge - v2.23 (vedi BRIDGE_VERSION)
+TG TradinGo Bridge - v2.24 (vedi BRIDGE_VERSION)
 Sessione Telegram riutilizzata da C:\\TelegramBridge\\telegram_bridge_session.session
 
 CANALI:
@@ -40,6 +40,7 @@ from bridge_core import (
     match_partial_close_intent,
     match_selective_close_intent,
     salvage_incoherent_entry_range,
+    payload_for_ea,
     validate_signal,
 )
 from bridge_journal import append_bridge_event, write_heartbeat
@@ -65,7 +66,7 @@ def load_config():
 
 CONFIG = load_config()
 
-BRIDGE_VERSION = "2.23"
+BRIDGE_VERSION = "2.24"
 HEARTBEAT_INTERVAL_SEC = 30
 JOURNAL_RETENTION_DAYS = 90
 
@@ -147,7 +148,7 @@ def write_signal(channel_cfg: dict, signal: dict, meta: dict | None = None):
         log.error(f"[{channel_cfg['id']}] Segnale non valido: {reason} | action={signal.get('action')}")
         return False
 
-    payload = json.dumps(signal, indent=2)
+    payload = json.dumps(payload_for_ea(signal), indent=2)
     # Local disks first; UNC/Tailscale shares last so a hung SMB cannot delay Contabo.
     paths = sorted(
         get_mt5_paths(),

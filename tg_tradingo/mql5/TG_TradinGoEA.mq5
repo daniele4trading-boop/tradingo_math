@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "TradinGo"
 #property link      "https://github.com/daniele4trading-boop/tradingo_system"
-#property version   "2.23"
+#property version   "2.24"
 #property description "JSON signal executor for TG TradinGo bridge"
 
 //--- unica fonte di verita' della versione: allineata a BRIDGE_VERSION
-#define EA_VERSION "2.23"
+#define EA_VERSION "2.24"
 
 #include <Trade/Trade.mqh>
 #include <Trade/PositionInfo.mqh>
@@ -210,9 +210,27 @@ bool JsonGetNumberArray(const string json, const string key, double &out[])
    int p = StringFind(json, pat);
    if(p < 0)
       return false;
-   p = StringFind(json, "[", p);
-   if(p < 0)
+   // The value of this key must itself be an array: on "entry_range": null the
+   // next '[' belongs to another key (tp_levels), and reading it would turn TP1/TP2
+   // into an entry zone and cancel the signal.
+   int colon = StringFind(json, ":", p + StringLen(pat));
+   if(colon < 0)
       return false;
+   int v = colon + 1;
+   int len = StringLen(json);
+   while(v < len)
+     {
+      ushort c = StringGetCharacter(json, v);
+      if(c == ' ' || c == '\t' || c == '\r' || c == '\n')
+        {
+         v++;
+         continue;
+        }
+      break;
+     }
+   if(v >= len || StringGetCharacter(json, v) != '[')
+      return false;
+   p = v;
    int q = StringFind(json, "]", p);
    if(q < 0)
       return false;

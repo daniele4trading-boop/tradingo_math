@@ -19,6 +19,7 @@ from bridge_core import (
     apply_lot_rules,
     match_close_all_intent,
     salvage_incoherent_entry_range,
+    payload_for_ea,
     make_signal_id,
 )
 from tradingo_bridge import (
@@ -2385,3 +2386,41 @@ class TestGoldNakedAndSalvageFrom0814:
         assert not ok
         # Un OPEN senza zona utilizzabile non deve aprire a mercato.
         assert salvage_incoherent_entry_range(sig, reason) is None
+
+
+class TestPayloadForEaFrom0831:
+    """Segnali IVAN del 31/08 annullati dall'EA: `"entry_range": null` nel payload.
+
+    Il lettore JSON dell'EA cercava la chiave e poi il primo `[` del file, che con
+    entry_range nullo era `tp_levels`: TP1/TP2 diventavano la zona d'ingresso e il
+    setup veniva cancellato per distanza (log: range=[4422,4425] su entry 4429).
+    """
+
+    def test_null_entry_range_is_not_written(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "st.json")
+        sig = parser_ivan_vip(
+            "XAUUSD SELL 4429\n\nTP1: 4425\nTP2: 4422\nTP3: 4420\nTP4: 4410\n\nSL: 4442",
+            CH_IVAN,
+            state,
+        )
+        assert sig["entry"] == 4429.0
+        assert sig["entry_range"] is None
+        payload = payload_for_ea(sig)
+        assert "entry_range" not in payload
+        assert payload["tp_levels"] == [4425.0, 4422.0, 4420.0, 4410.0]
+
+    def test_a_real_entry_range_survives(self, tmp_path: Path):
+        state = BridgeState(tmp_path / "st.json")
+        sig = parser_ivan_vip(
+            "XAUUSD BUY: 4591-4587 | TP1: 4596 | TP2: 4600 | SL: 4570",
+            CH_IVAN,
+            state,
+        )
+        assert payload_for_ea(sig)["entry_range"] == [4587.0, 4591.0]
+
+    def test_only_the_none_fields_are_dropped(self):
+        sig = {"action": "OPEN", "entry": None, "sl": 4442.0, "tp_levels": [4425.0],
+               "levels_only": False, "trades": 0}
+        payload = payload_for_ea(sig)
+        assert payload == {"action": "OPEN", "sl": 4442.0, "tp_levels": [4425.0],
+                           "levels_only": False, "trades": 0}
